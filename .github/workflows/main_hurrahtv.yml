@@ -43,10 +43,8 @@ jobs:
           cp -r client-output/wwwroot/* api-output/wwwroot/ 2>/dev/null || true
           cp -r client-output/wwwroot/. api-output/wwwroot/
 
-      - name: Set production client config
-        run: |
-          rm -f api-output/wwwroot/appsettings.Development.json
-          echo '{}' > api-output/wwwroot/appsettings.json
+      - name: Remove dev config from client output
+        run: rm -f api-output/wwwroot/appsettings.Development.json
 
       - name: Deploy to Azure Web App staging slot
         uses: azure/webapps-deploy@v3

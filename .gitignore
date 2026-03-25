@@ -9,8 +9,9 @@ node_modules/
 .idea/
 *.suo
 
-# environment & secrets
+# environment & secrets (API has real secrets, Client wwwroot only has localhost URL)
 appsettings.Development.json
+!**/wwwroot/appsettings.Development.json
 *.db
 .claude/settings.local.json
 
