@@ -37,6 +37,9 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+if (!app.Environment.IsProduction())
+    app.UseDeveloperExceptionPage();
+
 // redirect www.hurrah.tv → hurrah.tv
 app.Use(async (context, next) =>
 {
