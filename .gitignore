@@ -1,0 +1,26 @@
+# build output
+bin/
+obj/
+node_modules/
+
+# IDE
+.vs/
+*.user
+.idea/
+*.suo
+
+# environment & secrets
+appsettings.Development.json
+*.db
+.claude/settings.local.json
+
+# local-only directories
+Plans/
+Learnings/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# tailwind build output (when we switch from CDN)
+wwwroot/css/tailwind.min.css

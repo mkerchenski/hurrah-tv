@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Files/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="CLAUDE.md" />
+  </Folder>
+  <Project Path="HurrahTv.Api/HurrahTv.Api.csproj" />
+  <Project Path="HurrahTv.Client/HurrahTv.Client.csproj" />
+  <Project Path="HurrahTv.Shared/HurrahTv.Shared.csproj" />
+</Solution>

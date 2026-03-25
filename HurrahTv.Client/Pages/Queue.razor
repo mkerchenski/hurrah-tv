@@ -1,0 +1,132 @@
+@page "/queue"
+@inject ApiClient Api
+
+<PageTitle>My Queue - Hurrah.tv</PageTitle>
+
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-bold">My Queue</h1>
+    @if (_items.Count > 0)
+    {
+        <div class="flex gap-2">
+            @foreach (string tab in new[] { "all", "queued", "watching", "watched" })
+            {
+                string label = tab == "all" ? "All" : tab[..1].ToUpper() + tab[1..];
+                int count = tab == "all" ? _items.Count : _items.Count(i => i.Status.ToString().ToLower() == tab);
+                <button class="@($"px-3 py-1.5 rounded-full text-sm transition-all {(_activeTab == tab ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
+                        @onclick="() => _activeTab = tab">
+                    @label (@count)
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-20">
+        <div class="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
+    </div>
+}
+else if (_items.Count == 0)
+{
+    <div class="text-center py-20 fade-in">
+        <svg class="w-16 h-16 mx-auto mb-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+        </svg>
+        <p class="text-gray-400 text-lg mb-2">Your queue is empty</p>
+        <p class="text-gray-600 mb-4">Search for shows and movies to add them here.</p>
+        <a href="/search" class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2.5 rounded-lg transition-colors inline-block">
+            Browse Content
+        </a>
+    </div>
+}
+else
+{
+    <div class="space-y-3 fade-in">
+        @foreach (QueueItem item in FilteredItems)
+        {
+            <div class="flex items-center gap-4 bg-surface-50 rounded-lg p-3 hover:bg-surface-100 transition-colors group">
+                <!-- poster thumbnail -->
+                <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0">
+                    @if (!string.IsNullOrEmpty(item.PosterUrl("w92")))
+                    {
+                        <img src="@item.PosterUrl("w92")" alt="@item.Title"
+                             class="w-14 h-20 object-cover rounded" />
+                    }
+                    else
+                    {
+                        <div class="w-14 h-20 bg-surface-200 rounded flex items-center justify-center">
+                            <span class="text-gray-600 text-xs">?</span>
+                        </div>
+                    }
+                </a>
+
+                <!-- title & meta -->
+                <div class="flex-1 min-w-0">
+                    <a href="/details/@item.MediaType/@item.TmdbId"
+                       class="font-semibold text-white hover:text-accent transition-colors truncate block">
+                        @item.Title
+                    </a>
+                    <div class="text-xs text-gray-500 mt-0.5">
+                        @item.MediaType.ToUpper()
+                    </div>
+                </div>
+
+                <!-- status selector -->
+                <select class="bg-surface-200 text-gray-300 text-sm rounded-lg px-3 py-1.5 border-none focus:ring-1 focus:ring-accent"
+                        value="@((int)item.Status)"
+                        @onchange="e => UpdateStatus(item, e)">
+                    <option value="0">Queued</option>
+                    <option value="1">Watching</option>
+                    <option value="2">Watched</option>
+                </select>
+
+                <!-- remove -->
+                <button class="text-gray-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1"
+                        @onclick="() => Remove(item)" title="Remove from queue">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private List<QueueItem> _items = [];
+    private bool _loading = true;
+    private string _activeTab = "all";
+
+    private IEnumerable<QueueItem> FilteredItems => _activeTab == "all"
+        ? _items
+        : _items.Where(i => i.Status.ToString().ToLower() == _activeTab);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadQueue();
+    }
+
+    private async Task LoadQueue()
+    {
+        _loading = true;
+        _items = await Api.GetQueueAsync();
+        _loading = false;
+    }
+
+    private async Task UpdateStatus(QueueItem item, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int status))
+        {
+            QueueStatus newStatus = (QueueStatus)status;
+            await Api.UpdateStatusAsync(item.Id, newStatus);
+            item.Status = newStatus;
+        }
+    }
+
+    private async Task Remove(QueueItem item)
+    {
+        await Api.RemoveFromQueueAsync(item.Id);
+        _items.Remove(item);
+    }
+}

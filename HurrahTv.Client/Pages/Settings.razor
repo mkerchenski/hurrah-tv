@@ -1,0 +1,62 @@
+@page "/settings"
+@inject ApiClient Api
+
+<PageTitle>Settings - Hurrah.tv</PageTitle>
+
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Settings</h1>
+
+    <div class="bg-surface-50 rounded-xl p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-2">My Streaming Services</h2>
+        <p class="text-gray-400 text-sm mb-4">Select the services you subscribe to. Content will be filtered to show what's available on your services.</p>
+
+        @if (_loaded)
+        {
+            <ServicePicker @bind-SelectedIds="_selectedServices" />
+
+            <div class="mt-6 flex items-center gap-3">
+                <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors"
+                        @onclick="Save">
+                    Save
+                </button>
+                @if (_saved)
+                {
+                    <span class="text-green-400 text-sm fade-in">Saved!</span>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+        }
+    </div>
+
+    <div class="bg-surface-50 rounded-xl p-6">
+        <h2 class="text-lg font-semibold mb-2">About Hurrah.tv</h2>
+        <p class="text-gray-400 text-sm">
+            One queue for everything you watch across all your streaming services.
+            Data provided by TMDb. Watch provider data provided by JustWatch.
+        </p>
+    </div>
+</div>
+
+@code {
+    private List<int> _selectedServices = [];
+    private bool _loaded;
+    private bool _saved;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _selectedServices = await Api.GetUserServicesAsync();
+        _loaded = true;
+    }
+
+    private async Task Save()
+    {
+        await Api.SetUserServicesAsync(_selectedServices);
+        _saved = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _saved = false;
+    }
+}

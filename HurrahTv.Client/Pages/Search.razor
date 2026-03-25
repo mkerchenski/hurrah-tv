@@ -1,0 +1,104 @@
+@page "/search"
+@inject ApiClient Api
+
+<PageTitle>Search - Hurrah.tv</PageTitle>
+
+<div class="max-w-3xl mx-auto mb-8">
+    <div class="relative">
+        <svg class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input type="text" @bind="_query" @bind:event="oninput" @onkeyup="HandleKeyUp"
+               placeholder="Search movies and TV shows..."
+               class="w-full bg-surface-50 border border-surface-200 rounded-xl pl-12 pr-4 py-3 text-lg
+                      text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent" />
+        @if (!string.IsNullOrEmpty(_query))
+        {
+            <button class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white"
+                    @onclick="ClearSearch">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        }
+    </div>
+
+    <!-- filter tabs -->
+    <div class="flex gap-2 mt-4">
+        @foreach (string tab in new[] { "all", "tv", "movie" })
+        {
+            string label = tab == "all" ? "All" : tab == "tv" ? "TV Shows" : "Movies";
+            <button class="@($"px-4 py-1.5 rounded-full text-sm transition-all {(_activeTab == tab ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
+                    @onclick="() => FilterByTab(tab)">
+                @label
+            </button>
+        }
+    </div>
+</div>
+
+<PosterGrid Results="_filteredResults" Loading="_loading" EmptyMessage="@_emptyMessage" />
+
+@code {
+    private string _query = "";
+    private string _activeTab = "all";
+    private List<SearchResult> _results = [];
+    private bool _loading;
+    private System.Timers.Timer? _debounce;
+    private string _emptyMessage = "Start typing to search";
+
+    private List<SearchResult> _filteredResults => _activeTab == "all"
+        ? _results
+        : _results.Where(r => r.MediaType == _activeTab).ToList();
+
+    private void HandleKeyUp(KeyboardEventArgs e)
+    {
+        _debounce?.Stop();
+        _debounce?.Dispose();
+
+        if (string.IsNullOrWhiteSpace(_query))
+        {
+            _results = [];
+            _emptyMessage = "Start typing to search";
+            StateHasChanged();
+            return;
+        }
+
+        _debounce = new System.Timers.Timer(400);
+        _debounce.Elapsed += async (_, _) =>
+        {
+            _debounce?.Stop();
+            await InvokeAsync(DoSearch);
+        };
+        _debounce.Start();
+    }
+
+    private async Task DoSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+
+        _loading = true;
+        _emptyMessage = "No results found";
+        StateHasChanged();
+
+        _results = await Api.SearchAsync(_query);
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void FilterByTab(string tab)
+    {
+        _activeTab = tab;
+    }
+
+    private void ClearSearch()
+    {
+        _query = "";
+        _results = [];
+        _emptyMessage = "Start typing to search";
+    }
+
+    public void Dispose()
+    {
+        _debounce?.Dispose();
+    }
+}

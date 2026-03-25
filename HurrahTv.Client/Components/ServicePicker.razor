@@ -1,0 +1,33 @@
+<div class="flex flex-wrap gap-3">
+    @foreach (StreamingService service in StreamingService.All)
+    {
+        bool isSelected = SelectedIds.Contains(service.TmdbProviderId);
+        <button class="@($"flex items-center gap-2 px-4 py-2 rounded-full border transition-all {(isSelected ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500")}")"
+                @onclick="() => Toggle(service.TmdbProviderId)">
+            <span class="font-medium text-sm">@service.Name</span>
+            @if (isSelected)
+            {
+                <svg class="w-4 h-4 text-accent-light" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                </svg>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public List<int> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<List<int>> SelectedIdsChanged { get; set; }
+
+    private async Task Toggle(int id)
+    {
+        List<int> updated = new(SelectedIds);
+        if (updated.Contains(id))
+            updated.Remove(id);
+        else
+            updated.Add(id);
+
+        SelectedIds = updated;
+        await SelectedIdsChanged.InvokeAsync(updated);
+    }
+}

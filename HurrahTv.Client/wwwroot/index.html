@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hurrah.tv</title>
+    <base href="/" />
+    <link rel="preload" id="webassembly" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        surface: { DEFAULT: '#0f0f0f', 50: '#1a1a1a', 100: '#242424', 200: '#2e2e2e' },
+                        accent: { DEFAULT: '#6366f1', light: '#818cf8' },
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="icon" type="image/png" href="favicon.png" />
+    <link href="HurrahTv.Client.styles.css" rel="stylesheet" />
+    <script type="importmap"></script>
+    <style>
+        body { background-color: #0f0f0f; }
+        .poster-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+        .poster-card:hover { transform: scale(1.05); box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3); }
+        .service-badge { transition: all 0.15s ease; }
+        .service-badge:hover { filter: brightness(1.2); }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .loading-shimmer {
+            background: linear-gradient(90deg, #1a1a1a 25%, #242424 50%, #1a1a1a 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    </style>
+</head>
+
+<body class="bg-surface text-gray-100 min-h-screen">
+    <div id="app">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="text-4xl font-bold text-accent mb-4">hurrah.tv</div>
+                <div class="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" class="fixed bottom-0 left-0 right-0 bg-red-900 text-white p-4 text-center hidden">
+        An unhandled error has occurred.
+        <a href="." class="underline ml-2">Reload</a>
+        <span class="dismiss cursor-pointer ml-4">&#x2715;</span>
+    </div>
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+</body>
+
+</html>

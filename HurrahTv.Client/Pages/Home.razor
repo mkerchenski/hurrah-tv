@@ -1,0 +1,104 @@
+@page "/"
+@inject ApiClient Api
+
+<PageTitle>Hurrah.tv - Your Streaming Queue</PageTitle>
+
+@if (!_servicesLoaded)
+{
+    <div class="text-center py-20">
+        <div class="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
+    </div>
+}
+else if (!_onboardingComplete)
+{
+    <!-- onboarding: pick your services -->
+    <div class="max-w-2xl mx-auto text-center py-12 fade-in">
+        <h1 class="text-4xl font-bold mb-2">Welcome to <span class="text-accent">hurrah.tv</span></h1>
+        <p class="text-gray-400 mb-8 text-lg">One queue for everything you watch. Pick your streaming services to get started.</p>
+
+        <ServicePicker @bind-SelectedIds="_pendingServices" />
+
+        <button class="mt-8 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40"
+                disabled="@(_pendingServices.Count == 0)"
+                @onclick="SaveServices">
+            Get Started
+        </button>
+    </div>
+}
+else
+{
+    <!-- trending content -->
+    <div class="fade-in">
+        <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl font-bold">Trending This Week</h2>
+            <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
+        </div>
+        <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
+
+        <!-- per-service sections -->
+        @foreach (int providerId in _userServices.Take(4))
+        {
+            if (StreamingService.ById.TryGetValue(providerId, out StreamingService? svc))
+            {
+                List<SearchResult> items = _byProvider.GetValueOrDefault(providerId, []);
+                <div class="mt-10">
+                    <h2 class="text-xl font-bold mb-4">Popular on @svc.Name</h2>
+                    <PosterGrid Results="items" Loading="_loadingProviders" EmptyMessage="@($"No results for {svc.Name}")" />
+                </div>
+            }
+        }
+    </div>
+}
+
+@code {
+    private List<int> _userServices = [];
+    private List<int> _pendingServices = []; // separate list for onboarding picker
+    private bool _servicesLoaded;
+    private bool _onboardingComplete;
+    private List<SearchResult> _trending = [];
+    private Dictionary<int, List<SearchResult>> _byProvider = [];
+    private bool _loadingTrending = true;
+    private bool _loadingProviders = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userServices = await Api.GetUserServicesAsync();
+        _servicesLoaded = true;
+        _onboardingComplete = _userServices.Count > 0;
+
+        if (_onboardingComplete)
+            await LoadContent();
+    }
+
+    private async Task SaveServices()
+    {
+        _userServices = _pendingServices;
+        await Api.SetUserServicesAsync(_userServices);
+        _onboardingComplete = true;
+        await LoadContent();
+    }
+
+    private async Task LoadContent()
+    {
+        // load trending
+        _loadingTrending = true;
+        StateHasChanged();
+        _trending = await Api.TrendingAsync();
+        _loadingTrending = false;
+        StateHasChanged();
+
+        // load per-provider content in parallel
+        _loadingProviders = true;
+        StateHasChanged();
+
+        Task<List<SearchResult>>[] tasks = _userServices.Take(4)
+            .Select(id => Api.DiscoverByProviderAsync(id))
+            .ToArray();
+        List<SearchResult>[] results = await Task.WhenAll(tasks);
+
+        for (int i = 0; i < results.Length && i < _userServices.Count; i++)
+            _byProvider[_userServices[i]] = results[i];
+
+        _loadingProviders = false;
+    }
+}
