@@ -37,6 +37,18 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// redirect www.hurrah.tv → hurrah.tv
+app.Use(async (context, next) =>
+{
+    if (context.Request.Host.Host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+    {
+        string newUrl = $"{context.Request.Scheme}://{context.Request.Host.Host[4..]}{context.Request.Path}{context.Request.QueryString}";
+        context.Response.Redirect(newUrl, permanent: true);
+        return;
+    }
+    await next();
+});
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
