@@ -38,6 +38,22 @@ public class DbService
             );
 
             CREATE INDEX IF NOT EXISTS IX_QueueItems_UserId ON QueueItems(UserId);
+
+            CREATE TABLE IF NOT EXISTS Users (
+                Id TEXT PRIMARY KEY,
+                PhoneNumber TEXT NOT NULL UNIQUE,
+                CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS OtpCodes (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                PhoneNumber TEXT NOT NULL,
+                Code TEXT NOT NULL,
+                ExpiresAt TEXT NOT NULL,
+                Used INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS IX_OtpCodes_Phone ON OtpCodes(PhoneNumber, Used);
             """);
     }
 
@@ -161,6 +177,53 @@ public class DbService
                 "INSERT INTO UserServices (UserId, ProviderId) VALUES (@UserId, @ProviderId)",
                 new { UserId = userId, ProviderId = pid });
         }
+    }
+
+    // auth operations
+    public async Task SaveOtpCodeAsync(string phoneNumber, string code)
+    {
+        using SqliteConnection db = Open();
+
+        // invalidate previous unused codes for this phone
+        await db.ExecuteAsync(
+            "UPDATE OtpCodes SET Used = 1 WHERE PhoneNumber = @PhoneNumber AND Used = 0",
+            new { PhoneNumber = phoneNumber });
+
+        await db.ExecuteAsync(
+            "INSERT INTO OtpCodes (PhoneNumber, Code, ExpiresAt) VALUES (@PhoneNumber, @Code, @ExpiresAt)",
+            new { PhoneNumber = phoneNumber, Code = code, ExpiresAt = DateTime.UtcNow.AddMinutes(10).ToString("o") });
+    }
+
+    public async Task<bool> VerifyOtpCodeAsync(string phoneNumber, string code)
+    {
+        using SqliteConnection db = Open();
+
+        int? id = await db.QuerySingleOrDefaultAsync<int?>(
+            "SELECT Id FROM OtpCodes WHERE PhoneNumber = @PhoneNumber AND Code = @Code AND Used = 0 AND ExpiresAt > @Now",
+            new { PhoneNumber = phoneNumber, Code = code, Now = DateTime.UtcNow.ToString("o") });
+
+        if (id == null) return false;
+
+        await db.ExecuteAsync("UPDATE OtpCodes SET Used = 1 WHERE Id = @Id", new { Id = id });
+        return true;
+    }
+
+    public async Task<string> GetOrCreateUserAsync(string phoneNumber)
+    {
+        using SqliteConnection db = Open();
+
+        string? userId = await db.QuerySingleOrDefaultAsync<string?>(
+            "SELECT Id FROM Users WHERE PhoneNumber = @PhoneNumber",
+            new { PhoneNumber = phoneNumber });
+
+        if (userId != null) return userId;
+
+        userId = Guid.NewGuid().ToString("N");
+        await db.ExecuteAsync(
+            "INSERT INTO Users (Id, PhoneNumber, CreatedAt) VALUES (@Id, @PhoneNumber, @CreatedAt)",
+            new { Id = userId, PhoneNumber = phoneNumber, CreatedAt = DateTime.UtcNow.ToString("o") });
+
+        return userId;
     }
 
     private SqliteConnection Open()

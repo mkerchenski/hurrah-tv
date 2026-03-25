@@ -12,6 +12,21 @@ public class ApiClient
         _http = http;
     }
 
+    // auth
+    public async Task<bool> SendCodeAsync(string phoneNumber)
+    {
+        HttpResponseMessage response = await _http.PostAsJsonAsync("api/auth/send-code", new SendCodeRequest(phoneNumber));
+        return response.IsSuccessStatusCode;
+    }
+
+    public async Task<AuthResponse?> VerifyCodeAsync(string phoneNumber, string code)
+    {
+        HttpResponseMessage response = await _http.PostAsJsonAsync("api/auth/verify", new VerifyCodeRequest(phoneNumber, code));
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<AuthResponse>();
+        return null;
+    }
+
     // search
     public async Task<List<SearchResult>> SearchAsync(string query, int page = 1) =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search?q={Uri.EscapeDataString(query)}&page={page}") ?? [];

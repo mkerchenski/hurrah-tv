@@ -1,0 +1,156 @@
+@inject ApiClient Api
+@inject TokenService TokenService
+@inject HurrahAuthStateProvider AuthState
+
+<PageTitle>Hurrah.tv - One Queue for Everything You Watch</PageTitle>
+
+<div class="min-h-screen flex flex-col items-center justify-center px-4">
+    <div class="text-center max-w-lg w-full">
+        <!-- branding -->
+        <h1 class="text-5xl font-bold text-accent mb-3">hurrah.tv</h1>
+        <p class="text-gray-400 text-lg mb-12">One queue for everything you watch.</p>
+
+        <!-- feature highlights -->
+        <div class="grid grid-cols-1 gap-4 mb-12 text-left max-w-sm mx-auto">
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-accent mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                </svg>
+                <div>
+                    <div class="font-semibold text-white">Search across services</div>
+                    <div class="text-gray-500 text-sm">Netflix, Hulu, Disney+, and more in one place</div>
+                </div>
+            </div>
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-accent mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                </svg>
+                <div>
+                    <div class="font-semibold text-white">One unified queue</div>
+                    <div class="text-gray-500 text-sm">Stop bouncing between apps to find what to watch</div>
+                </div>
+            </div>
+            <div class="flex items-start gap-3">
+                <svg class="w-6 h-6 text-accent mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                </svg>
+                <div>
+                    <div class="font-semibold text-white">Access anywhere</div>
+                    <div class="text-gray-500 text-sm">Your queue syncs across all your devices</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- login form -->
+        <div class="bg-surface-50 rounded-2xl p-8 max-w-sm mx-auto">
+            @if (!_codeSent)
+            {
+                <h2 class="text-lg font-semibold mb-1">Get started</h2>
+                <p class="text-gray-500 text-sm mb-6">Enter your phone number to sign in or create an account.</p>
+
+                <div class="relative">
+                    <input type="tel" @bind="_phoneNumber" @bind:event="oninput" @onkeydown="HandlePhoneKeyDown"
+                           placeholder="+1 (555) 123-4567"
+                           class="w-full bg-surface-100 border border-surface-200 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent text-center text-lg tracking-wider" />
+                </div>
+
+                <button @onclick="SendCode" disabled="@(_sending || string.IsNullOrWhiteSpace(_phoneNumber))"
+                        class="w-full mt-4 bg-accent hover:bg-accent-light text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-40">
+                    @(_sending ? "Sending..." : "Send Code")
+                </button>
+            }
+            else
+            {
+                <h2 class="text-lg font-semibold mb-1">Enter your code</h2>
+                <p class="text-gray-500 text-sm mb-6">We sent a 6-digit code to <span class="text-white">@_phoneNumber</span></p>
+
+                <input type="text" @bind="_code" @bind:event="oninput" @onkeydown="HandleCodeKeyDown"
+                       placeholder="000000" maxlength="6" inputmode="numeric"
+                       class="w-full bg-surface-100 border border-surface-200 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent text-center text-2xl tracking-[0.5em] font-mono" />
+
+                <button @onclick="VerifyCode" disabled="@(_verifying || _code?.Length != 6)"
+                        class="w-full mt-4 bg-accent hover:bg-accent-light text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-40">
+                    @(_verifying ? "Verifying..." : "Sign In")
+                </button>
+
+                @if (_error != null)
+                {
+                    <p class="text-red-400 text-sm mt-3">@_error</p>
+                }
+
+                <button @onclick="Reset" class="text-gray-500 hover:text-white text-sm mt-4 transition-colors">
+                    Use a different number
+                </button>
+            }
+        </div>
+
+        <!-- attribution -->
+        <p class="text-gray-600 text-xs mt-8">
+            Data by <a href="https://www.themoviedb.org" target="_blank" class="text-gray-500 hover:text-white">TMDb</a>
+            &middot; Providers by <a href="https://www.justwatch.com" target="_blank" class="text-gray-500 hover:text-white">JustWatch</a>
+        </p>
+    </div>
+</div>
+
+@code {
+    private string _phoneNumber = "";
+    private string? _code;
+    private bool _codeSent;
+    private bool _sending;
+    private bool _verifying;
+    private string? _error;
+
+    private async Task SendCode()
+    {
+        _sending = true;
+        _error = null;
+        StateHasChanged();
+
+        bool sent = await Api.SendCodeAsync(_phoneNumber);
+        _sending = false;
+
+        if (sent)
+            _codeSent = true;
+        else
+            _error = "Could not send code. Check your phone number.";
+    }
+
+    private async Task VerifyCode()
+    {
+        _verifying = true;
+        _error = null;
+        StateHasChanged();
+
+        var response = await Api.VerifyCodeAsync(_phoneNumber, _code!);
+        _verifying = false;
+
+        if (response != null)
+        {
+            await TokenService.SetTokenAsync(response.Token);
+            AuthState.NotifyAuthChanged();
+        }
+        else
+        {
+            _error = "Invalid or expired code. Please try again.";
+        }
+    }
+
+    private async Task HandlePhoneKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_phoneNumber))
+            await SendCode();
+    }
+
+    private async Task HandleCodeKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _code?.Length == 6)
+            await VerifyCode();
+    }
+
+    private void Reset()
+    {
+        _codeSent = false;
+        _code = null;
+        _error = null;
+    }
+}

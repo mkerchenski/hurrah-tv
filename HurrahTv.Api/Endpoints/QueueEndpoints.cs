@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using HurrahTv.Api.Services;
 using HurrahTv.Shared.Models;
 
@@ -7,35 +8,40 @@ public static class QueueEndpoints
 {
     public static void MapQueueEndpoints(this WebApplication app)
     {
-        RouteGroupBuilder group = app.MapGroup("/api/queue");
+        RouteGroupBuilder group = app.MapGroup("/api/queue").RequireAuthorization();
 
-        group.MapGet("", async (DbService db) =>
+        group.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
-            var items = await db.GetQueueAsync();
+            string userId = user.FindFirstValue("sub")!;
+            var items = await db.GetQueueAsync(userId);
             return Results.Ok(items);
         });
 
-        group.MapPost("", async (QueueItem item, DbService db) =>
+        group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>
         {
-            var added = await db.AddToQueueAsync(item);
+            string userId = user.FindFirstValue("sub")!;
+            var added = await db.AddToQueueAsync(item, userId);
             return added != null ? Results.Created($"/api/queue/{added.Id}", added) : Results.Conflict("Already in queue");
         });
 
-        group.MapDelete("/{id:int}", async (int id, DbService db) =>
+        group.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, DbService db) =>
         {
-            bool removed = await db.RemoveFromQueueAsync(id);
+            string userId = user.FindFirstValue("sub")!;
+            bool removed = await db.RemoveFromQueueAsync(id, userId);
             return removed ? Results.Ok() : Results.NotFound();
         });
 
-        group.MapPut("/{id:int}/status", async (int id, QueueStatusUpdate update, DbService db) =>
+        group.MapPut("/{id:int}/status", async (int id, QueueStatusUpdate update, ClaimsPrincipal user, DbService db) =>
         {
-            bool updated = await db.UpdateStatusAsync(id, update.Status);
+            string userId = user.FindFirstValue("sub")!;
+            bool updated = await db.UpdateStatusAsync(id, update.Status, userId);
             return updated ? Results.Ok() : Results.NotFound();
         });
 
-        group.MapPut("/{id:int}/position", async (int id, PositionUpdate update, DbService db) =>
+        group.MapPut("/{id:int}/position", async (int id, PositionUpdate update, ClaimsPrincipal user, DbService db) =>
         {
-            bool updated = await db.ReorderAsync(id, update.Position);
+            string userId = user.FindFirstValue("sub")!;
+            bool updated = await db.ReorderAsync(id, update.Position, userId);
             return updated ? Results.Ok() : Results.NotFound();
         });
     }
