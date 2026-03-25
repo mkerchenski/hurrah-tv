@@ -1,4 +1,3 @@
-using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using HurrahTv.Api.Endpoints;
@@ -42,7 +41,8 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// serve Blazor WASM client (static files from wwwroot)
+// serve Blazor WASM client from wwwroot (handles all MIME types, compression, _framework)
+app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 app.MapFallbackToFile("index.html");
 
