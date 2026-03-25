@@ -1,0 +1,64 @@
+name: Build and deploy Hurrah.tv
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'HurrahTv.Api/**'
+      - 'HurrahTv.Client/**'
+      - 'HurrahTv.Shared/**'
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: 'Staging'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET Core
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Publish Client (WASM)
+        run: dotnet publish HurrahTv.Client/HurrahTv.Client.csproj -c Release -o client-output
+
+      - name: Publish API
+        run: dotnet publish HurrahTv.Api/HurrahTv.Api.csproj -c Release -o api-output
+
+      - name: Copy WASM files into API wwwroot
+        run: |
+          cp -r client-output/wwwroot/* api-output/wwwroot/ 2>/dev/null || true
+          cp -r client-output/wwwroot/. api-output/wwwroot/
+
+      - name: Remove dev appsettings from client output
+        run: rm -f api-output/wwwroot/appsettings.Development.json
+
+      - name: Deploy to Azure Web App staging slot
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: 'HurrahTv-Api'
+          slot-name: 'staging'
+          publish-profile: ${{ secrets.AZURE_API_PUBLISH_PROFILE }}
+          package: api-output
+          clean: true
+
+      - name: Restart staging slot
+        run: |
+          SCM_USER=$(echo '${{ secrets.AZURE_API_PUBLISH_PROFILE }}' | sed -n 's/.*userName="\([^"]*\)".*/\1/p' | head -1)
+          SCM_PASS=$(echo '${{ secrets.AZURE_API_PUBLISH_PROFILE }}' | sed -n 's/.*userPWD="\([^"]*\)".*/\1/p' | head -1)
+          curl -sf -X POST -u "$SCM_USER:$SCM_PASS" \
+            "https://hurrahtv-api-staging.scm.azurewebsites.net/api/restart/" || true
+          sleep 10

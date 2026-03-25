@@ -1,0 +1,34 @@
+name: Swap staging to production
+
+on:
+  workflow_dispatch:
+
+jobs:
+  swap:
+    runs-on: ubuntu-latest
+    environment:
+      name: 'Production'
+
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Swap staging to production
+        run: |
+          az webapp deployment slot swap \
+            --resource-group hurrahweb \
+            --name HurrahTv-Api \
+            --slot staging \
+            --target-slot production
+
+      - name: Verify production health
+        run: |
+          sleep 15
+          STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://hurrahtv-api.azurewebsites.net/api/health)
+          echo "Health check status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "Health check failed! Consider swapping back."
+            exit 1
+          fi

@@ -1,5 +1,5 @@
 using Dapper;
-using Microsoft.Data.Sqlite;
+using Microsoft.Data.SqlClient;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
@@ -10,66 +10,73 @@ public class DbService
 
     public DbService(IConfiguration config)
     {
-        _connectionString = config.GetConnectionString("Default") ?? "Data Source=hurrahtv.db";
+        _connectionString = config.GetConnectionString("Default")
+            ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
     }
 
     public async Task InitializeAsync()
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
 
         await db.ExecuteAsync("""
-            CREATE TABLE IF NOT EXISTS QueueItems (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                UserId TEXT NOT NULL DEFAULT 'default',
-                TmdbId INTEGER NOT NULL,
-                MediaType TEXT NOT NULL,
-                Title TEXT NOT NULL,
-                PosterPath TEXT NOT NULL DEFAULT '',
-                Position INTEGER NOT NULL DEFAULT 0,
-                Status INTEGER NOT NULL DEFAULT 0,
-                AvailableOnJson TEXT NOT NULL DEFAULT '[]',
-                AddedAt TEXT NOT NULL DEFAULT (datetime('now'))
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
+            CREATE TABLE Users (
+                Id NVARCHAR(50) PRIMARY KEY,
+                PhoneNumber NVARCHAR(20) NOT NULL UNIQUE,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
             );
 
-            CREATE TABLE IF NOT EXISTS UserServices (
-                UserId TEXT NOT NULL DEFAULT 'default',
-                ProviderId INTEGER NOT NULL,
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OtpCodes')
+            CREATE TABLE OtpCodes (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                PhoneNumber NVARCHAR(20) NOT NULL,
+                Code NVARCHAR(10) NOT NULL,
+                ExpiresAt DATETIME2 NOT NULL,
+                Used BIT NOT NULL DEFAULT 0
+            );
+
+            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OtpCodes_Phone')
+            CREATE INDEX IX_OtpCodes_Phone ON OtpCodes(PhoneNumber, Used);
+
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'QueueItems')
+            CREATE TABLE QueueItems (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                UserId NVARCHAR(50) NOT NULL,
+                TmdbId INT NOT NULL,
+                MediaType NVARCHAR(10) NOT NULL,
+                Title NVARCHAR(500) NOT NULL,
+                PosterPath NVARCHAR(500) NOT NULL DEFAULT '',
+                Position INT NOT NULL DEFAULT 0,
+                Status INT NOT NULL DEFAULT 0,
+                AvailableOnJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
+                AddedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+
+            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_QueueItems_UserId')
+            CREATE INDEX IX_QueueItems_UserId ON QueueItems(UserId);
+
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserServices')
+            CREATE TABLE UserServices (
+                UserId NVARCHAR(50) NOT NULL,
+                ProviderId INT NOT NULL,
                 PRIMARY KEY (UserId, ProviderId)
             );
-
-            CREATE INDEX IF NOT EXISTS IX_QueueItems_UserId ON QueueItems(UserId);
-
-            CREATE TABLE IF NOT EXISTS Users (
-                Id TEXT PRIMARY KEY,
-                PhoneNumber TEXT NOT NULL UNIQUE,
-                CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-
-            CREATE TABLE IF NOT EXISTS OtpCodes (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                PhoneNumber TEXT NOT NULL,
-                Code TEXT NOT NULL,
-                ExpiresAt TEXT NOT NULL,
-                Used INTEGER NOT NULL DEFAULT 0
-            );
-
-            CREATE INDEX IF NOT EXISTS IX_OtpCodes_Phone ON OtpCodes(PhoneNumber, Used);
             """);
     }
 
     // queue operations
-    public async Task<List<QueueItem>> GetQueueAsync(string userId = "default")
+    public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId ORDER BY Status, Position",
             new { UserId = userId });
         return items.ToList();
     }
 
-    public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId = "default")
+    public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
 
         // check for duplicate
         int? existing = await db.QuerySingleOrDefaultAsync<int?>(
@@ -80,15 +87,15 @@ public class DbService
 
         // get next position
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
-            "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
+            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
 
         item.Position = maxPos + 1;
 
         int id = await db.QuerySingleAsync<int>("""
             INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
+            OUTPUT INSERTED.Id
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
-            RETURNING Id
             """, new
         {
             UserId = userId,
@@ -99,34 +106,34 @@ public class DbService
             item.Position,
             Status = (int)item.Status,
             item.AvailableOnJson,
-            AddedAt = DateTime.UtcNow.ToString("o")
+            AddedAt = DateTime.UtcNow
         });
 
         item.Id = id;
         return item;
     }
 
-    public async Task<bool> RemoveFromQueueAsync(int id, string userId = "default")
+    public async Task<bool> RemoveFromQueueAsync(int id, string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         int affected = await db.ExecuteAsync(
             "DELETE FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
         return affected > 0;
     }
 
-    public async Task<bool> UpdateStatusAsync(int id, QueueStatus status, string userId = "default")
+    public async Task<bool> UpdateStatusAsync(int id, QueueStatus status, string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         int affected = await db.ExecuteAsync(
             "UPDATE QueueItems SET Status = @Status WHERE Id = @Id AND UserId = @UserId",
             new { Status = (int)status, Id = id, UserId = userId });
         return affected > 0;
     }
 
-    public async Task<bool> ReorderAsync(int id, int newPosition, string userId = "default")
+    public async Task<bool> ReorderAsync(int id, int newPosition, string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         QueueItem? item = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
@@ -157,18 +164,18 @@ public class DbService
     }
 
     // user services
-    public async Task<List<int>> GetUserServicesAsync(string userId = "default")
+    public async Task<List<int>> GetUserServicesAsync(string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT ProviderId FROM UserServices WHERE UserId = @UserId",
             new { UserId = userId });
         return ids.ToList();
     }
 
-    public async Task SetUserServicesAsync(List<int> providerIds, string userId = "default")
+    public async Task SetUserServicesAsync(List<int> providerIds, string userId)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
         await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId });
 
         foreach (int pid in providerIds)
@@ -182,7 +189,7 @@ public class DbService
     // auth operations
     public async Task SaveOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
 
         // invalidate previous unused codes for this phone
         await db.ExecuteAsync(
@@ -191,16 +198,16 @@ public class DbService
 
         await db.ExecuteAsync(
             "INSERT INTO OtpCodes (PhoneNumber, Code, ExpiresAt) VALUES (@PhoneNumber, @Code, @ExpiresAt)",
-            new { PhoneNumber = phoneNumber, Code = code, ExpiresAt = DateTime.UtcNow.AddMinutes(10).ToString("o") });
+            new { PhoneNumber = phoneNumber, Code = code, ExpiresAt = DateTime.UtcNow.AddMinutes(10) });
     }
 
     public async Task<bool> VerifyOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
 
         int? id = await db.QuerySingleOrDefaultAsync<int?>(
             "SELECT Id FROM OtpCodes WHERE PhoneNumber = @PhoneNumber AND Code = @Code AND Used = 0 AND ExpiresAt > @Now",
-            new { PhoneNumber = phoneNumber, Code = code, Now = DateTime.UtcNow.ToString("o") });
+            new { PhoneNumber = phoneNumber, Code = code, Now = DateTime.UtcNow });
 
         if (id == null) return false;
 
@@ -210,7 +217,7 @@ public class DbService
 
     public async Task<string> GetOrCreateUserAsync(string phoneNumber)
     {
-        using SqliteConnection db = Open();
+        using SqlConnection db = Open();
 
         string? userId = await db.QuerySingleOrDefaultAsync<string?>(
             "SELECT Id FROM Users WHERE PhoneNumber = @PhoneNumber",
@@ -221,14 +228,14 @@ public class DbService
         userId = Guid.NewGuid().ToString("N");
         await db.ExecuteAsync(
             "INSERT INTO Users (Id, PhoneNumber, CreatedAt) VALUES (@Id, @PhoneNumber, @CreatedAt)",
-            new { Id = userId, PhoneNumber = phoneNumber, CreatedAt = DateTime.UtcNow.ToString("o") });
+            new { Id = userId, PhoneNumber = phoneNumber, CreatedAt = DateTime.UtcNow });
 
         return userId;
     }
 
-    private SqliteConnection Open()
+    private SqlConnection Open()
     {
-        SqliteConnection conn = new(_connectionString);
+        SqlConnection conn = new(_connectionString);
         conn.Open();
         return conn;
     }

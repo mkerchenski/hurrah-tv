@@ -15,7 +15,8 @@ builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredServ
 builder.Services.AddAuthorizationCore();
 
 // http client with auth handler
-string apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7201";
+// in production, WASM is served from the API (same origin), so use the host URL
+string apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? builder.HostEnvironment.BaseAddress;
 builder.Services.AddScoped<AuthMessageHandler>();
 builder.Services.AddScoped(sp =>
 {

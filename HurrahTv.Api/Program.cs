@@ -42,6 +42,10 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// serve Blazor WASM client (static files from wwwroot)
+app.UseStaticFiles();
+app.MapFallbackToFile("index.html");
+
 // initialize database
 DbService db = app.Services.GetRequiredService<DbService>();
 await db.InitializeAsync();
