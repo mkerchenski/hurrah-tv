@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
+@inject IJSRuntime JS
+@inject IWebAssemblyHostEnvironment HostEnv
 
 <div class="min-h-screen flex flex-col">
     <!-- top nav -->
@@ -49,6 +51,24 @@
 </div>
 
 @code {
+    private string? _envPrefix;
+
+    protected override void OnInitialized()
+    {
+        _envPrefix = HostEnv.Environment switch
+        {
+            "Development" => "[DEV] ",
+            "Staging" => "[STAGING] ",
+            _ => null
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_envPrefix != null)
+            await JS.InvokeVoidAsync("eval", $"if(!document.title.startsWith('{_envPrefix}')) document.title='{_envPrefix}'+document.title");
+    }
+
     private async Task SignOut()
     {
         await TokenService.ClearTokenAsync();

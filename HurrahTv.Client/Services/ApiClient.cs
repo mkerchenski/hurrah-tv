@@ -34,6 +34,9 @@ public class ApiClient
     public async Task<List<SearchResult>> TrendingAsync(string mediaType = "all") =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/trending?mediaType={mediaType}") ?? [];
 
+    public async Task<List<SearchResult>> ForYouAsync() =>
+        await _http.GetFromJsonAsync<List<SearchResult>>("api/search/for-you") ?? [];
+
     public async Task<List<SearchResult>> DiscoverByProviderAsync(int providerId, string mediaType = "tv") =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/provider/{providerId}?mediaType={mediaType}") ?? [];
 

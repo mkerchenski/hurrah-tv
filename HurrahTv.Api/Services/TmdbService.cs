@@ -63,6 +63,30 @@ public class TmdbService
         return results;
     }
 
+    public async Task<List<SearchResult>> TrendingForServicesAsync(List<int> providerIds, string mediaType = "tv")
+    {
+        if (providerIds.Count == 0) return [];
+
+        string providers = string.Join("|", providerIds);
+        string cacheKey = $"trending-services:{providers}:{mediaType}";
+        if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
+            return cached!;
+
+        string url = $"discover/{mediaType}?api_key={_apiKey}" +
+                     $"&with_watch_providers={providers}" +
+                     $"&with_watch_monetization_types=flatrate" +
+                     $"&watch_region=US&sort_by=popularity.desc&language=en-US";
+        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
+        if (response == null) return [];
+
+        List<SearchResult> results = response.Results
+            .Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })
+            .ToList();
+
+        _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
+        return results;
+    }
+
     public async Task<List<SearchResult>> DiscoverByProviderAsync(int providerId, string mediaType = "tv", int page = 1)
     {
         string cacheKey = $"discover:{providerId}:{mediaType}:{page}";
@@ -70,6 +94,7 @@ public class TmdbService
             return cached!;
 
         string url = $"discover/{mediaType}?api_key={_apiKey}&with_watch_providers={providerId}" +
+                     $"&with_watch_monetization_types=flatrate" +
                      $"&watch_region=US&sort_by=popularity.desc&page={page}&language=en-US";
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
         if (response == null) return [];
@@ -80,6 +105,42 @@ public class TmdbService
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
         return results;
+    }
+
+    // filters search results to only those available flatrate on the user's services
+    public async Task<List<SearchResult>> FilterToUserServicesAsync(List<SearchResult> results, List<int> providerIds)
+    {
+        if (providerIds.Count == 0) return [];
+
+        HashSet<int> userProviders = [.. providerIds];
+
+        // fetch watch providers for all results in parallel
+        Task<(SearchResult result, List<AvailableService> providers)>[] tasks = results
+            .Select(async r =>
+            {
+                List<AvailableService> providers = await GetWatchProvidersAsync(r.TmdbId, r.MediaType);
+                return (r, providers);
+            })
+            .ToArray();
+
+        var enriched = await Task.WhenAll(tasks);
+
+        List<SearchResult> filtered = [];
+        foreach (var (result, providers) in enriched)
+        {
+            // keep only if available flatrate on at least one of the user's services
+            List<AvailableService> matching = providers
+                .Where(p => p.Type == "flatrate" && userProviders.Contains(p.ProviderId))
+                .ToList();
+
+            if (matching.Count > 0)
+            {
+                result.AvailableOn = matching;
+                filtered.Add(result);
+            }
+        }
+
+        return filtered;
     }
 
     public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType)

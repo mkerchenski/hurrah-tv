@@ -31,7 +31,7 @@ else
     <!-- trending content -->
     <div class="fade-in">
         <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-bold">Trending This Week</h2>
+            <h2 class="text-xl font-bold">Trending on Your Services</h2>
             <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
         </div>
         <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
@@ -81,10 +81,10 @@ else
 
     private async Task LoadContent()
     {
-        // load trending
+        // load trending filtered to user's subscribed services
         _loadingTrending = true;
         StateHasChanged();
-        _trending = await Api.TrendingAsync();
+        _trending = await Api.ForYouAsync();
         _loadingTrending = false;
         StateHasChanged();
 
