@@ -53,13 +53,22 @@
 /* base styles */
 body {
     background-color: #0f0f0f;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* safe area for notched phones */
+.safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .service-badge:hover {
     filter: brightness(1.2);
 }
 
-.poster-card:hover {
-    transform: scale(1.05);
-    box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+/* poster hover effects only on devices with hover capability */
+@media (hover: hover) {
+    .poster-card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
+    }
 }

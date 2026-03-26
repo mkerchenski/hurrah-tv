@@ -10,14 +10,14 @@
     else
     {
         <div class="w-full aspect-[2/3] bg-surface-100 flex items-center justify-center">
-            <span class="text-gray-500 text-sm text-center px-2">@Result.Title</span>
+            <span class="text-gray-500 text-xs text-center px-2">@Result.Title</span>
         </div>
     }
 
-    <!-- hover overlay -->
+    <!-- hover overlay (desktop only via group-hover + hover media query in CSS) -->
     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent
                 opacity-0 group-hover:opacity-100 transition-opacity duration-200
-                flex flex-col justify-end p-3">
+                hidden md:flex flex-col justify-end p-3">
         <div class="text-white font-semibold text-sm leading-tight mb-1">@Result.Title</div>
         @if (!string.IsNullOrEmpty(Result.Year))
         {
@@ -47,9 +47,9 @@
         }
     </div>
 
-    <!-- queue button -->
+    <!-- queue button (desktop hover) -->
     <button class="absolute top-2 right-2 bg-black/60 hover:bg-accent text-white rounded-full w-8 h-8
-                   flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                   items-center justify-center opacity-0 group-hover:opacity-100 transition-all hidden md:flex"
             @onclick="AddToQueue" @onclick:stopPropagation="true"
             title="Add to queue">
         <span class="icon-[heroicons--plus] w-4 h-4"></span>
@@ -62,6 +62,11 @@
             <span class="icon-[heroicons--check] w-4 h-4"></span>
         </div>
     }
+
+    <!-- mobile: title below poster for context -->
+    <div class="md:hidden absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6">
+        <div class="text-white text-xs font-medium leading-tight truncate">@Result.Title</div>
+    </div>
 </div>
 
 @code {

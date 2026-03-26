@@ -13,13 +13,13 @@
 else if (!_onboardingComplete)
 {
     <!-- onboarding: pick your services -->
-    <div class="max-w-2xl mx-auto text-center py-12 fade-in">
-        <h1 class="text-4xl font-bold mb-2">Welcome to <span class="text-accent">hurrah.tv</span></h1>
-        <p class="text-gray-400 mb-8 text-lg">One queue for everything you watch. Pick your streaming services to get started.</p>
+    <div class="max-w-lg mx-auto text-center py-8 md:py-12 fade-in">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome to <span class="text-accent">hurrah.tv</span></h1>
+        <p class="text-gray-400 mb-6 md:mb-8 text-base md:text-lg">One queue for everything you watch. Pick your streaming services to get started.</p>
 
         <ServicePicker @bind-SelectedIds="_pendingServices" />
 
-        <button class="mt-8 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40"
+        <button class="mt-6 md:mt-8 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40 w-full md:w-auto"
                 disabled="@(_pendingServices.Count == 0)"
                 @onclick="SaveServices">
             Get Started
@@ -28,13 +28,16 @@ else if (!_onboardingComplete)
 }
 else
 {
-    <!-- trending content -->
-    <div class="fade-in">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl font-bold">Trending on Your Services</h2>
-            <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
-        </div>
-        <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
+    <!-- content -->
+    <div class="fade-in space-y-8 md:space-y-10">
+        <!-- trending on your services -->
+        <section>
+            <div class="flex items-center justify-between mb-3 md:mb-4">
+                <h2 class="text-lg md:text-xl font-bold">Trending on Your Services</h2>
+                <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
+            </div>
+            <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
+        </section>
 
         <!-- per-service sections -->
         @foreach (int providerId in _userServices.Take(4))
@@ -42,10 +45,10 @@ else
             if (StreamingService.ById.TryGetValue(providerId, out StreamingService? svc))
             {
                 List<SearchResult> items = _byProvider.GetValueOrDefault(providerId, []);
-                <div class="mt-10">
-                    <h2 class="text-xl font-bold mb-4">Popular on @svc.Name</h2>
+                <section>
+                    <h2 class="text-lg md:text-xl font-bold mb-3 md:mb-4">Popular on @svc.Name</h2>
                     <PosterGrid Results="items" Loading="_loadingProviders" EmptyMessage="@($"No results for {svc.Name}")" />
-                </div>
+                </section>
             }
         }
     </div>

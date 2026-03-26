@@ -16,148 +16,172 @@ else if (_details != null)
     <!-- backdrop -->
     @if (!string.IsNullOrEmpty(_details.BackdropUrl()))
     {
-        <div class="relative -mx-6 -mt-6 mb-6 h-64 md:h-80 overflow-hidden">
+        <div class="relative -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-4 md:mb-6 h-48 md:h-80 overflow-hidden">
             <img src="@_details.BackdropUrl("w1280")" alt="" class="w-full h-full object-cover opacity-40" />
             <div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
         </div>
     }
 
-    <div class="flex flex-col md:flex-row gap-8 fade-in @(!string.IsNullOrEmpty(_details.BackdropUrl()) ? "-mt-32 relative z-10" : "")">
-        <!-- poster -->
-        <div class="flex-shrink-0 w-48 mx-auto md:mx-0">
+    <div class="@(!string.IsNullOrEmpty(_details.BackdropUrl()) ? "-mt-24 md:-mt-32 relative z-10" : "") fade-in">
+        <!-- mobile: centered poster -->
+        <div class="md:hidden flex flex-col items-center mb-4">
             @if (!string.IsNullOrEmpty(_details.PosterUrl()))
             {
-                <img src="@_details.PosterUrl("w500")" alt="@_details.Title"
-                     class="w-full rounded-lg shadow-2xl" />
+                <img src="@_details.PosterUrl("w342")" alt="@_details.Title"
+                     class="w-32 rounded-lg shadow-2xl" />
+            }
+            <h1 class="text-2xl font-bold mt-3 text-center">@_details.Title</h1>
+            @if (!string.IsNullOrEmpty(_details.Tagline))
+            {
+                <p class="text-gray-400 italic text-sm text-center mt-1">@_details.Tagline</p>
             }
         </div>
 
-        <!-- info -->
-        <div class="flex-1 min-w-0">
-            <h1 class="text-3xl font-bold mb-1">@_details.Title</h1>
-
-            @if (!string.IsNullOrEmpty(_details.Tagline))
-            {
-                <p class="text-gray-400 italic mb-3">@_details.Tagline</p>
-            }
-
-            <div class="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-4">
-                @if (!string.IsNullOrEmpty(_details.Year))
+        <!-- desktop: side by side -->
+        <div class="hidden md:flex gap-8">
+            <div class="flex-shrink-0 w-48">
+                @if (!string.IsNullOrEmpty(_details.PosterUrl()))
                 {
-                    <span>@_details.Year</span>
-                }
-                @if (_details.MediaType == "tv" && _details.NumberOfSeasons > 0)
-                {
-                    <span>@_details.NumberOfSeasons season@(_details.NumberOfSeasons > 1 ? "s" : "")</span>
-                }
-                @if (_details.Runtime > 0)
-                {
-                    <span>@(_details.Runtime / 60)h @(_details.Runtime % 60)m</span>
-                }
-                @if (_details.VoteAverage > 0)
-                {
-                    <span class="flex items-center gap-1">
-                        <span class="icon-[heroicons--star-20-solid] w-4 h-4 text-yellow-400"></span>
-                        @_details.VoteAverage.ToString("F1")
-                    </span>
-                }
-                @if (!string.IsNullOrEmpty(_details.Status))
-                {
-                    <span class="px-2 py-0.5 bg-surface-100 rounded text-xs">@_details.Status</span>
+                    <img src="@_details.PosterUrl("w500")" alt="@_details.Title"
+                         class="w-full rounded-lg shadow-2xl" />
                 }
             </div>
-
-            <!-- genres -->
-            @if (_details.Genres.Count > 0)
-            {
-                <div class="flex flex-wrap gap-2 mb-4">
-                    @foreach (string genre in _details.Genres)
-                    {
-                        <span class="px-3 py-1 bg-surface-100 rounded-full text-xs text-gray-300">@genre</span>
-                    }
-                </div>
-            }
-
-            <!-- available on -->
-            @if (_details.AvailableOn.Count > 0)
-            {
-                <div class="mb-4">
-                    <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Available on</h3>
-                    <div class="flex flex-wrap gap-3">
-                        @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type == "flatrate"))
-                        {
-                            <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg">
-                                @if (!string.IsNullOrEmpty(svc.LogoUrl()))
-                                {
-                                    <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
-                                }
-                                <span class="text-sm">@svc.ProviderName</span>
-                            </div>
-                        }
-                        @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type != "flatrate"))
-                        {
-                            <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg opacity-60">
-                                @if (!string.IsNullOrEmpty(svc.LogoUrl()))
-                                {
-                                    <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
-                                }
-                                <span class="text-sm">@svc.ProviderName</span>
-                                <span class="text-xs text-gray-500">(@svc.Type)</span>
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
-
-            <p class="text-gray-300 leading-relaxed mb-6">@_details.Overview</p>
-
-            <!-- actions -->
-            <div class="flex gap-3">
-                <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-                        @onclick="AddToQueue">
-                    @if (_addedToQueue)
-                    {
-                        <span class="icon-[heroicons--check] w-5 h-5"></span>
-                        <span>Added!</span>
-                    }
-                    else
-                    {
-                        <span class="icon-[heroicons--plus] w-5 h-5"></span>
-                        <span>Add to Queue</span>
-                    }
-                </button>
-                <button class="bg-surface-50 hover:bg-surface-100 text-gray-300 px-4 py-2.5 rounded-lg transition-colors"
-                        @onclick="GoBack">
-                    Back
-                </button>
+            <div class="flex-1 min-w-0">
+                <h1 class="text-3xl font-bold mb-1">@_details.Title</h1>
+                @if (!string.IsNullOrEmpty(_details.Tagline))
+                {
+                    <p class="text-gray-400 italic mb-3">@_details.Tagline</p>
+                }
+                @{ RenderMetadata(); }
             </div>
+        </div>
 
-            <!-- seasons -->
-            @if (_details.Seasons.Count > 0)
-            {
-                <div class="mt-8">
-                    <h3 class="text-lg font-semibold mb-3">Seasons</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                        @foreach (SeasonInfo season in _details.Seasons.Where(s => s.SeasonNumber > 0))
-                        {
-                            <div class="bg-surface-50 rounded-lg p-3">
-                                <div class="font-medium text-sm">@season.Name</div>
-                                <div class="text-xs text-gray-500">@season.EpisodeCount episodes</div>
-                                @if (!string.IsNullOrEmpty(season.AirDate))
-                                {
-                                    <div class="text-xs text-gray-600">@season.AirDate[..4]</div>
-                                }
-                            </div>
-                        }
-                    </div>
-                </div>
-            }
+        <!-- mobile: metadata below poster -->
+        <div class="md:hidden">
+            @{ RenderMetadata(); }
         </div>
     </div>
 }
 else
 {
     <div class="text-center py-20 text-gray-500">Content not found.</div>
+}
+
+@{
+    void RenderMetadata()
+    {
+        <div class="flex flex-wrap items-center gap-2 md:gap-3 text-sm text-gray-400 mb-3 md:mb-4">
+            @if (!string.IsNullOrEmpty(_details!.Year))
+            {
+                <span>@_details.Year</span>
+            }
+            @if (_details.MediaType == "tv" && _details.NumberOfSeasons > 0)
+            {
+                <span>@_details.NumberOfSeasons season@(_details.NumberOfSeasons > 1 ? "s" : "")</span>
+            }
+            @if (_details.Runtime > 0)
+            {
+                <span>@(_details.Runtime / 60)h @(_details.Runtime % 60)m</span>
+            }
+            @if (_details.VoteAverage > 0)
+            {
+                <span class="flex items-center gap-1">
+                    <span class="icon-[heroicons--star-20-solid] w-4 h-4 text-yellow-400"></span>
+                    @_details.VoteAverage.ToString("F1")
+                </span>
+            }
+            @if (!string.IsNullOrEmpty(_details.Status))
+            {
+                <span class="px-2 py-0.5 bg-surface-100 rounded text-xs">@_details.Status</span>
+            }
+        </div>
+
+        <!-- genres -->
+        @if (_details.Genres.Count > 0)
+        {
+            <div class="flex flex-wrap gap-2 mb-3 md:mb-4">
+                @foreach (string genre in _details.Genres)
+                {
+                    <span class="px-2.5 py-1 bg-surface-100 rounded-full text-xs text-gray-300">@genre</span>
+                }
+            </div>
+        }
+
+        <!-- available on -->
+        @if (_details.AvailableOn.Count > 0)
+        {
+            <div class="mb-3 md:mb-4">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Available on</h3>
+                <div class="flex flex-wrap gap-2 md:gap-3">
+                    @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type == "flatrate"))
+                    {
+                        <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg">
+                            @if (!string.IsNullOrEmpty(svc.LogoUrl()))
+                            {
+                                <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
+                            }
+                            <span class="text-sm">@svc.ProviderName</span>
+                        </div>
+                    }
+                    @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type != "flatrate"))
+                    {
+                        <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg opacity-60">
+                            @if (!string.IsNullOrEmpty(svc.LogoUrl()))
+                            {
+                                <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
+                            }
+                            <span class="text-sm">@svc.ProviderName</span>
+                            <span class="text-xs text-gray-500">(@svc.Type)</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-4 md:mb-6">@_details.Overview</p>
+
+        <!-- actions -->
+        <div class="flex gap-3">
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-5 md:px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2 flex-1 md:flex-none justify-center"
+                    @onclick="AddToQueue">
+                @if (_addedToQueue)
+                {
+                    <span class="icon-[heroicons--check] w-5 h-5"></span>
+                    <span>Added!</span>
+                }
+                else
+                {
+                    <span class="icon-[heroicons--plus] w-5 h-5"></span>
+                    <span>Add to Queue</span>
+                }
+            </button>
+            <button class="bg-surface-50 hover:bg-surface-100 text-gray-300 px-4 py-2.5 rounded-lg transition-colors"
+                    @onclick="GoBack">
+                Back
+            </button>
+        </div>
+
+        <!-- seasons -->
+        @if (_details.Seasons.Count > 0)
+        {
+            <div class="mt-6 md:mt-8">
+                <h3 class="text-lg font-semibold mb-3">Seasons</h3>
+                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
+                    @foreach (SeasonInfo season in _details.Seasons.Where(s => s.SeasonNumber > 0))
+                    {
+                        <div class="bg-surface-50 rounded-lg p-3">
+                            <div class="font-medium text-sm">@season.Name</div>
+                            <div class="text-xs text-gray-500">@season.EpisodeCount episodes</div>
+                            @if (!string.IsNullOrEmpty(season.AirDate))
+                            {
+                                <div class="text-xs text-gray-600">@season.AirDate[..4]</div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    }
 }
 
 @code {

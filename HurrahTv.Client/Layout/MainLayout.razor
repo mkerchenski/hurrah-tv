@@ -3,10 +3,11 @@
 @inject HurrahAuthStateProvider AuthState
 @inject IJSRuntime JS
 @inject IWebAssemblyHostEnvironment HostEnv
+@inject NavigationManager Nav
 
 <div class="min-h-screen flex flex-col">
-    <!-- top nav -->
-    <nav class="bg-surface-50 border-b border-surface-200 px-6 py-3 flex items-center justify-between sticky top-0 z-50">
+    <!-- desktop top nav (hidden on mobile) -->
+    <nav class="hidden md:flex bg-surface-50 border-b border-surface-200 px-6 py-3 items-center justify-between sticky top-0 z-50">
         <a href="/" class="text-2xl font-bold text-accent hover:text-accent-light transition-colors">
             hurrah.tv
         </a>
@@ -29,16 +30,46 @@
         </div>
     </nav>
 
+    <!-- mobile top bar (logo only, minimal) -->
+    <div class="md:hidden flex items-center justify-between px-4 py-2 bg-surface sticky top-0 z-50">
+        <a href="/" class="text-xl font-bold text-accent">hurrah.tv</a>
+        <button @onclick="SignOut" class="text-gray-500 p-2" title="Sign out">
+            <span class="icon-[heroicons--arrow-right-start-on-rectangle] w-5 h-5"></span>
+        </button>
+    </div>
+
     <!-- main content -->
-    <main class="flex-1 px-6 py-6 max-w-7xl mx-auto w-full">
+    <main class="flex-1 px-4 py-4 md:px-6 md:py-6 max-w-7xl mx-auto w-full pb-20 md:pb-6">
         @Body
     </main>
 
-    <!-- footer -->
-    <footer class="text-center text-gray-600 text-xs py-4 border-t border-surface-200">
+    <!-- footer (desktop only) -->
+    <footer class="hidden md:block text-center text-gray-600 text-xs py-4 border-t border-surface-200">
         Data provided by <a href="https://www.themoviedb.org" target="_blank" class="text-gray-400 hover:text-white">TMDb</a>
         &middot; Watch provider data by <a href="https://www.justwatch.com" target="_blank" class="text-gray-400 hover:text-white">JustWatch</a>
     </footer>
+
+    <!-- mobile bottom tab bar -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-surface-50 border-t border-surface-200 z-50 safe-area-bottom">
+        <div class="flex items-center justify-around py-2">
+            <a href="/" class="@TabClass("/") flex flex-col items-center gap-0.5 px-3 py-1 min-w-[64px]">
+                <span class="icon-[heroicons--home] w-6 h-6"></span>
+                <span class="text-[10px]">Home</span>
+            </a>
+            <a href="/search" class="@TabClass("/search") flex flex-col items-center gap-0.5 px-3 py-1 min-w-[64px]">
+                <span class="icon-[heroicons--magnifying-glass] w-6 h-6"></span>
+                <span class="text-[10px]">Search</span>
+            </a>
+            <a href="/queue" class="@TabClass("/queue") flex flex-col items-center gap-0.5 px-3 py-1 min-w-[64px]">
+                <span class="icon-[heroicons--bars-3] w-6 h-6"></span>
+                <span class="text-[10px]">My Queue</span>
+            </a>
+            <a href="/settings" class="@TabClass("/settings") flex flex-col items-center gap-0.5 px-3 py-1 min-w-[64px]">
+                <span class="icon-[heroicons--cog-6-tooth] w-6 h-6"></span>
+                <span class="text-[10px]">Settings</span>
+            </a>
+        </div>
+    </nav>
 </div>
 
 @code {
@@ -58,6 +89,12 @@
     {
         if (_envPrefix != null)
             await JS.InvokeVoidAsync("eval", $"if(!document.title.startsWith('{_envPrefix}')) document.title='{_envPrefix}'+document.title");
+    }
+
+    private string TabClass(string href)
+    {
+        bool active = Nav.Uri.EndsWith(href) || (href == "/" && Nav.Uri.EndsWith(Nav.BaseUri));
+        return active ? "text-accent" : "text-gray-500";
     }
 
     private async Task SignOut()
