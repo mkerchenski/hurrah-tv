@@ -1,0 +1,18 @@
+{
+  "name": "hurrahtv.client",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:css": "npx @tailwindcss/cli -i Styles/input.css -o wwwroot/css/app.css && node scripts/build-icons.mjs",
+    "build:css:min": "npx @tailwindcss/cli -i Styles/input.css -o wwwroot/css/app.css --minify && node scripts/build-icons.mjs",
+    "dev:css": "npx @tailwindcss/cli -i Styles/input.css -o wwwroot/css/app.css --watch"
+  },
+  "devDependencies": {
+    "@iconify-json/heroicons": "^1.2.3",
+    "@iconify/types": "^2.0.0",
+    "@iconify/utils": "^3.1.0",
+    "@tailwindcss/cli": "^4.2.2",
+    "tailwindcss": "^4.2.2"
+  }
+}

@@ -8,6 +8,7 @@ on:
       - 'HurrahTv.Api/**'
       - 'HurrahTv.Client/**'
       - 'HurrahTv.Shared/**'
+      - '!HurrahTv.Client/node_modules/**'
   workflow_dispatch:
 
 jobs:
@@ -23,6 +24,19 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.x'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: HurrahTv.Client/package-lock.json
+
+      - name: Build CSS (minified) and icons
+        working-directory: HurrahTv.Client
+        run: |
+          npm ci
+          npm run build:css:min
 
       - name: Cache NuGet packages
         uses: actions/cache@v4
