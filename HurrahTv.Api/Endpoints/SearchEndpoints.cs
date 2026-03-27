@@ -34,6 +34,8 @@ public static class SearchEndpoints
             string userId = user.FindFirstValue("sub")!;
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             var results = await tmdb.TrendingForServicesAsync(providerIds);
+            // enrich with provider badges filtered to user's services
+            results = await tmdb.FilterToUserServicesAsync(results, providerIds);
             return Results.Ok(results);
         }).RequireAuthorization();
 

@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>@(_details?.Title ?? "Loading...") - Hurrah.tv</PageTitle>
 
@@ -19,7 +20,22 @@ else if (_details != null)
         <div class="relative -mx-4 md:-mx-6 -mt-4 md:-mt-6 mb-4 md:mb-6 h-48 md:h-80 overflow-hidden">
             <img src="@_details.BackdropUrl("w1280")" alt="" class="w-full h-full object-cover opacity-40" />
             <div class="absolute inset-0 bg-gradient-to-t from-surface to-transparent"></div>
+            <!-- back button overlaid on backdrop -->
+            <button class="absolute top-3 left-3 md:top-4 md:left-4 bg-black/50 hover:bg-black/70 text-white
+                           rounded-full w-10 h-10 flex items-center justify-center transition-colors backdrop-blur-sm"
+                    @onclick="GoBack" title="Go back">
+                <span class="icon-[heroicons--arrow-left] w-5 h-5"></span>
+            </button>
         </div>
+    }
+    else
+    {
+        <!-- back button when no backdrop -->
+        <button class="mb-3 text-gray-400 hover:text-white flex items-center gap-1.5 text-sm transition-colors"
+                @onclick="GoBack">
+            <span class="icon-[heroicons--arrow-left] w-4 h-4"></span>
+            Back
+        </button>
     }
 
     <div class="@(!string.IsNullOrEmpty(_details.BackdropUrl()) ? "-mt-24 md:-mt-32 relative z-10" : "") fade-in">
@@ -107,13 +123,13 @@ else
             </div>
         }
 
-        <!-- available on -->
+        <!-- available on (user's subscribed services only) -->
         @if (_details.AvailableOn.Count > 0)
         {
             <div class="mb-3 md:mb-4">
-                <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Available on</h3>
+                <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Streaming on</h3>
                 <div class="flex flex-wrap gap-2 md:gap-3">
-                    @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type == "flatrate"))
+                    @foreach (AvailableService svc in _details.AvailableOn)
                     {
                         <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg">
                             @if (!string.IsNullOrEmpty(svc.LogoUrl()))
@@ -121,17 +137,6 @@ else
                                 <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
                             }
                             <span class="text-sm">@svc.ProviderName</span>
-                        </div>
-                    }
-                    @foreach (AvailableService svc in _details.AvailableOn.Where(s => s.Type != "flatrate"))
-                    {
-                        <div class="flex items-center gap-2 bg-surface-50 px-3 py-2 rounded-lg opacity-60">
-                            @if (!string.IsNullOrEmpty(svc.LogoUrl()))
-                            {
-                                <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" class="w-6 h-6 rounded" />
-                            }
-                            <span class="text-sm">@svc.ProviderName</span>
-                            <span class="text-xs text-gray-500">(@svc.Type)</span>
                         </div>
                     }
                 </div>
@@ -154,10 +159,6 @@ else
                     <span class="icon-[heroicons--plus] w-5 h-5"></span>
                     <span>Add to Queue</span>
                 }
-            </button>
-            <button class="bg-surface-50 hover:bg-surface-100 text-gray-300 px-4 py-2.5 rounded-lg transition-colors"
-                    @onclick="GoBack">
-                Back
             </button>
         </div>
 
@@ -199,7 +200,7 @@ else
         _loading = false;
     }
 
-    private void GoBack() => Nav.NavigateTo("/");
+    private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
 
     private async Task AddToQueue()
     {

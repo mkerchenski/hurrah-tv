@@ -29,28 +29,14 @@ else if (!_onboardingComplete)
 else
 {
     <!-- content -->
-    <div class="fade-in space-y-8 md:space-y-10">
-        <!-- trending on your services -->
+    <div class="fade-in">
         <section>
             <div class="flex items-center justify-between mb-3 md:mb-4">
-                <h2 class="text-lg md:text-xl font-bold">Trending on Your Services</h2>
+                <h2 class="text-lg md:text-xl font-bold">Popular on Your Services</h2>
                 <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
             </div>
             <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
         </section>
-
-        <!-- per-service sections -->
-        @foreach (int providerId in _userServices.Take(4))
-        {
-            if (StreamingService.ById.TryGetValue(providerId, out StreamingService? svc))
-            {
-                List<SearchResult> items = _byProvider.GetValueOrDefault(providerId, []);
-                <section>
-                    <h2 class="text-lg md:text-xl font-bold mb-3 md:mb-4">Popular on @svc.Name</h2>
-                    <PosterGrid Results="items" Loading="_loadingProviders" EmptyMessage="@($"No results for {svc.Name}")" />
-                </section>
-            }
-        }
     </div>
 }
 
@@ -60,9 +46,7 @@ else
     private bool _servicesLoaded;
     private bool _onboardingComplete;
     private List<SearchResult> _trending = [];
-    private Dictionary<int, List<SearchResult>> _byProvider = [];
     private bool _loadingTrending = true;
-    private bool _loadingProviders = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -84,25 +68,9 @@ else
 
     private async Task LoadContent()
     {
-        // load trending filtered to user's subscribed services
         _loadingTrending = true;
         StateHasChanged();
         _trending = await Api.ForYouAsync();
         _loadingTrending = false;
-        StateHasChanged();
-
-        // load per-provider content in parallel
-        _loadingProviders = true;
-        StateHasChanged();
-
-        Task<List<SearchResult>>[] tasks = _userServices.Take(4)
-            .Select(id => Api.DiscoverByProviderAsync(id))
-            .ToArray();
-        List<SearchResult>[] results = await Task.WhenAll(tasks);
-
-        for (int i = 0; i < results.Length && i < _userServices.Count; i++)
-            _byProvider[_userServices[i]] = results[i];
-
-        _loadingProviders = false;
     }
 }

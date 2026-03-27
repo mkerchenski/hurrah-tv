@@ -14,7 +14,24 @@
         </div>
     }
 
-    <!-- hover overlay (desktop only via group-hover + hover media query in CSS) -->
+    <!-- network badges — always visible at bottom of poster -->
+    @if (Result.AvailableOn.Count > 0)
+    {
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 pt-6">
+            <div class="flex gap-1 flex-wrap">
+                @foreach (AvailableService svc in Result.AvailableOn.Take(4))
+                {
+                    @if (!string.IsNullOrEmpty(svc.LogoUrl()))
+                    {
+                        <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" title="@svc.ProviderName"
+                             class="w-5 h-5 md:w-6 md:h-6 rounded service-badge" />
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    <!-- hover overlay (desktop only) -->
     <div class="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent
                 opacity-0 group-hover:opacity-100 transition-opacity duration-200
                 hidden md:flex flex-col justify-end p-3">
@@ -31,7 +48,7 @@
             </div>
         }
 
-        <!-- service badges -->
+        <!-- service badges in hover too for context -->
         @if (Result.AvailableOn.Count > 0)
         {
             <div class="flex gap-1 flex-wrap">
@@ -62,11 +79,6 @@
             <span class="icon-[heroicons--check] w-4 h-4"></span>
         </div>
     }
-
-    <!-- mobile: title below poster for context -->
-    <div class="md:hidden absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6">
-        <div class="text-white text-xs font-medium leading-tight truncate">@Result.Title</div>
-    </div>
 </div>
 
 @code {
