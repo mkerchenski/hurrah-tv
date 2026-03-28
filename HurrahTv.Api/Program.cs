@@ -3,7 +3,7 @@ using Microsoft.IdentityModel.Tokens;
 using HurrahTv.Api.Endpoints;
 using HurrahTv.Api.Services;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<TmdbService>();
@@ -28,15 +28,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         policy.WithOrigins("https://localhost:7267", "http://localhost:5271")
               .AllowAnyHeader()
-              .AllowAnyMethod());
-});
+              .AllowAnyMethod()));
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
 if (!app.Environment.IsProduction())
     app.UseDeveloperExceptionPage();

@@ -12,7 +12,7 @@ public static class UserServiceEndpoints
         services.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            var ids = await db.GetUserServicesAsync(userId);
+            List<int> ids = await db.GetUserServicesAsync(userId);
             return Results.Ok(ids);
         });
 
@@ -28,7 +28,7 @@ public static class UserServiceEndpoints
         genres.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            var ids = await db.GetUserGenresAsync(userId);
+            List<int> ids = await db.GetUserGenresAsync(userId);
             return Results.Ok(ids);
         });
 

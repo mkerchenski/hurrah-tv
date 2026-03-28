@@ -3,14 +3,9 @@ using System.Net.Http.Headers;
 namespace HurrahTv.Client.Services;
 
 // adds the JWT token to every outgoing HTTP request
-public class AuthMessageHandler : DelegatingHandler
+public class AuthMessageHandler(TokenService tokenService) : DelegatingHandler
 {
-    private readonly TokenService _tokenService;
-
-    public AuthMessageHandler(TokenService tokenService)
-    {
-        _tokenService = tokenService;
-    }
+    private readonly TokenService _tokenService = tokenService;
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {

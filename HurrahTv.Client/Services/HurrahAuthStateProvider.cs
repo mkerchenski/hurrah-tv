@@ -4,14 +4,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 
 namespace HurrahTv.Client.Services;
 
-public class HurrahAuthStateProvider : AuthenticationStateProvider
+public class HurrahAuthStateProvider(TokenService tokenService) : AuthenticationStateProvider
 {
-    private readonly TokenService _tokenService;
-
-    public HurrahAuthStateProvider(TokenService tokenService)
-    {
-        _tokenService = tokenService;
-    }
+    private readonly TokenService _tokenService = tokenService;
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
@@ -42,8 +37,5 @@ public class HurrahAuthStateProvider : AuthenticationStateProvider
         }
     }
 
-    public void NotifyAuthChanged()
-    {
-        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
-    }
+    public void NotifyAuthChanged() => NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
 }

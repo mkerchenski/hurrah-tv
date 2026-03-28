@@ -58,10 +58,10 @@ public static class SearchEndpoints
         if (prefs.GenreIds.Count > 0)
         {
             HashSet<int> userGenres = [.. prefs.GenreIds];
-            results = results.Where(r => r.GenreIds.Any(g => userGenres.Contains(g))).ToList();
+            results = [.. results.Where(r => r.GenreIds.Any(g => userGenres.Contains(g)))];
         }
         if (prefs.Dismissed.Count > 0)
-            results = results.Where(r => !prefs.Dismissed.Contains(r.TmdbId)).ToList();
+            results = [.. results.Where(r => !prefs.Dismissed.Contains(r.TmdbId))];
 
         return results;
     }

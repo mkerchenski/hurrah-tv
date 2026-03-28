@@ -4,15 +4,10 @@ using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
 
-public class DbService
+public class DbService(IConfiguration config)
 {
-    private readonly string _connectionString;
-
-    public DbService(IConfiguration config)
-    {
-        _connectionString = config.GetConnectionString("Default")
+    private readonly string _connectionString = config.GetConnectionString("Default")
             ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
-    }
 
     public async Task InitializeAsync()
     {
@@ -86,7 +81,7 @@ public class DbService
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId ORDER BY Status, Position",
             new { UserId = userId });
-        return items.ToList();
+        return [.. items];
     }
 
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
@@ -197,7 +192,7 @@ public class DbService
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT ProviderId FROM UserServices WHERE UserId = @UserId",
             new { UserId = userId });
-        return ids.ToList();
+        return [.. ids];
     }
 
     public async Task SetUserServicesAsync(List<int> providerIds, string userId)
@@ -220,7 +215,7 @@ public class DbService
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT GenreId FROM UserGenres WHERE UserId = @UserId",
             new { UserId = userId });
-        return ids.ToList();
+        return [.. ids];
     }
 
     public async Task SetUserGenresAsync(List<int> genreIds, string userId)
@@ -243,7 +238,7 @@ public class DbService
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT TmdbId FROM UserDismissals WHERE UserId = @UserId",
             new { UserId = userId });
-        return ids.ToHashSet();
+        return [.. ids];
     }
 
     public async Task DismissAsync(int tmdbId, string userId)

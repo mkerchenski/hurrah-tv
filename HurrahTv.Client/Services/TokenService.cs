@@ -3,15 +3,10 @@ using Microsoft.JSInterop;
 namespace HurrahTv.Client.Services;
 
 // stores JWT token in localStorage for persistence across sessions
-public class TokenService
+public class TokenService(IJSRuntime js)
 {
-    private readonly IJSRuntime _js;
+    private readonly IJSRuntime _js = js;
     private string? _cachedToken;
-
-    public TokenService(IJSRuntime js)
-    {
-        _js = js;
-    }
 
     public async Task<string?> GetTokenAsync()
     {

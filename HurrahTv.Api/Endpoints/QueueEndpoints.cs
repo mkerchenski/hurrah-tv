@@ -13,14 +13,14 @@ public static class QueueEndpoints
         group.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            var items = await db.GetQueueAsync(userId);
+            List<QueueItem> items = await db.GetQueueAsync(userId);
             return Results.Ok(items);
         });
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            var added = await db.AddToQueueAsync(item, userId);
+            QueueItem? added = await db.AddToQueueAsync(item, userId);
             return added != null ? Results.Created($"/api/queue/{added.Id}", added) : Results.Conflict("Already in queue");
         });
 

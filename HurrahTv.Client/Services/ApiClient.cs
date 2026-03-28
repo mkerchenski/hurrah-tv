@@ -3,14 +3,9 @@ using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Client.Services;
 
-public class ApiClient
+public class ApiClient(HttpClient http)
 {
-    private readonly HttpClient _http;
-
-    public ApiClient(HttpClient http)
-    {
-        _http = http;
-    }
+    private readonly HttpClient _http = http;
 
     // auth
     public async Task<bool> SendCodeAsync(string phoneNumber)

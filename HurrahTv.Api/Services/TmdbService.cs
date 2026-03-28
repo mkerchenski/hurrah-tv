@@ -35,10 +35,9 @@ public class TmdbService
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
         if (response == null) return [];
 
-        List<SearchResult> results = response.Results
+        List<SearchResult> results = [.. response.Results
             .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
-            .Select(MapToSearchResult)
-            .ToList();
+            .Select(MapToSearchResult)];
 
         _cache.Set(cacheKey, results, TimeSpan.FromMinutes(30));
         return results;
@@ -54,10 +53,9 @@ public class TmdbService
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
         if (response == null) return [];
 
-        List<SearchResult> results = response.Results
+        List<SearchResult> results = [.. response.Results
             .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
-            .Select(MapToSearchResult)
-            .ToList();
+            .Select(MapToSearchResult)];
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
         return results;
@@ -92,9 +90,7 @@ public class TmdbService
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
         if (response == null) return [];
 
-        List<SearchResult> results = response.Results
-            .Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })
-            .ToList();
+        List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(2));
         return results;
@@ -106,22 +102,19 @@ public class TmdbService
 
         HashSet<int> userProviders = [.. providerIds];
 
-        Task<(SearchResult result, List<AvailableService> providers)>[] tasks = results
+        Task<(SearchResult result, List<AvailableService> providers)>[] tasks = [.. results
             .Select(async r =>
             {
                 List<AvailableService> providers = await GetWatchProvidersAsync(r.TmdbId, r.MediaType);
                 return (r, providers);
-            })
-            .ToArray();
+            })];
 
-        var enriched = await Task.WhenAll(tasks);
+        (SearchResult result, List<AvailableService> providers)[] enriched = await Task.WhenAll(tasks);
 
         List<SearchResult> filtered = [];
-        foreach (var (result, providers) in enriched)
+        foreach ((SearchResult? result, List<AvailableService>? providers) in enriched)
         {
-            List<AvailableService> matching = providers
-                .Where(p => p.Type == ProviderType.Flatrate && userProviders.Contains(p.ProviderId))
-                .ToList();
+            List<AvailableService> matching = [.. providers.Where(p => p.Type == ProviderType.Flatrate && userProviders.Contains(p.ProviderId))];
 
             if (matching.Count > 0)
             {

@@ -5,20 +5,12 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace HurrahTv.Api.Services;
 
-public class AuthService
+public class AuthService(DbService db, SmsService sms, IConfiguration config)
 {
-    private readonly DbService _db;
-    private readonly SmsService _sms;
-    private readonly string _jwtKey;
-    private readonly string _jwtIssuer;
-
-    public AuthService(DbService db, SmsService sms, IConfiguration config)
-    {
-        _db = db;
-        _sms = sms;
-        _jwtKey = config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");
-        _jwtIssuer = config["Jwt:Issuer"] ?? "HurrahTv";
-    }
+    private readonly DbService _db = db;
+    private readonly SmsService _sms = sms;
+    private readonly string _jwtKey = config["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");
+    private readonly string _jwtIssuer = config["Jwt:Issuer"] ?? "HurrahTv";
 
     public async Task<bool> SendCodeAsync(string phoneNumber)
     {
@@ -59,8 +51,5 @@ public class AuthService
         return token;
     }
 
-    private static string GenerateCode()
-    {
-        return RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-    }
+    private static string GenerateCode() => RandomNumberGenerator.GetInt32(100000, 999999).ToString();
 }
