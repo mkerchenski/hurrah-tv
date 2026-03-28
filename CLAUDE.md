@@ -102,7 +102,7 @@ Design documents and implementation plans stored in `Plans/` at repo root. Exclu
 
 ## Learnings Directory
 
-Engineering learnings stored in `Learnings/` at repo root. Excluded from git (local only).
+Engineering learnings stored in `Learnings/` at repo root. Tracked in git.
 
 ### When to Write a Learning
 - After discovering something non-obvious about WASM, the TMDb API, or streaming service behavior

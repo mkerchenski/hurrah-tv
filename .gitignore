@@ -17,7 +17,6 @@ appsettings.Development.json
 
 # local-only directories
 Plans/
-Learnings/
 
 # OS
 Thumbs.db
