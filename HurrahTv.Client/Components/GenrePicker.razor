@@ -1,0 +1,31 @@
+<div class="flex flex-wrap gap-2">
+    @foreach (Genre genre in Genre.All)
+    {
+        bool isSelected = SelectedIds.Contains(genre.TmdbId);
+        <button class="@($"px-3 py-1.5 rounded-full border text-sm transition-all {(isSelected ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500")}")"
+                @onclick="() => Toggle(genre.TmdbId)">
+            @genre.Name
+            @if (isSelected)
+            {
+                <span class="icon-[heroicons--check-20-solid] w-3.5 h-3.5 text-accent-light ml-1"></span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter] public List<int> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<List<int>> SelectedIdsChanged { get; set; }
+
+    private async Task Toggle(int id)
+    {
+        List<int> updated = new(SelectedIds);
+        if (updated.Contains(id))
+            updated.Remove(id);
+        else
+            updated.Add(id);
+
+        SelectedIds = updated;
+        await SelectedIdsChanged.InvokeAsync(updated);
+    }
+}

@@ -63,51 +63,43 @@ public class TmdbService
         return results;
     }
 
-    // discovers recently released content on user's services (TV + movies combined)
-    public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, int daysBack = 60)
+    private const int NewContentDaysBack = 60;
+
+    public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, string mediaType = "tv",
+        List<int>? genreIds = null, int page = 1)
     {
         if (providerIds.Count == 0) return [];
 
         string providers = string.Join("|", providerIds);
-        string dateFrom = DateTime.UtcNow.AddDays(-daysBack).ToString("yyyy-MM-dd");
+        string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
+        string dateFrom = DateTime.UtcNow.AddDays(-NewContentDaysBack).ToString("yyyy-MM-dd");
         string dateTo = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        string cacheKey = $"new-on-services:{providers}:{dateFrom}";
+        string cacheKey = $"new-on-services:{providers}:{mediaType}:{genres}:{page}:{dateFrom}";
 
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        // fetch new TV and new movies in parallel
-        string tvUrl = $"discover/tv?api_key={_apiKey}" +
-                       $"&with_watch_providers={providers}" +
-                       $"&with_watch_monetization_types=flatrate" +
-                       $"&watch_region=US&sort_by=popularity.desc&language=en-US" +
-                       $"&first_air_date.gte={dateFrom}&first_air_date.lte={dateTo}";
+        string dateParam = mediaType == "tv" ? "first_air_date" : "primary_release_date";
+        string url = $"discover/{mediaType}?api_key={_apiKey}" +
+                     $"&with_watch_providers={providers}" +
+                     $"&with_watch_monetization_types=flatrate" +
+                     $"&watch_region=US&sort_by=popularity.desc&language=en-US&page={page}" +
+                     $"&{dateParam}.gte={dateFrom}&{dateParam}.lte={dateTo}";
 
-        string movieUrl = $"discover/movie?api_key={_apiKey}" +
-                          $"&with_watch_providers={providers}" +
-                          $"&with_watch_monetization_types=flatrate" +
-                          $"&watch_region=US&sort_by=popularity.desc&language=en-US" +
-                          $"&primary_release_date.gte={dateFrom}&primary_release_date.lte={dateTo}";
+        if (!string.IsNullOrEmpty(genres))
+            url += $"&with_genres={genres}";
 
-        Task<TmdbPagedResponse<TmdbMultiResult>?> tvTask = GetAsync<TmdbPagedResponse<TmdbMultiResult>>(tvUrl);
-        Task<TmdbPagedResponse<TmdbMultiResult>?> movieTask = GetAsync<TmdbPagedResponse<TmdbMultiResult>>(movieUrl);
-        await Task.WhenAll(tvTask, movieTask);
+        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
+        if (response == null) return [];
 
-        List<SearchResult> results = [];
-
-        if (tvTask.Result != null)
-            results.AddRange(tvTask.Result.Results.Select(r => { r.MediaType = "tv"; return MapToSearchResult(r); }));
-        if (movieTask.Result != null)
-            results.AddRange(movieTask.Result.Results.Select(r => { r.MediaType = "movie"; return MapToSearchResult(r); }));
-
-        // sort combined results by popularity (vote count × average as proxy)
-        results = results.OrderByDescending(r => r.VoteAverage).ToList();
+        List<SearchResult> results = response.Results
+            .Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })
+            .ToList();
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(2));
         return results;
     }
 
-    // filters search results to only those available flatrate on the user's services
     public async Task<List<SearchResult>> FilterToUserServicesAsync(List<SearchResult> results, List<int> providerIds)
     {
         if (providerIds.Count == 0) return [];

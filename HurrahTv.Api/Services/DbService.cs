@@ -61,6 +61,21 @@ public class DbService
                 ProviderId INT NOT NULL,
                 PRIMARY KEY (UserId, ProviderId)
             );
+
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserGenres')
+            CREATE TABLE UserGenres (
+                UserId NVARCHAR(50) NOT NULL,
+                GenreId INT NOT NULL,
+                PRIMARY KEY (UserId, GenreId)
+            );
+
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserDismissals')
+            CREATE TABLE UserDismissals (
+                UserId NVARCHAR(50) NOT NULL,
+                TmdbId INT NOT NULL,
+                DismissedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                PRIMARY KEY (UserId, TmdbId)
+            );
             """);
     }
 
@@ -163,6 +178,18 @@ public class DbService
         return true;
     }
 
+    // user preferences (loads services, genres, and dismissals in parallel)
+    public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, HashSet<int> Dismissed);
+
+    public async Task<UserPreferences> GetUserPreferencesAsync(string userId)
+    {
+        Task<List<int>> providers = GetUserServicesAsync(userId);
+        Task<List<int>> genres = GetUserGenresAsync(userId);
+        Task<HashSet<int>> dismissed = GetDismissalsAsync(userId);
+        await Task.WhenAll(providers, genres, dismissed);
+        return new UserPreferences(providers.Result, genres.Result, dismissed.Result);
+    }
+
     // user services
     public async Task<List<int>> GetUserServicesAsync(string userId)
     {
@@ -184,6 +211,54 @@ public class DbService
                 "INSERT INTO UserServices (UserId, ProviderId) VALUES (@UserId, @ProviderId)",
                 new { UserId = userId, ProviderId = pid });
         }
+    }
+
+    // user genres
+    public async Task<List<int>> GetUserGenresAsync(string userId)
+    {
+        using SqlConnection db = Open();
+        IEnumerable<int> ids = await db.QueryAsync<int>(
+            "SELECT GenreId FROM UserGenres WHERE UserId = @UserId",
+            new { UserId = userId });
+        return ids.ToList();
+    }
+
+    public async Task SetUserGenresAsync(List<int> genreIds, string userId)
+    {
+        using SqlConnection db = Open();
+        await db.ExecuteAsync("DELETE FROM UserGenres WHERE UserId = @UserId", new { UserId = userId });
+
+        foreach (int gid in genreIds)
+        {
+            await db.ExecuteAsync(
+                "INSERT INTO UserGenres (UserId, GenreId) VALUES (@UserId, @GenreId)",
+                new { UserId = userId, GenreId = gid });
+        }
+    }
+
+    // dismissals
+    public async Task<HashSet<int>> GetDismissalsAsync(string userId)
+    {
+        using SqlConnection db = Open();
+        IEnumerable<int> ids = await db.QueryAsync<int>(
+            "SELECT TmdbId FROM UserDismissals WHERE UserId = @UserId",
+            new { UserId = userId });
+        return ids.ToHashSet();
+    }
+
+    public async Task DismissAsync(int tmdbId, string userId)
+    {
+        using SqlConnection db = Open();
+        await db.ExecuteAsync("""
+            IF NOT EXISTS (SELECT 1 FROM UserDismissals WHERE UserId = @UserId AND TmdbId = @TmdbId)
+            INSERT INTO UserDismissals (UserId, TmdbId) VALUES (@UserId, @TmdbId)
+            """, new { UserId = userId, TmdbId = tmdbId });
+    }
+
+    public async Task ClearDismissalsAsync(string userId)
+    {
+        using SqlConnection db = Open();
+        await db.ExecuteAsync("DELETE FROM UserDismissals WHERE UserId = @UserId", new { UserId = userId });
     }
 
     // auth operations

@@ -9,26 +9,52 @@
 
     <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
         <h2 class="text-lg font-semibold mb-2">My Streaming Services</h2>
-        <p class="text-gray-400 text-sm mb-4">Select the services you subscribe to. Content will be filtered to show what's available on your services.</p>
+        <p class="text-gray-400 text-sm mb-4">Select the services you subscribe to.</p>
 
         @if (_loaded)
         {
             <ServicePicker @bind-SelectedIds="_selectedServices" />
-
-            <div class="mt-6 flex items-center gap-3">
-                <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors"
-                        @onclick="Save">
-                    Save
-                </button>
-                @if (_saved)
-                {
-                    <span class="text-green-400 text-sm fade-in">Saved!</span>
-                }
-            </div>
         }
         else
         {
             <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+        }
+    </div>
+
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">My Genres</h2>
+        <p class="text-gray-400 text-sm mb-4">Pick genres you're interested in. Leave empty to see everything.</p>
+
+        @if (_loaded)
+        {
+            <GenrePicker @bind-SelectedIds="_selectedGenres" />
+        }
+    </div>
+
+    @if (_loaded)
+    {
+        <div class="flex items-center gap-3 mb-4 md:mb-6">
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors"
+                    @onclick="Save">
+                Save
+            </button>
+            @if (_saved)
+            {
+                <span class="text-green-400 text-sm fade-in">Saved!</span>
+            }
+        </div>
+    }
+
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">Hidden Content</h2>
+        <p class="text-gray-400 text-sm mb-4">Reset titles you've dismissed from your home page.</p>
+        <button class="bg-surface-100 hover:bg-surface-200 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
+                @onclick="ResetDismissals">
+            Reset hidden titles
+        </button>
+        @if (_dismissalsCleared)
+        {
+            <span class="text-green-400 text-sm ml-3 fade-in">Cleared!</span>
         }
     </div>
 
@@ -43,21 +69,39 @@
 
 @code {
     private List<int> _selectedServices = [];
+    private List<int> _selectedGenres = [];
     private bool _loaded;
     private bool _saved;
+    private bool _dismissalsCleared;
 
     protected override async Task OnInitializedAsync()
     {
-        _selectedServices = await Api.GetUserServicesAsync();
+        Task<List<int>> servicesTask = Api.GetUserServicesAsync();
+        Task<List<int>> genresTask = Api.GetUserGenresAsync();
+        await Task.WhenAll(servicesTask, genresTask);
+
+        _selectedServices = servicesTask.Result;
+        _selectedGenres = genresTask.Result;
         _loaded = true;
     }
 
     private async Task Save()
     {
-        await Api.SetUserServicesAsync(_selectedServices);
+        await Task.WhenAll(
+            Api.SetUserServicesAsync(_selectedServices),
+            Api.SetUserGenresAsync(_selectedGenres));
         _saved = true;
         StateHasChanged();
         await Task.Delay(2000);
         _saved = false;
+    }
+
+    private async Task ResetDismissals()
+    {
+        await Api.ClearDismissalsAsync();
+        _dismissalsCleared = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _dismissalsCleared = false;
     }
 }

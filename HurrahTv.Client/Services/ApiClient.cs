@@ -31,11 +31,11 @@ public class ApiClient
     public async Task<List<SearchResult>> SearchAsync(string query, int page = 1) =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search?q={Uri.EscapeDataString(query)}&page={page}") ?? [];
 
-    public async Task<List<SearchResult>> ForYouAsync() =>
-        await _http.GetFromJsonAsync<List<SearchResult>>("api/search/for-you") ?? [];
+    public async Task<List<SearchResult>> ForYouAsync(string mediaType = "all") =>
+        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/for-you?mediaType={mediaType}") ?? [];
 
-    public async Task<List<SearchResult>> NewOnServicesAsync() =>
-        await _http.GetFromJsonAsync<List<SearchResult>>("api/search/new") ?? [];
+    public async Task<List<SearchResult>> NewOnServicesAsync(string mediaType = "tv") =>
+        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/new?mediaType={mediaType}") ?? [];
 
     // details
     public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType) =>
@@ -65,4 +65,18 @@ public class ApiClient
 
     public async Task SetUserServicesAsync(List<int> providerIds) =>
         await _http.PutAsJsonAsync("api/services", providerIds);
+
+    // dismissals
+    public async Task DismissAsync(int tmdbId) =>
+        await _http.PostAsync($"api/dismissals/{tmdbId}", null);
+
+    public async Task ClearDismissalsAsync() =>
+        await _http.DeleteAsync("api/dismissals");
+
+    // user genres
+    public async Task<List<int>> GetUserGenresAsync() =>
+        await _http.GetFromJsonAsync<List<int>>("api/genres") ?? [];
+
+    public async Task SetUserGenresAsync(List<int> genreIds) =>
+        await _http.PutAsJsonAsync("api/genres", genreIds);
 }

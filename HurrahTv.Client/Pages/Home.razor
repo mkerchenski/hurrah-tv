@@ -29,31 +29,68 @@ else if (!_onboardingComplete)
 else
 {
     <!-- content -->
-    <div class="fade-in space-y-8 md:space-y-10">
-        <section>
-            <div class="flex items-center justify-between mb-3 md:mb-4">
-                <h2 class="text-lg md:text-xl font-bold">New on Your Services</h2>
-                <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
+    <div class="fade-in">
+        <!-- header row: toggle + search link -->
+        <div class="flex items-center justify-between mb-6 md:mb-8">
+            <div class="flex bg-surface-50 rounded-full p-1">
+                <button class="@(_activeTab == "tv" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 md:px-5 py-1.5 rounded-full text-sm font-medium transition-all"
+                        @onclick="@(() => _activeTab = "tv")">
+                    TV Shows
+                </button>
+                <button class="@(_activeTab == "movie" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 md:px-5 py-1.5 rounded-full text-sm font-medium transition-all"
+                        @onclick="@(() => _activeTab = "movie")">
+                    Movies
+                </button>
             </div>
-            <PosterGrid Results="_newReleases" Loading="_loadingNew" EmptyMessage="No new releases found" />
-        </section>
+            <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
+        </div>
 
-        <section>
-            <h2 class="text-lg md:text-xl font-bold mb-3 md:mb-4">Trending This Week</h2>
-            <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
-        </section>
+        <!-- TV Shows tab -->
+        @if (_activeTab == "tv")
+        {
+            <div class="space-y-6 md:space-y-8 fade-in">
+                <section>
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">New This Season</h3>
+                    <PosterGrid Results="_newTv" Loading="_loading" EmptyMessage="No new shows found" />
+                </section>
+
+                <section>
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Trending Shows</h3>
+                    <PosterGrid Results="_trendingTv" Loading="_loading" EmptyMessage="No trending shows" />
+                </section>
+            </div>
+        }
+
+        <!-- Movies tab -->
+        @if (_activeTab == "movie")
+        {
+            <div class="space-y-6 md:space-y-8 fade-in">
+                <section>
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">New Releases</h3>
+                    <PosterGrid Results="_newMovies" Loading="_loading" EmptyMessage="No new movies found" />
+                </section>
+
+                <section>
+                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Trending Movies</h3>
+                    <PosterGrid Results="_trendingMovies" Loading="_loading" EmptyMessage="No trending movies" />
+                </section>
+            </div>
+        }
     </div>
 }
 
 @code {
     private List<int> _userServices = [];
-    private List<int> _pendingServices = []; // separate list for onboarding picker
+    private List<int> _pendingServices = [];
     private bool _servicesLoaded;
     private bool _onboardingComplete;
-    private List<SearchResult> _newReleases = [];
-    private List<SearchResult> _trending = [];
-    private bool _loadingNew = true;
-    private bool _loadingTrending = true;
+    private string _activeTab = "tv";
+
+    private List<SearchResult> _newTv = [];
+    private List<SearchResult> _trendingTv = [];
+    private List<SearchResult> _newMovies = [];
+    private List<SearchResult> _trendingMovies = [];
+    private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
     {
@@ -75,18 +112,19 @@ else
 
     private async Task LoadContent()
     {
-        _loadingNew = true;
-        _loadingTrending = true;
+        _loading = true;
         StateHasChanged();
 
-        // load both sections in parallel
-        Task<List<SearchResult>> newTask = Api.NewOnServicesAsync();
-        Task<List<SearchResult>> trendingTask = Api.ForYouAsync();
-        await Task.WhenAll(newTask, trendingTask);
+        Task<List<SearchResult>> newTvTask = Api.NewOnServicesAsync("tv");
+        Task<List<SearchResult>> trendingTvTask = Api.ForYouAsync("tv");
+        Task<List<SearchResult>> newMoviesTask = Api.NewOnServicesAsync("movie");
+        Task<List<SearchResult>> trendingMoviesTask = Api.ForYouAsync("movie");
+        await Task.WhenAll(newTvTask, trendingTvTask, newMoviesTask, trendingMoviesTask);
 
-        _newReleases = newTask.Result;
-        _loadingNew = false;
-        _trending = trendingTask.Result;
-        _loadingTrending = false;
+        _newTv = newTvTask.Result;
+        _trendingTv = trendingTvTask.Result;
+        _newMovies = newMoviesTask.Result;
+        _trendingMovies = trendingMoviesTask.Result;
+        _loading = false;
     }
 }
