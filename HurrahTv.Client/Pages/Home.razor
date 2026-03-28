@@ -56,7 +56,7 @@ else
 
                 <section>
                     <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Popular Shows</h3>
-                    <PosterGrid Results="_trendingTv" Loading="_loading" EmptyMessage="No popular shows" />
+                    <PosterGrid Results="_popularTv" Loading="_loading" EmptyMessage="No popular shows" />
                 </section>
             </div>
         }
@@ -72,7 +72,7 @@ else
 
                 <section>
                     <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Popular Movies</h3>
-                    <PosterGrid Results="_trendingMovies" Loading="_loading" EmptyMessage="No popular movies" />
+                    <PosterGrid Results="_popularMovies" Loading="_loading" EmptyMessage="No popular movies" />
                 </section>
             </div>
         }
@@ -87,9 +87,9 @@ else
     private string _activeTab = "tv";
 
     private List<SearchResult> _newTv = [];
-    private List<SearchResult> _trendingTv = [];
+    private List<SearchResult> _popularTv = [];
     private List<SearchResult> _newMovies = [];
-    private List<SearchResult> _trendingMovies = [];
+    private List<SearchResult> _popularMovies = [];
     private bool _loading = true;
 
     protected override async Task OnInitializedAsync()
@@ -116,15 +116,16 @@ else
         StateHasChanged();
 
         Task<List<SearchResult>> newTvTask = Api.NewOnServicesAsync("tv");
-        Task<List<SearchResult>> trendingTvTask = Api.ForYouAsync("tv");
+        Task<List<SearchResult>> popularTvTask = Api.ForYouAsync("tv");
         Task<List<SearchResult>> newMoviesTask = Api.NewOnServicesAsync("movie");
-        Task<List<SearchResult>> trendingMoviesTask = Api.ForYouAsync("movie");
-        await Task.WhenAll(newTvTask, trendingTvTask, newMoviesTask, trendingMoviesTask);
+        Task<List<SearchResult>> popularMoviesTask = Api.ForYouAsync("movie");
+        await Task.WhenAll(newTvTask, popularTvTask, newMoviesTask, popularMoviesTask);
 
         _newTv = newTvTask.Result;
-        _trendingTv = trendingTvTask.Result;
+        _popularTv = popularTvTask.Result;
         _newMovies = newMoviesTask.Result;
-        _trendingMovies = trendingMoviesTask.Result;
+        _popularMovies = popularMoviesTask.Result;
         _loading = false;
+        StateHasChanged();
     }
 }

@@ -79,9 +79,7 @@ public class TmdbService
     {
         if (providerIds.Count == 0) return [];
 
-        Task<List<SearchResult>>[] tasks = providerIds
-            .Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly))
-            .ToArray();
+        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly))];
         await Task.WhenAll(tasks);
 
         List<SearchResult> interleaved = [];
@@ -108,6 +106,7 @@ public class TmdbService
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
+        // TMDb requires literal | as OR separator — do not URL-encode
         string url = $"discover/{mediaType}?api_key={_apiKey}" +
                      $"&with_watch_providers={providerId}" +
                      $"&with_watch_monetization_types=flatrate|ads" +
@@ -221,7 +220,6 @@ public class TmdbService
                 details.Genres.Add(g.GetProperty("name").GetString() ?? "");
         }
 
-        // parse watch providers
         if (json.TryGetProperty("watch/providers", out JsonElement wp) &&
             wp.TryGetProperty("results", out JsonElement wpResults) &&
             wpResults.TryGetProperty("US", out JsonElement us))

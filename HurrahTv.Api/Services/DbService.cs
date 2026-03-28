@@ -12,6 +12,7 @@ public class DbService(IConfiguration config)
     public async Task InitializeAsync()
     {
         using SqlConnection db = await OpenAsync();
+        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
 
         await db.ExecuteAsync("""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
@@ -74,7 +75,9 @@ public class DbService(IConfiguration config)
                 DismissedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
                 PRIMARY KEY (UserId, TmdbId)
             );
-            """);
+            """, transaction: tx);
+
+        await tx.CommitAsync();
     }
 
     // queue operations

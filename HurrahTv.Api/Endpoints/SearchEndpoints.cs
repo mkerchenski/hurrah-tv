@@ -22,40 +22,32 @@ public static class SearchEndpoints
             return Results.Ok(results);
         }).RequireAuthorization();
 
-        // popular on user's services, interleaved per provider
         group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
-        {
-            string userId = user.GetUserId();
-            string resolvedType = mediaType ?? MediaTypes.Tv;
-            if (!MediaTypes.IsValid(resolvedType))
-                return Results.BadRequest("mediaType must be 'movie' or 'tv'");
-
-            DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
-
-            List<SearchResult> results = await tmdb.PopularOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
-            results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
-            results = ApplyPreferenceFilters(results, prefs);
-
-            return Results.Ok(results.Take(20).ToList());
-        }).RequireAuthorization();
+            await GetPersonalizedAsync(mediaType, user, db, tmdb, recentOnly: false)).RequireAuthorization();
 
         group.MapGet("/new", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
-        {
-            string userId = user.GetUserId();
-            string resolvedType = mediaType ?? MediaTypes.Tv;
-            if (!MediaTypes.IsValid(resolvedType))
-                return Results.BadRequest("mediaType must be 'movie' or 'tv'");
+            await GetPersonalizedAsync(mediaType, user, db, tmdb, recentOnly: true)).RequireAuthorization();
 
-            DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
+    }
 
-            List<SearchResult> results = await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
-            results = results.Take(20).ToList();
-            results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
-            results = ApplyPreferenceFilters(results, prefs);
+    private static async Task<IResult> GetPersonalizedAsync(string? mediaType, ClaimsPrincipal user,
+        DbService db, TmdbService tmdb, bool recentOnly)
+    {
+        string resolvedType = mediaType ?? MediaTypes.Tv;
+        if (!MediaTypes.IsValid(resolvedType))
+            return Results.BadRequest("mediaType must be 'movie' or 'tv'");
 
-            return Results.Ok(results);
-        }).RequireAuthorization();
+        string userId = user.GetUserId();
+        DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
+        List<SearchResult> results = recentOnly
+            ? await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds)
+            : await tmdb.PopularOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
+
+        results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
+        results = ApplyPreferenceFilters(results, prefs);
+
+        return Results.Ok(results.Take(20).ToList());
     }
 
     private static List<SearchResult> ApplyPreferenceFilters(List<SearchResult> results, DbService.UserPreferences prefs)
