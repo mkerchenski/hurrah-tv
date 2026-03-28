@@ -1,0 +1,36 @@
+<div class="flex flex-wrap @GapClass">
+    @foreach (var item in Items)
+    {
+        bool isSelected = SelectedIds.Contains(item.Id);
+        <button class="@($"flex items-center gap-1.5 {SizeClass} rounded-full border text-sm transition-all {(isSelected ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500")}")"
+                @onclick="() => Toggle(item.Id)">
+            <span>@item.Label</span>
+            @if (isSelected)
+            {
+                <span class="icon-[heroicons--check-20-solid] w-3.5 h-3.5 text-accent-light"></span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<ChipItem> Items { get; set; } = [];
+    [Parameter] public List<int> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<List<int>> SelectedIdsChanged { get; set; }
+    [Parameter] public string SizeClass { get; set; } = "px-3 py-1.5";
+    [Parameter] public string GapClass { get; set; } = "gap-2";
+
+    private async Task Toggle(int id)
+    {
+        List<int> updated = new(SelectedIds);
+        if (updated.Contains(id))
+            updated.Remove(id);
+        else
+            updated.Add(id);
+
+        SelectedIds = updated;
+        await SelectedIdsChanged.InvokeAsync(updated);
+    }
+
+    public record ChipItem(int Id, string Label);
+}

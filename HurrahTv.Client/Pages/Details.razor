@@ -229,19 +229,7 @@ else
     {
         if (_details == null || _addedToQueue) return;
 
-        string serviceIds = System.Text.Json.JsonSerializer.Serialize(
-            _details.AvailableOn.Select(s => s.ProviderId).ToList());
-
-        QueueItem item = new()
-        {
-            TmdbId = _details.TmdbId,
-            MediaType = _details.MediaType,
-            Title = _details.Title,
-            PosterPath = _details.PosterPath,
-            AvailableOnJson = serviceIds,
-        };
-
-        QueueItem? added = await Api.AddToQueueAsync(item);
+        QueueItem? added = await Api.AddToQueueAsync(_details.ToQueueItem());
         if (added != null)
         {
             _addedToQueue = true;

@@ -12,8 +12,7 @@ public class QueueItem
     public string AvailableOnJson { get; set; } = "[]"; // service provider IDs
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
-    public string PosterUrl(string size = "w342") =>
-        string.IsNullOrEmpty(PosterPath) ? "" : $"https://image.tmdb.org/t/p/{size}{PosterPath}";
+    public string PosterUrl(string size = "w342") => TmdbImage.Url(PosterPath, size);
 }
 
 public enum QueueStatus

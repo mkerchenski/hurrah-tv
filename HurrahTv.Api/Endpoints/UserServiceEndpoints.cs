@@ -11,14 +11,14 @@ public static class UserServiceEndpoints
 
         services.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             var ids = await db.GetUserServicesAsync(userId);
             return Results.Ok(ids);
         });
 
         services.MapPut("", async (List<int> providerIds, ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             await db.SetUserServicesAsync(providerIds, userId);
             return Results.Ok();
         });
@@ -27,14 +27,14 @@ public static class UserServiceEndpoints
 
         genres.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             var ids = await db.GetUserGenresAsync(userId);
             return Results.Ok(ids);
         });
 
         genres.MapPut("", async (List<int> genreIds, ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             await db.SetUserGenresAsync(genreIds, userId);
             return Results.Ok();
         });
@@ -43,14 +43,14 @@ public static class UserServiceEndpoints
 
         dismissals.MapPost("/{tmdbId:int}", async (int tmdbId, ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             await db.DismissAsync(tmdbId, userId);
             return Results.Ok();
         });
 
         dismissals.MapDelete("", async (ClaimsPrincipal user, DbService db) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             await db.ClearDismissalsAsync(userId);
             return Results.Ok();
         });

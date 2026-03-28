@@ -36,7 +36,7 @@ public class TmdbService
         if (response == null) return [];
 
         List<SearchResult> results = response.Results
-            .Where(r => r.MediaType is "movie" or "tv")
+            .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
             .Select(MapToSearchResult)
             .ToList();
 
@@ -55,7 +55,7 @@ public class TmdbService
         if (response == null) return [];
 
         List<SearchResult> results = response.Results
-            .Where(r => r.MediaType is "movie" or "tv")
+            .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
             .Select(MapToSearchResult)
             .ToList();
 
@@ -79,7 +79,7 @@ public class TmdbService
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        string dateParam = mediaType == "tv" ? "first_air_date" : "primary_release_date";
+        string dateParam = mediaType == MediaType.Tv ? "first_air_date" : "primary_release_date";
         string url = $"discover/{mediaType}?api_key={_apiKey}" +
                      $"&with_watch_providers={providers}" +
                      $"&with_watch_monetization_types=flatrate" +
@@ -106,7 +106,6 @@ public class TmdbService
 
         HashSet<int> userProviders = [.. providerIds];
 
-        // fetch watch providers for all results in parallel
         Task<(SearchResult result, List<AvailableService> providers)>[] tasks = results
             .Select(async r =>
             {
@@ -120,9 +119,8 @@ public class TmdbService
         List<SearchResult> filtered = [];
         foreach (var (result, providers) in enriched)
         {
-            // keep only if available flatrate on at least one of the user's services
             List<AvailableService> matching = providers
-                .Where(p => p.Type == "flatrate" && userProviders.Contains(p.ProviderId))
+                .Where(p => p.Type == ProviderType.Flatrate && userProviders.Contains(p.ProviderId))
                 .ToList();
 
             if (matching.Count > 0)
@@ -229,7 +227,7 @@ public class TmdbService
     private static List<AvailableService> ParseProviders(JsonElement usData)
     {
         List<AvailableService> providers = [];
-        string[] types = ["flatrate", "ads", "free", "buy", "rent"];
+        string[] types = ProviderType.All;
 
         foreach (string type in types)
         {

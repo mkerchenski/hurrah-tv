@@ -15,7 +15,7 @@ public static class SearchEndpoints
             if (string.IsNullOrWhiteSpace(q)) return Results.BadRequest("Query required");
             List<SearchResult> results = await tmdb.SearchAsync(q, page > 0 ? page : 1);
 
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             results = await tmdb.FilterToUserServicesAsync(results, providerIds);
 
@@ -25,33 +25,30 @@ public static class SearchEndpoints
         // trending this week, filtered to user's services, genres, and dismissals
         group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
-            string userId = user.FindFirstValue("sub")!;
+            string userId = user.GetUserId();
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
-            List<SearchResult> results = await tmdb.TrendingAsync(mediaType ?? "all", "week");
+            List<SearchResult> results = await tmdb.TrendingAsync(mediaType ?? MediaType.All, "week");
             results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
             results = ApplyPreferenceFilters(results, prefs);
 
             return Results.Ok(results);
         }).RequireAuthorization();
 
-        // recently released content (over-fetches 2 pages to backfill dismissals)
         group.MapGet("/new", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
-            string userId = user.FindFirstValue("sub")!;
-            string resolvedType = mediaType ?? "tv";
+            string userId = user.GetUserId();
+            string resolvedType = mediaType ?? MediaType.Tv;
+            if (!MediaType.IsValid(resolvedType))
+                return Results.BadRequest("mediaType must be 'movie' or 'tv'");
+
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
-            Task<List<SearchResult>> page1 = tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
-            Task<List<SearchResult>> page2 = tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds, page: 2);
-            await Task.WhenAll(page1, page2);
-
-            List<SearchResult> results = [.. page1.Result, .. page2.Result];
-            results = results.DistinctBy(r => r.TmdbId).ToList();
+            List<SearchResult> results = await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
             results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
             results = ApplyPreferenceFilters(results, prefs);
 
-            return Results.Ok(results.Take(20).ToList());
+            return Results.Ok(results);
         }).RequireAuthorization();
 
     }

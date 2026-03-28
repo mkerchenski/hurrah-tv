@@ -94,19 +94,7 @@
 
     private async Task AddToQueue()
     {
-        string serviceIds = System.Text.Json.JsonSerializer.Serialize(
-            Result.AvailableOn.Select(s => s.ProviderId).ToList());
-
-        QueueItem item = new()
-        {
-            TmdbId = Result.TmdbId,
-            MediaType = Result.MediaType,
-            Title = Result.Title,
-            PosterPath = Result.PosterPath,
-            AvailableOnJson = serviceIds,
-        };
-
-        QueueItem? added = await Api.AddToQueueAsync(item);
+        QueueItem? added = await Api.AddToQueueAsync(Result.ToQueueItem());
         if (added != null)
         {
             _addedToQueue = true;

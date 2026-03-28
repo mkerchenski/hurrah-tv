@@ -1,31 +1,12 @@
-<div class="flex flex-wrap gap-3">
-    @foreach (StreamingService service in StreamingService.All)
-    {
-        bool isSelected = SelectedIds.Contains(service.TmdbProviderId);
-        <button class="@($"flex items-center gap-2 px-4 py-2 rounded-full border transition-all {(isSelected ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500")}")"
-                @onclick="() => Toggle(service.TmdbProviderId)">
-            <span class="font-medium text-sm">@service.Name</span>
-            @if (isSelected)
-            {
-                <span class="icon-[heroicons--check-20-solid] w-4 h-4 text-accent-light"></span>
-            }
-        </button>
-    }
-</div>
+<ChipPicker Items="_items" @bind-SelectedIds="SelectedIds" @bind-SelectedIds:after="NotifyChanged"
+            SizeClass="px-4 py-2" GapClass="gap-3" />
 
 @code {
     [Parameter] public List<int> SelectedIds { get; set; } = [];
     [Parameter] public EventCallback<List<int>> SelectedIdsChanged { get; set; }
 
-    private async Task Toggle(int id)
-    {
-        List<int> updated = new(SelectedIds);
-        if (updated.Contains(id))
-            updated.Remove(id);
-        else
-            updated.Add(id);
+    private static readonly List<ChipPicker.ChipItem> _items =
+        StreamingService.All.Select(s => new ChipPicker.ChipItem(s.TmdbProviderId, s.Name)).ToList();
 
-        SelectedIds = updated;
-        await SelectedIdsChanged.InvokeAsync(updated);
-    }
+    private async Task NotifyChanged() => await SelectedIdsChanged.InvokeAsync(SelectedIds);
 }

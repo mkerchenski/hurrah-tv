@@ -16,7 +16,7 @@ public class DbService
 
     public async Task InitializeAsync()
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
 
         await db.ExecuteAsync("""
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
@@ -82,7 +82,7 @@ public class DbService
     // queue operations
     public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId ORDER BY Status, Position",
             new { UserId = userId });
@@ -91,7 +91,7 @@ public class DbService
 
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
 
         // check for duplicate
         int? existing = await db.QuerySingleOrDefaultAsync<int?>(
@@ -130,7 +130,7 @@ public class DbService
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "DELETE FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
@@ -139,7 +139,7 @@ public class DbService
 
     public async Task<bool> UpdateStatusAsync(int id, QueueStatus status, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "UPDATE QueueItems SET Status = @Status WHERE Id = @Id AND UserId = @UserId",
             new { Status = (int)status, Id = id, UserId = userId });
@@ -148,7 +148,7 @@ public class DbService
 
     public async Task<bool> ReorderAsync(int id, int newPosition, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         QueueItem? item = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
@@ -193,7 +193,7 @@ public class DbService
     // user services
     public async Task<List<int>> GetUserServicesAsync(string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT ProviderId FROM UserServices WHERE UserId = @UserId",
             new { UserId = userId });
@@ -202,7 +202,7 @@ public class DbService
 
     public async Task SetUserServicesAsync(List<int> providerIds, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId });
 
         foreach (int pid in providerIds)
@@ -216,7 +216,7 @@ public class DbService
     // user genres
     public async Task<List<int>> GetUserGenresAsync(string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT GenreId FROM UserGenres WHERE UserId = @UserId",
             new { UserId = userId });
@@ -225,7 +225,7 @@ public class DbService
 
     public async Task SetUserGenresAsync(List<int> genreIds, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         await db.ExecuteAsync("DELETE FROM UserGenres WHERE UserId = @UserId", new { UserId = userId });
 
         foreach (int gid in genreIds)
@@ -239,7 +239,7 @@ public class DbService
     // dismissals
     public async Task<HashSet<int>> GetDismissalsAsync(string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT TmdbId FROM UserDismissals WHERE UserId = @UserId",
             new { UserId = userId });
@@ -248,7 +248,7 @@ public class DbService
 
     public async Task DismissAsync(int tmdbId, string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
             IF NOT EXISTS (SELECT 1 FROM UserDismissals WHERE UserId = @UserId AND TmdbId = @TmdbId)
             INSERT INTO UserDismissals (UserId, TmdbId) VALUES (@UserId, @TmdbId)
@@ -257,14 +257,14 @@ public class DbService
 
     public async Task ClearDismissalsAsync(string userId)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
         await db.ExecuteAsync("DELETE FROM UserDismissals WHERE UserId = @UserId", new { UserId = userId });
     }
 
     // auth operations
     public async Task SaveOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
 
         // invalidate previous unused codes for this phone
         await db.ExecuteAsync(
@@ -278,7 +278,7 @@ public class DbService
 
     public async Task<bool> VerifyOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
 
         int? id = await db.QuerySingleOrDefaultAsync<int?>(
             "SELECT Id FROM OtpCodes WHERE PhoneNumber = @PhoneNumber AND Code = @Code AND Used = 0 AND ExpiresAt > @Now",
@@ -292,7 +292,7 @@ public class DbService
 
     public async Task<string> GetOrCreateUserAsync(string phoneNumber)
     {
-        using SqlConnection db = Open();
+        using SqlConnection db = await OpenAsync();
 
         string? userId = await db.QuerySingleOrDefaultAsync<string?>(
             "SELECT Id FROM Users WHERE PhoneNumber = @PhoneNumber",
@@ -308,10 +308,10 @@ public class DbService
         return userId;
     }
 
-    private SqlConnection Open()
+    private async Task<SqlConnection> OpenAsync()
     {
         SqlConnection conn = new(_connectionString);
-        conn.Open();
+        await conn.OpenAsync();
         return conn;
     }
 }
