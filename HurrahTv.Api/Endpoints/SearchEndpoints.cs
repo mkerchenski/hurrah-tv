@@ -22,17 +22,21 @@ public static class SearchEndpoints
             return Results.Ok(results);
         }).RequireAuthorization();
 
-        // trending this week, filtered to user's services, genres, and dismissals
+        // popular on user's services, interleaved per provider
         group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
             string userId = user.GetUserId();
+            string resolvedType = mediaType ?? MediaTypes.Tv;
+            if (!MediaTypes.IsValid(resolvedType))
+                return Results.BadRequest("mediaType must be 'movie' or 'tv'");
+
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
-            List<SearchResult> results = await tmdb.TrendingAsync(mediaType ?? MediaTypes.All, "week");
+            List<SearchResult> results = await tmdb.PopularOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
             results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
             results = ApplyPreferenceFilters(results, prefs);
 
-            return Results.Ok(results);
+            return Results.Ok(results.Take(20).ToList());
         }).RequireAuthorization();
 
         group.MapGet("/new", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
@@ -45,6 +49,7 @@ public static class SearchEndpoints
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
             List<SearchResult> results = await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
+            results = results.Take(20).ToList();
             results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
             results = ApplyPreferenceFilters(results, prefs);
 

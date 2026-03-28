@@ -62,27 +62,64 @@ public class TmdbService
     }
 
     private const int NewContentDaysBack = 60;
+    private const int ResultsPerProvider = 5;
 
+    // popular content on user's services (no date filter — best for "trending")
+    public async Task<List<SearchResult>> PopularOnServicesAsync(List<int> providerIds, string mediaType = "tv",
+        List<int>? genreIds = null) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false);
+
+    // recently released content on user's services (date-filtered — "new this season")
     public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null, int page = 1)
+        List<int>? genreIds = null) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true);
+
+    private async Task<List<SearchResult>> InterleaveByProviderAsync(List<int> providerIds, string mediaType,
+        List<int>? genreIds, bool recentOnly)
     {
         if (providerIds.Count == 0) return [];
 
-        string providers = string.Join("|", providerIds);
+        Task<List<SearchResult>>[] tasks = providerIds
+            .Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly))
+            .ToArray();
+        await Task.WhenAll(tasks);
+
+        List<SearchResult> interleaved = [];
+        HashSet<int> seen = [];
+        for (int i = 0; i < ResultsPerProvider; i++)
+        {
+            foreach (Task<List<SearchResult>> task in tasks)
+            {
+                if (i < task.Result.Count && seen.Add(task.Result[i].TmdbId))
+                    interleaved.Add(task.Result[i]);
+            }
+        }
+
+        return interleaved;
+    }
+
+    private async Task<List<SearchResult>> DiscoverForProviderAsync(int providerId, string mediaType,
+        List<int>? genreIds, bool recentOnly)
+    {
         string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
-        string dateFrom = DateTime.UtcNow.AddDays(-NewContentDaysBack).ToString("yyyy-MM-dd");
-        string dateTo = DateTime.UtcNow.ToString("yyyy-MM-dd");
-        string cacheKey = $"new-on-services:{providers}:{mediaType}:{genres}:{page}:{dateFrom}";
+        string dateSuffix = recentOnly ? $":{DateTime.UtcNow.AddDays(-NewContentDaysBack):yyyy-MM-dd}" : ":all";
+        string cacheKey = $"discover-provider:{providerId}:{mediaType}:{genres}{dateSuffix}";
 
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
         string url = $"discover/{mediaType}?api_key={_apiKey}" +
-                     $"&with_watch_providers={providers}" +
-                     $"&with_watch_monetization_types=flatrate" +
-                     $"&watch_region=US&sort_by=popularity.desc&language=en-US&page={page}" +
-                     $"&{dateParam}.gte={dateFrom}&{dateParam}.lte={dateTo}";
+                     $"&with_watch_providers={providerId}" +
+                     $"&with_watch_monetization_types=flatrate|ads" +
+                     $"&watch_region=US&sort_by=popularity.desc&language=en-US";
+
+        if (recentOnly)
+        {
+            string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
+            string dateFrom = DateTime.UtcNow.AddDays(-NewContentDaysBack).ToString("yyyy-MM-dd");
+            string dateTo = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            url += $"&{dateParam}.gte={dateFrom}&{dateParam}.lte={dateTo}";
+        }
 
         if (!string.IsNullOrEmpty(genres))
             url += $"&with_genres={genres}";
@@ -114,7 +151,7 @@ public class TmdbService
         List<SearchResult> filtered = [];
         foreach ((SearchResult? result, List<AvailableService>? providers) in enriched)
         {
-            List<AvailableService> matching = [.. providers.Where(p => p.Type == ProviderType.Flatrate && userProviders.Contains(p.ProviderId))];
+            List<AvailableService> matching = [.. providers.Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && userProviders.Contains(p.ProviderId))];
 
             if (matching.Count > 0)
             {

@@ -58,7 +58,7 @@ All endpoints are Minimal API, organized by feature in `Endpoints/` directory:
 - `TmdbService.cs` handles all TMDb API calls with `IMemoryCache`
 - Cache durations: search 30min, trending 1hr, providers 12hr, details 6hr
 - API key stays server-side — WASM client never touches TMDb directly
-- Provider IDs: Netflix=8, Prime=9, Hulu=15, Disney+=337, Paramount+=531, Peacock=386, Max=1899, Apple TV+=350
+- Provider IDs: Netflix=8, Prime=9, Hulu=15, Disney+=337, Paramount+=2303, Peacock=386, Max=1899, Apple TV+=350
 
 ### Data Model
 SQL Server via Dapper. Tables:

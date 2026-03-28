@@ -14,7 +14,7 @@ public class StreamingService
         new() { TmdbProviderId = 9, Name = "Amazon Prime Video", Color = "#00A8E1" },
         new() { TmdbProviderId = 15, Name = "Hulu", Color = "#1CE783" },
         new() { TmdbProviderId = 337, Name = "Disney+", Color = "#113CCF" },
-        new() { TmdbProviderId = 531, Name = "Paramount+", Color = "#0064FF" },
+        new() { TmdbProviderId = 2303, Name = "Paramount+", Color = "#0064FF" },
         new() { TmdbProviderId = 386, Name = "Peacock", Color = "#000000" },
         new() { TmdbProviderId = 1899, Name = "Max", Color = "#002BE7" },
         new() { TmdbProviderId = 350, Name = "Apple TV+", Color = "#555555" },

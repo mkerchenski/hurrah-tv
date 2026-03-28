@@ -20,7 +20,7 @@ public static class DetailsEndpoints
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             HashSet<int> userProviders = [.. providerIds];
-            details.AvailableOn = [.. details.AvailableOn.Where(s => s.Type == ProviderType.Flatrate && userProviders.Contains(s.ProviderId))];
+            details.AvailableOn = [.. details.AvailableOn.Where(s => (s.Type is ProviderType.Flatrate or ProviderType.Ads) && userProviders.Contains(s.ProviderId))];
 
             return Results.Ok(details);
         }).RequireAuthorization();

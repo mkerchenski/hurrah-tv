@@ -64,6 +64,9 @@ public class DbService(IConfiguration config)
                 PRIMARY KEY (UserId, GenreId)
             );
 
+            -- migrate old Paramount+ provider ID (531 → 2303)
+            UPDATE UserServices SET ProviderId = 2303 WHERE ProviderId = 531;
+
             IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserDismissals')
             CREATE TABLE UserDismissals (
                 UserId NVARCHAR(50) NOT NULL,
