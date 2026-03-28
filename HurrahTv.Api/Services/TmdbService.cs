@@ -36,7 +36,7 @@ public class TmdbService
         if (response == null) return [];
 
         List<SearchResult> results = [.. response.Results
-            .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
+            .Where(r => r.MediaType is MediaTypes.Movie or MediaTypes.Tv)
             .Select(MapToSearchResult)];
 
         _cache.Set(cacheKey, results, TimeSpan.FromMinutes(30));
@@ -54,7 +54,7 @@ public class TmdbService
         if (response == null) return [];
 
         List<SearchResult> results = [.. response.Results
-            .Where(r => r.MediaType is MediaType.Movie or MediaType.Tv)
+            .Where(r => r.MediaType is MediaTypes.Movie or MediaTypes.Tv)
             .Select(MapToSearchResult)];
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
@@ -77,7 +77,7 @@ public class TmdbService
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        string dateParam = mediaType == MediaType.Tv ? "first_air_date" : "primary_release_date";
+        string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
         string url = $"discover/{mediaType}?api_key={_apiKey}" +
                      $"&with_watch_providers={providers}" +
                      $"&with_watch_monetization_types=flatrate" +

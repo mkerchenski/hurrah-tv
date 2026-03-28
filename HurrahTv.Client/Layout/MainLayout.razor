@@ -87,7 +87,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_envPrefix != null)
+        if (firstRender && _envPrefix != null)
             await JS.InvokeVoidAsync("eval", $"if(!document.title.startsWith('{_envPrefix}')) document.title='{_envPrefix}'+document.title");
     }
 

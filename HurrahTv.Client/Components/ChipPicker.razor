@@ -1,5 +1,5 @@
 <div class="flex flex-wrap @GapClass">
-    @foreach (var item in Items)
+    @foreach (ChipItem item in Items)
     {
         bool isSelected = SelectedIds.Contains(item.Id);
         <button class="@($"flex items-center gap-1.5 {SizeClass} rounded-full border text-sm transition-all {(isSelected ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500")}")"
@@ -28,7 +28,6 @@
         else
             updated.Add(id);
 
-        SelectedIds = updated;
         await SelectedIdsChanged.InvokeAsync(updated);
     }
 

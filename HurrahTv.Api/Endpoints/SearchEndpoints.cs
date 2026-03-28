@@ -28,7 +28,7 @@ public static class SearchEndpoints
             string userId = user.GetUserId();
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
-            List<SearchResult> results = await tmdb.TrendingAsync(mediaType ?? MediaType.All, "week");
+            List<SearchResult> results = await tmdb.TrendingAsync(mediaType ?? MediaTypes.All, "week");
             results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
             results = ApplyPreferenceFilters(results, prefs);
 
@@ -38,8 +38,8 @@ public static class SearchEndpoints
         group.MapGet("/new", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
             string userId = user.GetUserId();
-            string resolvedType = mediaType ?? MediaType.Tv;
-            if (!MediaType.IsValid(resolvedType))
+            string resolvedType = mediaType ?? MediaTypes.Tv;
+            if (!MediaTypes.IsValid(resolvedType))
                 return Results.BadRequest("mediaType must be 'movie' or 'tv'");
 
             DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);

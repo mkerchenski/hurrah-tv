@@ -144,32 +144,35 @@ public class DbService(IConfiguration config)
     public async Task<bool> ReorderAsync(int id, int newPosition, string userId)
     {
         using SqlConnection db = await OpenAsync();
+        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+
         QueueItem? item = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
-            new { Id = id, UserId = userId });
+            new { Id = id, UserId = userId }, tx);
 
-        if (item == null) return false;
+        if (item == null) { await tx.RollbackAsync(); return false; }
 
         int oldPosition = item.Position;
-        if (newPosition == oldPosition) return true;
+        if (newPosition == oldPosition) { await tx.CommitAsync(); return true; }
 
         if (newPosition < oldPosition)
         {
             await db.ExecuteAsync(
                 "UPDATE QueueItems SET Position = Position + 1 WHERE UserId = @UserId AND Position >= @New AND Position < @Old",
-                new { UserId = userId, New = newPosition, Old = oldPosition });
+                new { UserId = userId, New = newPosition, Old = oldPosition }, tx);
         }
         else
         {
             await db.ExecuteAsync(
                 "UPDATE QueueItems SET Position = Position - 1 WHERE UserId = @UserId AND Position > @Old AND Position <= @New",
-                new { UserId = userId, Old = oldPosition, New = newPosition });
+                new { UserId = userId, Old = oldPosition, New = newPosition }, tx);
         }
 
         await db.ExecuteAsync(
             "UPDATE QueueItems SET Position = @Position WHERE Id = @Id",
-            new { Position = newPosition, Id = id });
+            new { Position = newPosition, Id = id }, tx);
 
+        await tx.CommitAsync();
         return true;
     }
 
@@ -198,14 +201,15 @@ public class DbService(IConfiguration config)
     public async Task SetUserServicesAsync(List<int> providerIds, string userId)
     {
         using SqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId });
-
+        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId }, tx);
         foreach (int pid in providerIds)
         {
-            await db.ExecuteAsync(
-                "INSERT INTO UserServices (UserId, ProviderId) VALUES (@UserId, @ProviderId)",
-                new { UserId = userId, ProviderId = pid });
+            await db.ExecuteAsync("INSERT INTO UserServices (UserId, ProviderId) VALUES (@UserId, @ProviderId)",
+                new { UserId = userId, ProviderId = pid }, tx);
         }
+
+        await tx.CommitAsync();
     }
 
     // user genres
@@ -221,14 +225,15 @@ public class DbService(IConfiguration config)
     public async Task SetUserGenresAsync(List<int> genreIds, string userId)
     {
         using SqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("DELETE FROM UserGenres WHERE UserId = @UserId", new { UserId = userId });
-
+        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        await db.ExecuteAsync("DELETE FROM UserGenres WHERE UserId = @UserId", new { UserId = userId }, tx);
         foreach (int gid in genreIds)
         {
-            await db.ExecuteAsync(
-                "INSERT INTO UserGenres (UserId, GenreId) VALUES (@UserId, @GenreId)",
-                new { UserId = userId, GenreId = gid });
+            await db.ExecuteAsync("INSERT INTO UserGenres (UserId, GenreId) VALUES (@UserId, @GenreId)",
+                new { UserId = userId, GenreId = gid }, tx);
         }
+
+        await tx.CommitAsync();
     }
 
     // dismissals

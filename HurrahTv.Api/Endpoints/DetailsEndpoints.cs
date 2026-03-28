@@ -11,7 +11,7 @@ public static class DetailsEndpoints
         app.MapGet("/api/details/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
             ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
-            if (!MediaType.IsValid(mediaType))
+            if (!MediaTypes.IsValid(mediaType))
                 return Results.BadRequest("mediaType must be 'movie' or 'tv'");
 
             ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, mediaType);
@@ -27,11 +27,11 @@ public static class DetailsEndpoints
 
         app.MapGet("/api/providers/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId, TmdbService tmdb) =>
         {
-            if (!MediaType.IsValid(mediaType))
+            if (!MediaTypes.IsValid(mediaType))
                 return Results.BadRequest("mediaType must be 'movie' or 'tv'");
 
             List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, mediaType);
             return Results.Ok(providers);
-        });
+        }).RequireAuthorization();
     }
 }

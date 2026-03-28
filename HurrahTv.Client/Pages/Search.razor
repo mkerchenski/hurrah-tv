@@ -41,7 +41,7 @@
     private string _activeTab = "all";
     private List<SearchResult> _results = [];
     private bool _loading;
-    private System.Timers.Timer? _debounce;
+    private CancellationTokenSource? _cts;
     private string _emptyMessage = "Start typing to search";
 
     private List<SearchResult> _filteredResults => _activeTab == "all"
@@ -50,37 +50,40 @@
 
     private void HandleKeyUp(KeyboardEventArgs e)
     {
-        _debounce?.Stop();
-        _debounce?.Dispose();
+        _cts?.Cancel();
+        _cts?.Dispose();
 
         if (string.IsNullOrWhiteSpace(_query))
         {
             _results = [];
             _emptyMessage = "Start typing to search";
-            StateHasChanged();
             return;
         }
 
-        _debounce = new System.Timers.Timer(400);
-        _debounce.Elapsed += async (_, _) =>
-        {
-            _debounce?.Stop();
-            await InvokeAsync(DoSearch);
-        };
-        _debounce.Start();
+        _cts = new CancellationTokenSource();
+        CancellationToken token = _cts.Token;
+        _ = DebounceSearchAsync(token);
     }
 
-    private async Task DoSearch()
+    private async Task DebounceSearchAsync(CancellationToken token)
     {
-        if (string.IsNullOrWhiteSpace(_query)) return;
+        try
+        {
+            await Task.Delay(400, token);
+            await InvokeAsync(async () =>
+            {
+                if (token.IsCancellationRequested || string.IsNullOrWhiteSpace(_query)) return;
 
-        _loading = true;
-        _emptyMessage = "No results found";
-        StateHasChanged();
+                _loading = true;
+                _emptyMessage = "No results found";
+                StateHasChanged();
 
-        _results = await Api.SearchAsync(_query);
-        _loading = false;
-        StateHasChanged();
+                _results = await Api.SearchAsync(_query);
+                _loading = false;
+                StateHasChanged();
+            });
+        }
+        catch (TaskCanceledException) { }
     }
 
     private void FilterByTab(string tab)
@@ -90,6 +93,7 @@
 
     private void ClearSearch()
     {
+        _cts?.Cancel();
         _query = "";
         _results = [];
         _emptyMessage = "Start typing to search";
@@ -97,6 +101,7 @@
 
     public void Dispose()
     {
-        _debounce?.Dispose();
+        _cts?.Cancel();
+        _cts?.Dispose();
     }
 }

@@ -23,7 +23,7 @@ public class SearchResult
     public List<int> GenreIds { get; set; } = [];
     public List<AvailableService> AvailableOn { get; set; } = [];
 
-    public string DisplayDate => MediaType == HurrahTv.Shared.Models.MediaType.Tv ? FirstAirDate ?? "" : ReleaseDate ?? "";
+    public string DisplayDate => MediaType == MediaTypes.Tv ? FirstAirDate ?? "" : ReleaseDate ?? "";
     public string Year => DisplayDate.Length >= 4 ? DisplayDate[..4] : "";
 
     public string PosterUrl(string size = "w342") => TmdbImage.Url(PosterPath, size);

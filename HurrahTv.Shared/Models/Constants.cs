@@ -1,6 +1,6 @@
 namespace HurrahTv.Shared.Models;
 
-public static class MediaType
+public static class MediaTypes
 {
     public const string Movie = "movie";
     public const string Tv = "tv";

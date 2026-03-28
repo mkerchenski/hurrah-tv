@@ -1,4 +1,4 @@
-<ChipPicker Items="_items" @bind-SelectedIds="SelectedIds" @bind-SelectedIds:after="NotifyChanged"
+<ChipPicker Items="_items" SelectedIds="SelectedIds" SelectedIdsChanged="SelectedIdsChanged"
             SizeClass="px-4 py-2" GapClass="gap-3" />
 
 @code {
@@ -7,6 +7,4 @@
 
     private static readonly List<ChipPicker.ChipItem> _items =
         StreamingService.All.Select(s => new ChipPicker.ChipItem(s.TmdbProviderId, s.Name)).ToList();
-
-    private async Task NotifyChanged() => await SelectedIdsChanged.InvokeAsync(SelectedIds);
 }

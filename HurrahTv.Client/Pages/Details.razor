@@ -190,7 +190,7 @@ else
                             <div class="text-xs text-gray-500">@season.EpisodeCount episodes</div>
                             @if (!string.IsNullOrEmpty(season.AirDate))
                             {
-                                <div class="text-xs text-gray-600">@season.AirDate[..4]</div>
+                                <div class="text-xs text-gray-600">@(season.AirDate!.Length >= 4 ? season.AirDate[..4] : season.AirDate)</div>
                             }
                         </div>
                     }
@@ -208,9 +208,16 @@ else
     private bool _loading = true;
     private bool _addedToQueue;
     private bool _dismissed;
+    private int _lastTmdbId;
+    private string _lastMediaType = "";
 
     protected override async Task OnParametersSetAsync()
     {
+        if (_lastTmdbId == TmdbId && _lastMediaType == MediaType) return;
+        _lastTmdbId = TmdbId;
+        _lastMediaType = MediaType;
+        _addedToQueue = false;
+        _dismissed = false;
         _loading = true;
         _details = await Api.GetDetailsAsync(TmdbId, MediaType);
         _loading = false;

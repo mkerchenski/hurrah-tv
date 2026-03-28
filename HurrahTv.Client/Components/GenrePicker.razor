@@ -1,4 +1,4 @@
-<ChipPicker Items="_items" @bind-SelectedIds="SelectedIds" @bind-SelectedIds:after="NotifyChanged" />
+<ChipPicker Items="_items" SelectedIds="SelectedIds" SelectedIdsChanged="SelectedIdsChanged" />
 
 @code {
     [Parameter] public List<int> SelectedIds { get; set; } = [];
@@ -6,6 +6,4 @@
 
     private static readonly List<ChipPicker.ChipItem> _items =
         Genre.All.Select(g => new ChipPicker.ChipItem(g.TmdbId, g.Name)).ToList();
-
-    private async Task NotifyChanged() => await SelectedIdsChanged.InvokeAsync(SelectedIds);
 }

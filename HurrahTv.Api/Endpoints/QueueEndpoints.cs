@@ -19,6 +19,9 @@ public static class QueueEndpoints
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>
         {
+            if (string.IsNullOrWhiteSpace(item.Title) || !MediaTypes.IsValid(item.MediaType) || item.TmdbId <= 0)
+                return Results.BadRequest("Invalid queue item");
+
             string userId = user.GetUserId();
             QueueItem? added = await db.AddToQueueAsync(item, userId);
             return added != null ? Results.Created($"/api/queue/{added.Id}", added) : Results.Conflict("Already in queue");

@@ -14,7 +14,7 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 
 | Project | Purpose | Port |
 |---------|---------|------|
-| **HurrahTv.Api** | Minimal API — TMDb proxy, SQLite database, auth | https://localhost:7201 |
+| **HurrahTv.Api** | Minimal API — TMDb proxy, SQL Server database, auth | https://localhost:7201 |
 | **HurrahTv.Client** | Blazor WASM — UI, runs in browser | https://localhost:7267 |
 | **HurrahTv.Shared** | DTOs shared between API and Client | — |
 
@@ -22,7 +22,7 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 
 - .NET 10, Blazor WebAssembly (standalone)
 - Minimal API (not controllers)
-- Dapper + SQLite (v1 — will migrate to SQL Server/Postgres later)
+- Dapper + SQL Server (migrated from SQLite)
 - Tailwind CSS via CDN (v1 — will switch to CLI build for production)
 - TMDb API for catalog data (watch providers sourced from JustWatch)
 - No Hurrah.Core dependency — this is a standalone product
@@ -61,7 +61,7 @@ All endpoints are Minimal API, organized by feature in `Endpoints/` directory:
 - Provider IDs: Netflix=8, Prime=9, Hulu=15, Disney+=337, Paramount+=531, Peacock=386, Max=1899, Apple TV+=350
 
 ### Data Model
-SQLite via Dapper. Two tables:
+SQL Server via Dapper. Tables:
 - `QueueItems` — UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson
 - `UserServices` — UserId, ProviderId (composite PK)
 
