@@ -31,14 +31,11 @@ public class ApiClient
     public async Task<List<SearchResult>> SearchAsync(string query, int page = 1) =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search?q={Uri.EscapeDataString(query)}&page={page}") ?? [];
 
-    public async Task<List<SearchResult>> TrendingAsync(string mediaType = "all") =>
-        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/trending?mediaType={mediaType}") ?? [];
-
     public async Task<List<SearchResult>> ForYouAsync() =>
         await _http.GetFromJsonAsync<List<SearchResult>>("api/search/for-you") ?? [];
 
-    public async Task<List<SearchResult>> DiscoverByProviderAsync(int providerId, string mediaType = "tv") =>
-        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/provider/{providerId}?mediaType={mediaType}") ?? [];
+    public async Task<List<SearchResult>> NewOnServicesAsync() =>
+        await _http.GetFromJsonAsync<List<SearchResult>>("api/search/new") ?? [];
 
     // details
     public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType) =>

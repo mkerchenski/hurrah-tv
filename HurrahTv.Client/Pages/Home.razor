@@ -29,12 +29,17 @@ else if (!_onboardingComplete)
 else
 {
     <!-- content -->
-    <div class="fade-in">
+    <div class="fade-in space-y-8 md:space-y-10">
         <section>
             <div class="flex items-center justify-between mb-3 md:mb-4">
-                <h2 class="text-lg md:text-xl font-bold">Popular on Your Services</h2>
+                <h2 class="text-lg md:text-xl font-bold">New on Your Services</h2>
                 <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
             </div>
+            <PosterGrid Results="_newReleases" Loading="_loadingNew" EmptyMessage="No new releases found" />
+        </section>
+
+        <section>
+            <h2 class="text-lg md:text-xl font-bold mb-3 md:mb-4">Trending This Week</h2>
             <PosterGrid Results="_trending" Loading="_loadingTrending" EmptyMessage="Could not load trending content" />
         </section>
     </div>
@@ -45,7 +50,9 @@ else
     private List<int> _pendingServices = []; // separate list for onboarding picker
     private bool _servicesLoaded;
     private bool _onboardingComplete;
+    private List<SearchResult> _newReleases = [];
     private List<SearchResult> _trending = [];
+    private bool _loadingNew = true;
     private bool _loadingTrending = true;
 
     protected override async Task OnInitializedAsync()
@@ -68,9 +75,18 @@ else
 
     private async Task LoadContent()
     {
+        _loadingNew = true;
         _loadingTrending = true;
         StateHasChanged();
-        _trending = await Api.ForYouAsync();
+
+        // load both sections in parallel
+        Task<List<SearchResult>> newTask = Api.NewOnServicesAsync();
+        Task<List<SearchResult>> trendingTask = Api.ForYouAsync();
+        await Task.WhenAll(newTask, trendingTask);
+
+        _newReleases = newTask.Result;
+        _loadingNew = false;
+        _trending = trendingTask.Result;
         _loadingTrending = false;
     }
 }

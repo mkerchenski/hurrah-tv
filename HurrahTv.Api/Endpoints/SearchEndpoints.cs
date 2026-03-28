@@ -22,27 +22,27 @@ public static class SearchEndpoints
             return Results.Ok(results);
         }).RequireAuthorization();
 
-        group.MapGet("/trending", async (string? mediaType, TmdbService tmdb) =>
-        {
-            var results = await tmdb.TrendingAsync(mediaType ?? "all");
-            return Results.Ok(results);
-        });
-
-        // trending filtered to user's subscribed services (flatrate only)
+        // what's trending this week, filtered to user's services
         group.MapGet("/for-you", async (ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
             string userId = user.FindFirstValue("sub")!;
             List<int> providerIds = await db.GetUserServicesAsync(userId);
-            var results = await tmdb.TrendingForServicesAsync(providerIds);
-            // enrich with provider badges filtered to user's services
+            // use TMDb's real trending endpoint (tracks actual search/watch activity)
+            List<SearchResult> results = await tmdb.TrendingAsync("all", "week");
+            // filter to only content on user's services (also enriches AvailableOn)
             results = await tmdb.FilterToUserServicesAsync(results, providerIds);
             return Results.Ok(results);
         }).RequireAuthorization();
 
-        group.MapGet("/provider/{providerId:int}", async (int providerId, string? mediaType, int? page, TmdbService tmdb) =>
+        // recently released content on user's services
+        group.MapGet("/new", async (ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
-            var results = await tmdb.DiscoverByProviderAsync(providerId, mediaType ?? "tv", page ?? 1);
+            string userId = user.FindFirstValue("sub")!;
+            List<int> providerIds = await db.GetUserServicesAsync(userId);
+            List<SearchResult> results = await tmdb.NewOnServicesAsync(providerIds);
+            results = await tmdb.FilterToUserServicesAsync(results, providerIds);
             return Results.Ok(results);
-        });
+        }).RequireAuthorization();
+
     }
 }

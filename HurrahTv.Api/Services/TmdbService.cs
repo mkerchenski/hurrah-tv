@@ -63,47 +63,47 @@ public class TmdbService
         return results;
     }
 
-    public async Task<List<SearchResult>> TrendingForServicesAsync(List<int> providerIds, string mediaType = "tv")
+    // discovers recently released content on user's services (TV + movies combined)
+    public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, int daysBack = 60)
     {
         if (providerIds.Count == 0) return [];
 
         string providers = string.Join("|", providerIds);
-        string cacheKey = $"trending-services:{providers}:{mediaType}";
+        string dateFrom = DateTime.UtcNow.AddDays(-daysBack).ToString("yyyy-MM-dd");
+        string dateTo = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        string cacheKey = $"new-on-services:{providers}:{dateFrom}";
+
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        string url = $"discover/{mediaType}?api_key={_apiKey}" +
-                     $"&with_watch_providers={providers}" +
-                     $"&with_watch_monetization_types=flatrate" +
-                     $"&watch_region=US&sort_by=popularity.desc&language=en-US";
-        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
-        if (response == null) return [];
+        // fetch new TV and new movies in parallel
+        string tvUrl = $"discover/tv?api_key={_apiKey}" +
+                       $"&with_watch_providers={providers}" +
+                       $"&with_watch_monetization_types=flatrate" +
+                       $"&watch_region=US&sort_by=popularity.desc&language=en-US" +
+                       $"&first_air_date.gte={dateFrom}&first_air_date.lte={dateTo}";
 
-        List<SearchResult> results = response.Results
-            .Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })
-            .ToList();
+        string movieUrl = $"discover/movie?api_key={_apiKey}" +
+                          $"&with_watch_providers={providers}" +
+                          $"&with_watch_monetization_types=flatrate" +
+                          $"&watch_region=US&sort_by=popularity.desc&language=en-US" +
+                          $"&primary_release_date.gte={dateFrom}&primary_release_date.lte={dateTo}";
 
-        _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
-        return results;
-    }
+        Task<TmdbPagedResponse<TmdbMultiResult>?> tvTask = GetAsync<TmdbPagedResponse<TmdbMultiResult>>(tvUrl);
+        Task<TmdbPagedResponse<TmdbMultiResult>?> movieTask = GetAsync<TmdbPagedResponse<TmdbMultiResult>>(movieUrl);
+        await Task.WhenAll(tvTask, movieTask);
 
-    public async Task<List<SearchResult>> DiscoverByProviderAsync(int providerId, string mediaType = "tv", int page = 1)
-    {
-        string cacheKey = $"discover:{providerId}:{mediaType}:{page}";
-        if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
-            return cached!;
+        List<SearchResult> results = [];
 
-        string url = $"discover/{mediaType}?api_key={_apiKey}&with_watch_providers={providerId}" +
-                     $"&with_watch_monetization_types=flatrate" +
-                     $"&watch_region=US&sort_by=popularity.desc&page={page}&language=en-US";
-        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
-        if (response == null) return [];
+        if (tvTask.Result != null)
+            results.AddRange(tvTask.Result.Results.Select(r => { r.MediaType = "tv"; return MapToSearchResult(r); }));
+        if (movieTask.Result != null)
+            results.AddRange(movieTask.Result.Results.Select(r => { r.MediaType = "movie"; return MapToSearchResult(r); }));
 
-        List<SearchResult> results = response.Results
-            .Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })
-            .ToList();
+        // sort combined results by popularity (vote count × average as proxy)
+        results = results.OrderByDescending(r => r.VoteAverage).ToList();
 
-        _cache.Set(cacheKey, results, TimeSpan.FromHours(1));
+        _cache.Set(cacheKey, results, TimeSpan.FromHours(2));
         return results;
     }
 
