@@ -9,6 +9,16 @@ public class ShowDetails : SearchResult
     public List<string> Genres { get; set; } = [];
     public List<SeasonInfo> Seasons { get; set; } = [];
     public string Status { get; set; } = ""; // "Returning Series", "Ended", "Released", etc.
+
+    // latest episode info (TV only)
+    public string? LastEpisodeAirDate { get; set; }
+    public string? LastEpisodeName { get; set; }
+    public int? LastEpisodeSeason { get; set; }
+    public int? LastEpisodeNumber { get; set; }
+    public string? NextEpisodeAirDate { get; set; }
+    public string? NextEpisodeName { get; set; }
+    public int? NextEpisodeSeason { get; set; }
+    public int? NextEpisodeNumber { get; set; }
 }
 
 public class SeasonInfo

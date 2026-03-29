@@ -1,0 +1,104 @@
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<section class="mb-6 md:mb-8">
+    <div class="flex items-baseline justify-between mb-3">
+        <div>
+            <h3 class="text-sm md:text-base font-semibold text-white">@Title</h3>
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <p class="text-xs text-gray-500 mt-0.5">@Subtitle</p>
+            }
+        </div>
+        @if (SeeAllHref != null)
+        {
+            <a href="@SeeAllHref" class="text-accent text-xs hover:text-accent-light whitespace-nowrap ml-4">See all &rarr;</a>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <!-- shimmer loading: horizontal row of placeholder cards -->
+        <div class="flex gap-3 overflow-hidden">
+            @for (int i = 0; i < 6; i++)
+            {
+                <div class="flex-shrink-0 w-28 md:w-36">
+                    <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+                </div>
+            }
+        </div>
+    }
+    else if (_results.Count == 0)
+    {
+        <p class="text-gray-600 text-sm py-4">@EmptyMessage</p>
+    }
+    else
+    {
+        <div class="relative group/row">
+            <!-- left arrow -->
+            <button class="absolute left-0 top-1/2 -translate-y-1/2 z-10 bg-black/70 hover:bg-black/90 text-white
+                           rounded-full w-9 h-9 items-center justify-center transition-all
+                           hidden md:flex opacity-0 group-hover/row:opacity-100 -ml-1"
+                    @onclick="() => Scroll(-1)">
+                <span class="icon-[heroicons--chevron-left] w-5 h-5"></span>
+            </button>
+
+            <div @ref="_scrollContainer"
+                 class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
+                @foreach (SearchResult result in _results)
+                {
+                    <div class="flex-shrink-0 w-28 md:w-36 snap-start">
+                        <PosterCard Result="result" HasNewEpisode="NewEpisodeTmdbIds?.Contains(result.TmdbId) == true" />
+                    </div>
+                }
+            </div>
+
+            <!-- right arrow -->
+            <button class="absolute right-0 top-1/2 -translate-y-1/2 z-10 bg-black/70 hover:bg-black/90 text-white
+                           rounded-full w-9 h-9 items-center justify-center transition-all
+                           hidden md:flex opacity-0 group-hover/row:opacity-100 -mr-1"
+                    @onclick="() => Scroll(1)">
+                <span class="icon-[heroicons--chevron-right] w-5 h-5"></span>
+            </button>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? SeeAllHref { get; set; }
+    [Parameter] public string EmptyMessage { get; set; } = "Nothing here yet";
+
+    // data can be provided directly or fetched via a delegate
+    [Parameter] public List<SearchResult>? Results { get; set; }
+    [Parameter] public Func<Task<List<SearchResult>>>? LoadData { get; set; }
+    [Parameter] public HashSet<int>? NewEpisodeTmdbIds { get; set; }
+
+    private List<SearchResult> _results = [];
+    private bool _loading = true;
+    private ElementReference _scrollContainer;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Results != null)
+        {
+            _results = Results;
+            _loading = false;
+            return;
+        }
+
+        if (LoadData != null)
+        {
+            _loading = true;
+            StateHasChanged();
+            _results = await LoadData();
+            _loading = false;
+        }
+    }
+
+    private async Task Scroll(int direction)
+    {
+        await JS.InvokeVoidAsync("hurrahScrollRow", _scrollContainer, direction * 480);
+    }
+}

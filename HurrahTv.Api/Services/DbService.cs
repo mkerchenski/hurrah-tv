@@ -75,6 +75,25 @@ public class DbService(IConfiguration config)
                 DismissedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
                 PRIMARY KEY (UserId, TmdbId)
             );
+
+            -- watchlist evolution: add new columns to QueueItems
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'Rating')
+            ALTER TABLE QueueItems ADD Rating INT NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastSeasonWatched')
+            ALTER TABLE QueueItems ADD LastSeasonWatched INT NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastEpisodeWatched')
+            ALTER TABLE QueueItems ADD LastEpisodeWatched INT NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LatestEpisodeDate')
+            ALTER TABLE QueueItems ADD LatestEpisodeDate DATETIME2 NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'NextEpisodeDate')
+            ALTER TABLE QueueItems ADD NextEpisodeDate DATETIME2 NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastEpisodeCheckAt')
+            ALTER TABLE QueueItems ADD LastEpisodeCheckAt DATETIME2 NULL;
             """, transaction: tx);
 
         await tx.CommitAsync();
@@ -84,9 +103,20 @@ public class DbService(IConfiguration config)
     public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
         using SqlConnection db = await OpenAsync();
-        IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>(
-            "SELECT * FROM QueueItems WHERE UserId = @UserId ORDER BY Status, Position",
-            new { UserId = userId });
+        IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
+            SELECT * FROM QueueItems WHERE UserId = @UserId
+            ORDER BY
+                CASE Status
+                    WHEN 1 THEN 0  -- Watching first
+                    WHEN 0 THEN 1  -- WantToWatch second
+                    WHEN 3 THEN 2  -- Liked third
+                    WHEN 2 THEN 3  -- Finished fourth
+                    WHEN 4 THEN 4  -- NotForMe last
+                END,
+                CASE WHEN LatestEpisodeDate >= DATEADD(DAY, -7, GETUTCDATE()) THEN 0 ELSE 1 END,
+                LatestEpisodeDate DESC,
+                Position
+            """, new { UserId = userId });
         return [.. items];
     }
 
@@ -180,6 +210,89 @@ public class DbService(IConfiguration config)
 
         await tx.CommitAsync();
         return true;
+    }
+
+    public async Task<bool> UpdateRatingAsync(int id, int? rating, string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+        int affected = await db.ExecuteAsync(
+            "UPDATE QueueItems SET Rating = @Rating WHERE Id = @Id AND UserId = @UserId",
+            new { Rating = rating, Id = id, UserId = userId });
+        return affected > 0;
+    }
+
+    public async Task<bool> UpdateProgressAsync(int id, int? season, int? episode, string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+        int affected = await db.ExecuteAsync(
+            "UPDATE QueueItems SET LastSeasonWatched = @Season, LastEpisodeWatched = @Episode WHERE Id = @Id AND UserId = @UserId",
+            new { Season = season, Episode = episode, Id = id, UserId = userId });
+        return affected > 0;
+    }
+
+    public async Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+
+        // check if already in list
+        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+
+        if (existing != null)
+        {
+            // update status to Finished if currently WantToWatch or Watching
+            if (existing.Status is QueueStatus.WantToWatch or QueueStatus.Watching)
+            {
+                await db.ExecuteAsync(
+                    "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
+                    new { Status = (int)QueueStatus.Finished, Id = existing.Id });
+                existing.Status = QueueStatus.Finished;
+            }
+            return existing;
+        }
+
+        // add as Finished
+        int maxPos = await db.QuerySingleOrDefaultAsync<int>(
+            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
+            new { UserId = userId });
+
+        int id = await db.QuerySingleAsync<int>("""
+            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
+            OUTPUT INSERTED.Id
+            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            """, new
+        {
+            UserId = userId,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Position = maxPos + 1,
+            Status = (int)QueueStatus.Finished,
+            AvailableOnJson = availableOnJson,
+            AddedAt = DateTime.UtcNow
+        });
+
+        return new QueueItem
+        {
+            Id = id,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Position = maxPos + 1,
+            Status = QueueStatus.Finished
+        };
+    }
+
+    public async Task UpdateEpisodeDatesAsync(int id, DateTime? latestEpisodeDate, DateTime? nextEpisodeDate)
+    {
+        using SqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            UPDATE QueueItems SET LatestEpisodeDate = @Latest, NextEpisodeDate = @Next, LastEpisodeCheckAt = @CheckedAt
+            WHERE Id = @Id
+            """, new { Latest = latestEpisodeDate, Next = nextEpisodeDate, CheckedAt = DateTime.UtcNow, Id = id });
     }
 
     // user preferences (loads services, genres, and dismissals in parallel)

@@ -86,8 +86,47 @@ else
 @{
     void RenderMetadata()
     {
+        <!-- new/upcoming episode banner -->
+        @if (_details!.MediaType == "tv")
+        {
+            @if (_details.NextEpisodeAirDate != null)
+            {
+                <div class="flex items-center gap-2 bg-blue-600/20 border border-blue-600/40 rounded-lg px-3 py-2 mb-3 md:mb-4">
+                    <span class="icon-[heroicons--clock] w-5 h-5 text-blue-400"></span>
+                    <div class="text-sm">
+                        <span class="text-blue-300 font-medium">Next episode</span>
+                        <span class="text-gray-300">
+                            S@(_details.NextEpisodeSeason)E@(_details.NextEpisodeNumber)
+                            @if (!string.IsNullOrEmpty(_details.NextEpisodeName))
+                            {
+                                <span>&ldquo;@_details.NextEpisodeName&rdquo;</span>
+                            }
+                            &mdash; @FormatAirDate(_details.NextEpisodeAirDate)
+                        </span>
+                    </div>
+                </div>
+            }
+            else if (_details.LastEpisodeAirDate != null && IsRecent(_details.LastEpisodeAirDate))
+            {
+                <div class="flex items-center gap-2 bg-accent/20 border border-accent/40 rounded-lg px-3 py-2 mb-3 md:mb-4">
+                    <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent-light"></span>
+                    <div class="text-sm">
+                        <span class="text-accent-light font-medium">New episode</span>
+                        <span class="text-gray-300">
+                            S@(_details.LastEpisodeSeason)E@(_details.LastEpisodeNumber)
+                            @if (!string.IsNullOrEmpty(_details.LastEpisodeName))
+                            {
+                                <span>&ldquo;@_details.LastEpisodeName&rdquo;</span>
+                            }
+                            &mdash; aired @FormatAirDate(_details.LastEpisodeAirDate)
+                        </span>
+                    </div>
+                </div>
+            }
+        }
+
         <div class="flex flex-wrap items-center gap-2 md:gap-3 text-sm text-gray-400 mb-3 md:mb-4">
-            @if (!string.IsNullOrEmpty(_details!.Year))
+            @if (!string.IsNullOrEmpty(_details.Year))
             {
                 <span>@_details.Year</span>
             }
@@ -109,6 +148,14 @@ else
             @if (!string.IsNullOrEmpty(_details.Status))
             {
                 <span class="px-2 py-0.5 bg-surface-100 rounded text-xs">@_details.Status</span>
+            }
+            @if (_details.MediaType == "tv" && _details.LastEpisodeAirDate != null && !IsRecent(_details.LastEpisodeAirDate))
+            {
+                <span>Last aired @FormatAirDate(_details.LastEpisodeAirDate)</span>
+            }
+            @if (_details.MediaType == "movie" && !string.IsNullOrEmpty(_details.ReleaseDate) && IsRecent(_details.ReleaseDate))
+            {
+                <span class="text-accent-light font-medium">New release</span>
             }
         </div>
 
@@ -146,10 +193,10 @@ else
         <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-4 md:mb-6">@_details.Overview</p>
 
         <!-- actions -->
-        <div class="flex gap-3">
+        <div class="flex flex-wrap gap-3">
             <button class="bg-accent hover:bg-accent-light text-white font-semibold px-5 md:px-6 py-2.5 rounded-lg transition-colors flex items-center gap-2 flex-1 md:flex-none justify-center"
-                    @onclick="AddToQueue">
-                @if (_addedToQueue)
+                    @onclick="AddToWatchlist">
+                @if (_addState == "added")
                 {
                     <span class="icon-[heroicons--check] w-5 h-5"></span>
                     <span>Added!</span>
@@ -157,7 +204,20 @@ else
                 else
                 {
                     <span class="icon-[heroicons--plus] w-5 h-5"></span>
-                    <span>Add to Queue</span>
+                    <span>Want to Watch</span>
+                }
+            </button>
+            <button class="bg-surface-50 hover:bg-blue-600/20 hover:border-blue-600 text-gray-400 hover:text-blue-400 border border-surface-200 px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
+                    @onclick="MarkAsSeen">
+                @if (_addState == "seen")
+                {
+                    <span class="icon-[heroicons--check] w-5 h-5"></span>
+                    <span>Marked!</span>
+                }
+                else
+                {
+                    <span class="icon-[heroicons--eye] w-5 h-5"></span>
+                    <span>I've Seen This</span>
                 }
             </button>
             @if (!_dismissed)
@@ -206,7 +266,7 @@ else
 
     private ShowDetails? _details;
     private bool _loading = true;
-    private bool _addedToQueue;
+    private string _addState = ""; // "", "added", "seen"
     private bool _dismissed;
     private int _lastTmdbId;
     private string _lastMediaType = "";
@@ -216,7 +276,7 @@ else
         if (_lastTmdbId == TmdbId && _lastMediaType == MediaType) return;
         _lastTmdbId = TmdbId;
         _lastMediaType = MediaType;
-        _addedToQueue = false;
+        _addState = "";
         _dismissed = false;
         _loading = true;
         _details = await Api.GetDetailsAsync(TmdbId, MediaType);
@@ -232,15 +292,53 @@ else
         _dismissed = true;
     }
 
-    private async Task AddToQueue()
+    private async Task AddToWatchlist()
     {
-        if (_details == null || _addedToQueue) return;
+        if (_details == null || _addState != "") return;
 
         QueueItem? added = await Api.AddToQueueAsync(_details.ToQueueItem());
         if (added != null)
         {
-            _addedToQueue = true;
+            _addState = "added";
             StateHasChanged();
         }
+    }
+
+    private async Task MarkAsSeen()
+    {
+        if (_details == null || _addState != "") return;
+
+        QueueItem? item = await Api.MarkAsSeenAsync(_details);
+        if (item != null)
+        {
+            _addState = "seen";
+            StateHasChanged();
+        }
+    }
+
+    private static bool IsRecent(string? dateStr)
+    {
+        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return false;
+        return (DateTime.UtcNow - date).TotalDays <= 30;
+    }
+
+    private static string FormatAirDate(string? dateStr)
+    {
+        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return "";
+
+        int daysAgo = (int)(DateTime.UtcNow - date).TotalDays;
+        if (daysAgo < 0)
+        {
+            int daysUntil = -daysAgo;
+            if (daysUntil == 0) return "today";
+            if (daysUntil == 1) return "tomorrow";
+            if (daysUntil <= 7) return $"in {daysUntil} days";
+            return date.ToString("MMM d, yyyy");
+        }
+        if (daysAgo == 0) return "today";
+        if (daysAgo == 1) return "yesterday";
+        if (daysAgo <= 7) return $"{daysAgo} days ago";
+        if (daysAgo <= 30) return $"{daysAgo / 7} weeks ago";
+        return date.ToString("MMM d, yyyy");
     }
 }

@@ -65,6 +65,15 @@ body {
     filter: brightness(1.2);
 }
 
+/* hide scrollbars for horizontal content rows */
+@utility scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+        display: none;
+    }
+}
+
 /* poster hover effects only on devices with hover capability */
 @media (hover: hover) {
     .poster-card:hover {

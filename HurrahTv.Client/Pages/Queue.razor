@@ -2,22 +2,21 @@
 @attribute [Authorize]
 @inject ApiClient Api
 
-<PageTitle>My Queue - Hurrah.tv</PageTitle>
+<PageTitle>My List - Hurrah.tv</PageTitle>
 
 <div class="flex items-center justify-between mb-4 md:mb-6">
-    <h1 class="text-xl md:text-2xl font-bold">My Queue</h1>
+    <h1 class="text-xl md:text-2xl font-bold">My List</h1>
 </div>
 
 @if (_items.Count > 0)
 {
     <!-- filter tabs (scrollable on mobile) -->
     <div class="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
-        @foreach (string tab in new[] { "all", "queued", "watching", "watched" })
+        @foreach ((string key, string label) in _tabs)
         {
-            string label = tab == "all" ? "All" : tab[..1].ToUpper() + tab[1..];
-            int count = tab == "all" ? _items.Count : _items.Count(i => i.Status.ToString().ToLower() == tab);
-            <button class="@($"px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(_activeTab == tab ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
-                    @onclick="() => _activeTab = tab">
+            int count = key == "all" ? _items.Count : _items.Count(i => StatusKey(i.Status) == key);
+            <button class="@($"px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(_activeTab == key ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
+                    @onclick="() => _activeTab = key">
                 @label (@count)
             </button>
         }
@@ -33,9 +32,9 @@
 else if (_items.Count == 0)
 {
     <div class="text-center py-16 md:py-20 fade-in">
-        <span class="icon-[heroicons--archive-box] w-14 h-14 md:w-16 md:h-16 mx-auto mb-4 text-gray-600"></span>
-        <p class="text-gray-400 text-lg mb-2">Your queue is empty</p>
-        <p class="text-gray-600 mb-4 text-sm md:text-base">Search for shows and movies to add them here.</p>
+        <span class="icon-[heroicons--film] w-14 h-14 md:w-16 md:h-16 mx-auto mb-4 text-gray-600"></span>
+        <p class="text-gray-400 text-lg mb-2">Your list is empty</p>
+        <p class="text-gray-600 mb-4 text-sm md:text-base">Browse content and add shows you want to watch.</p>
         <a href="/search" class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2.5 rounded-lg transition-colors inline-block">
             Browse Content
         </a>
@@ -48,7 +47,7 @@ else
         {
             <div class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
                 <!-- poster thumbnail -->
-                <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0">
+                <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0 relative">
                     @if (!string.IsNullOrEmpty(item.PosterUrl("w92")))
                     {
                         <img src="@item.PosterUrl("w92")" alt="@item.Title"
@@ -60,6 +59,20 @@ else
                             <span class="text-gray-600 text-xs">?</span>
                         </div>
                     }
+                    @if (item.HasNewEpisode)
+                    {
+                        <span class="absolute -top-1 -right-1 bg-accent rounded-full w-5 h-5 flex items-center justify-center shadow"
+                              title="New episode available">
+                            <span class="icon-[heroicons--sparkles] w-3 h-3 text-white"></span>
+                        </span>
+                    }
+                    else if (item.HasUpcomingEpisode)
+                    {
+                        <span class="absolute -top-1 -right-1 bg-blue-600 rounded-full w-5 h-5 flex items-center justify-center shadow"
+                              title="New episode coming soon">
+                            <span class="icon-[heroicons--clock] w-3 h-3 text-white"></span>
+                        </span>
+                    }
                 </a>
 
                 <!-- title & meta -->
@@ -68,8 +81,22 @@ else
                        class="font-semibold text-sm md:text-base text-white hover:text-accent transition-colors truncate block">
                         @item.Title
                     </a>
-                    <div class="text-xs text-gray-500 mt-0.5">
-                        @item.MediaType.ToUpper()
+                    <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
+                        <span>@item.MediaType.ToUpper()</span>
+                        @if (item.Rating.HasValue)
+                        {
+                            <span class="flex items-center gap-0.5">
+                                @for (int i = 1; i <= 5; i++)
+                                {
+                                    int star = i;
+                                    <span class="@(star <= item.Rating.Value ? "icon-[heroicons--star-20-solid] text-yellow-400" : "icon-[heroicons--star-20-solid] text-gray-700") w-3 h-3"></span>
+                                }
+                            </span>
+                        }
+                        @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue)
+                        {
+                            <span>S@(item.LastSeasonWatched)E@(item.LastEpisodeWatched)</span>
+                        }
                     </div>
                 </div>
 
@@ -77,14 +104,16 @@ else
                 <select class="bg-surface-200 text-gray-300 text-xs md:text-sm rounded-lg px-2 md:px-3 py-1.5 border-none focus:ring-1 focus:ring-accent"
                         value="@((int)item.Status)"
                         @onchange="e => UpdateStatus(item, e)">
-                    <option value="0">Queued</option>
+                    <option value="0">Want to Watch</option>
                     <option value="1">Watching</option>
-                    <option value="2">Watched</option>
+                    <option value="2">Finished</option>
+                    <option value="3">Liked</option>
+                    <option value="4">Not For Me</option>
                 </select>
 
                 <!-- remove -->
                 <button class="text-gray-600 hover:text-red-400 transition-colors p-1.5 md:opacity-0 md:group-hover:opacity-100"
-                        @onclick="() => Remove(item)" title="Remove from queue">
+                        @onclick="() => Remove(item)" title="Remove from list">
                     <span class="icon-[heroicons--trash] w-5 h-5"></span>
                 </button>
             </div>
@@ -97,9 +126,29 @@ else
     private bool _loading = true;
     private string _activeTab = "all";
 
+    private static readonly (string key, string label)[] _tabs =
+    [
+        ("all", "All"),
+        ("watching", "Watching"),
+        ("wanttowatch", "Want to Watch"),
+        ("liked", "Liked"),
+        ("finished", "Finished"),
+        ("notforme", "Not For Me")
+    ];
+
+    private static string StatusKey(QueueStatus status) => status switch
+    {
+        QueueStatus.WantToWatch => "wanttowatch",
+        QueueStatus.Watching => "watching",
+        QueueStatus.Finished => "finished",
+        QueueStatus.Liked => "liked",
+        QueueStatus.NotForMe => "notforme",
+        _ => "unknown"
+    };
+
     private IEnumerable<QueueItem> FilteredItems => _activeTab == "all"
         ? _items
-        : _items.Where(i => i.Status.ToString().ToLower() == _activeTab);
+        : _items.Where(i => StatusKey(i.Status) == _activeTab);
 
     protected override async Task OnInitializedAsync()
     {

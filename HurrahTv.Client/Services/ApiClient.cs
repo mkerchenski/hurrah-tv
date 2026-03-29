@@ -54,6 +54,27 @@ public class ApiClient(HttpClient http)
     public async Task UpdateStatusAsync(int id, QueueStatus status) =>
         await _http.PutAsJsonAsync($"api/queue/{id}/status", new { Status = status });
 
+    public async Task UpdateRatingAsync(int id, int? rating) =>
+        await _http.PutAsJsonAsync($"api/queue/{id}/rating", new { Rating = rating });
+
+    public async Task UpdateProgressAsync(int id, int? season, int? episode) =>
+        await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
+
+    public async Task<QueueItem?> MarkAsSeenAsync(SearchResult result)
+    {
+        HttpResponseMessage response = await _http.PostAsJsonAsync("api/queue/seen", new
+        {
+            result.TmdbId,
+            result.MediaType,
+            result.Title,
+            result.PosterPath,
+            AvailableOnJson = System.Text.Json.JsonSerializer.Serialize(result.AvailableOn.Select(s => s.ProviderId).ToList())
+        });
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<QueueItem>();
+        return null;
+    }
+
     // user services
     public async Task<List<int>> GetUserServicesAsync() =>
         await _http.GetFromJsonAsync<List<int>>("api/services") ?? [];

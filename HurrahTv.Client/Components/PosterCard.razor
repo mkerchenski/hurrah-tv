@@ -14,6 +14,15 @@
         </div>
     }
 
+    <!-- new episode indicator -->
+    @if (HasNewEpisode)
+    {
+        <div class="absolute top-1.5 left-1.5 z-10 bg-accent rounded-full w-6 h-6 flex items-center justify-center shadow-lg"
+             title="New episode available">
+            <span class="icon-[heroicons--sparkles] w-3.5 h-3.5 text-white"></span>
+        </div>
+    }
+
     <!-- network badges — always visible at bottom of poster -->
     @if (Result.AvailableOn.Count > 0)
     {
@@ -64,28 +73,48 @@
         }
     </div>
 
-    <!-- queue button (desktop hover) -->
-    <button class="absolute top-2 right-2 z-10 bg-black/60 hover:bg-accent text-white rounded-full w-8 h-8
-                   items-center justify-center opacity-0 group-hover:opacity-100 transition-all hidden md:flex"
-            @onclick="AddToQueue" @onclick:stopPropagation="true"
-            title="Add to queue">
-        <span class="icon-[heroicons--plus] w-4 h-4"></span>
-    </button>
-
-    @if (_addedToQueue)
+    <!-- action buttons (desktop hover) -->
+    @if (_actionState == ActionState.None)
+    {
+        <div class="absolute top-2 right-2 z-10 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all hidden md:flex">
+            <button class="bg-black/60 hover:bg-accent text-white rounded-full w-8 h-8
+                           flex items-center justify-center transition-colors"
+                    @onclick="AddToQueue" @onclick:stopPropagation="true"
+                    title="Want to watch">
+                <span class="icon-[heroicons--plus] w-4 h-4"></span>
+            </button>
+            <button class="bg-black/60 hover:bg-blue-600 text-white rounded-full w-8 h-8
+                           flex items-center justify-center transition-colors"
+                    @onclick="MarkSeen" @onclick:stopPropagation="true"
+                    title="I've seen this">
+                <span class="icon-[heroicons--eye] w-4 h-4"></span>
+            </button>
+        </div>
+    }
+    else if (_actionState == ActionState.Added)
     {
         <div class="absolute top-2 right-2 bg-green-600 text-white rounded-full w-8 h-8
                     flex items-center justify-center transition-all">
             <span class="icon-[heroicons--check] w-4 h-4"></span>
         </div>
     }
+    else if (_actionState == ActionState.Seen)
+    {
+        <div class="absolute top-2 right-2 bg-blue-600 text-white rounded-full w-8 h-8
+                    flex items-center justify-center transition-all">
+            <span class="icon-[heroicons--eye] w-4 h-4"></span>
+        </div>
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public SearchResult Result { get; set; } = null!;
+    [Parameter] public bool HasNewEpisode { get; set; }
     [Inject] NavigationManager Nav { get; set; } = null!;
 
-    private bool _addedToQueue;
+    private ActionState _actionState = ActionState.None;
+
+    private enum ActionState { None, Added, Seen }
 
     private void NavigateToDetails()
     {
@@ -97,10 +126,23 @@
         QueueItem? added = await Api.AddToQueueAsync(Result.ToQueueItem());
         if (added != null)
         {
-            _addedToQueue = true;
+            _actionState = ActionState.Added;
             StateHasChanged();
             await Task.Delay(1500);
-            _addedToQueue = false;
+            _actionState = ActionState.None;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MarkSeen()
+    {
+        QueueItem? item = await Api.MarkAsSeenAsync(Result);
+        if (item != null)
+        {
+            _actionState = ActionState.Seen;
+            StateHasChanged();
+            await Task.Delay(1500);
+            _actionState = ActionState.None;
             StateHasChanged();
         }
     }

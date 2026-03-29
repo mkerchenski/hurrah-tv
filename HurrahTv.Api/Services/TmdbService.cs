@@ -207,6 +207,24 @@ public class TmdbService
                     });
                 }
             }
+
+            // last aired episode
+            if (json.TryGetProperty("last_episode_to_air", out JsonElement lastEp) && lastEp.ValueKind != JsonValueKind.Null)
+            {
+                details.LastEpisodeAirDate = lastEp.TryGetProperty("air_date", out JsonElement laDate) ? laDate.GetString() : null;
+                details.LastEpisodeName = lastEp.TryGetProperty("name", out JsonElement laName) ? laName.GetString() : null;
+                details.LastEpisodeSeason = lastEp.TryGetProperty("season_number", out JsonElement laSeason) ? laSeason.GetInt32() : null;
+                details.LastEpisodeNumber = lastEp.TryGetProperty("episode_number", out JsonElement laEp) ? laEp.GetInt32() : null;
+            }
+
+            // next upcoming episode
+            if (json.TryGetProperty("next_episode_to_air", out JsonElement nextEp) && nextEp.ValueKind != JsonValueKind.Null)
+            {
+                details.NextEpisodeAirDate = nextEp.TryGetProperty("air_date", out JsonElement naDate) ? naDate.GetString() : null;
+                details.NextEpisodeName = nextEp.TryGetProperty("name", out JsonElement naName) ? naName.GetString() : null;
+                details.NextEpisodeSeason = nextEp.TryGetProperty("season_number", out JsonElement naSeason) ? naSeason.GetInt32() : null;
+                details.NextEpisodeNumber = nextEp.TryGetProperty("episode_number", out JsonElement naEp) ? naEp.GetInt32() : null;
+            }
         }
         else
         {
@@ -277,6 +295,40 @@ public class TmdbService
         }
 
         return providers;
+    }
+
+    // returns (lastAiredDate, nextAirDate) for a TV show
+    public async Task<(DateTime? LastAired, DateTime? NextAir)> GetEpisodeDatesAsync(int tmdbId)
+    {
+        string cacheKey = $"episode-dates:{tmdbId}";
+        if (_cache.TryGetValue(cacheKey, out (DateTime? LastAired, DateTime? NextAir) cached))
+            return cached;
+
+        string url = $"tv/{tmdbId}?api_key={_apiKey}&language=en-US";
+        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        if (raw == null) return (null, null);
+
+        JsonElement json = raw.Value;
+
+        DateTime? lastAired = null;
+        if (json.TryGetProperty("last_episode_to_air", out JsonElement lastEp) && lastEp.ValueKind != JsonValueKind.Null
+            && lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
+            && DateTime.TryParse(lastDate.GetString(), out DateTime parsedLast))
+        {
+            lastAired = parsedLast;
+        }
+
+        DateTime? nextAir = null;
+        if (json.TryGetProperty("next_episode_to_air", out JsonElement nextEp) && nextEp.ValueKind != JsonValueKind.Null
+            && nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
+            && DateTime.TryParse(nextDate.GetString(), out DateTime parsedNext))
+        {
+            nextAir = parsedNext;
+        }
+
+        (DateTime? LastAired, DateTime? NextAir) result = (lastAired, nextAir);
+        _cache.Set(cacheKey, result, TimeSpan.FromHours(6));
+        return result;
     }
 
     private static SearchResult MapToSearchResult(TmdbMultiResult r) => new()

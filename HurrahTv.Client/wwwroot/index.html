@@ -28,6 +28,9 @@
         <a href="." class="underline ml-2">Reload</a>
         <span class="dismiss cursor-pointer ml-4">&#x2715;</span>
     </div>
+    <script>
+        window.hurrahScrollRow = (el, delta) => { if (el) el.scrollBy({ left: delta, behavior: 'smooth' }); };
+    </script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
 </body>
 

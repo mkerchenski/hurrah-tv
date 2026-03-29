@@ -2,7 +2,7 @@
 @attribute [Authorize]
 @inject ApiClient Api
 
-<PageTitle>Hurrah.tv - Your Streaming Queue</PageTitle>
+<PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
 @if (!_servicesLoaded)
 {
@@ -15,7 +15,7 @@ else if (!_onboardingComplete)
     <!-- onboarding: pick your services -->
     <div class="max-w-lg mx-auto text-center py-8 md:py-12 fade-in">
         <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome to <span class="text-accent">hurrah.tv</span></h1>
-        <p class="text-gray-400 mb-6 md:mb-8 text-base md:text-lg">One queue for everything you watch. Pick your streaming services to get started.</p>
+        <p class="text-gray-400 mb-6 md:mb-8 text-base md:text-lg">All your streaming services, one smart watchlist. Pick your services to get started.</p>
 
         <ServicePicker @bind-SelectedIds="_pendingServices" />
 
@@ -28,53 +28,35 @@ else if (!_onboardingComplete)
 }
 else
 {
-    <!-- content -->
     <div class="fade-in">
-        <!-- header row: toggle + search link -->
-        <div class="flex items-center justify-between mb-6 md:mb-8">
-            <div class="flex bg-surface-50 rounded-full p-1">
-                <button class="@(_activeTab == "tv" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 md:px-5 py-1.5 rounded-full text-sm font-medium transition-all"
-                        @onclick="@(() => _activeTab = "tv")">
-                    TV Shows
-                </button>
-                <button class="@(_activeTab == "movie" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 md:px-5 py-1.5 rounded-full text-sm font-medium transition-all"
-                        @onclick="@(() => _activeTab = "movie")">
-                    Movies
-                </button>
-            </div>
-            <a href="/search" class="text-accent text-sm hover:text-accent-light">Search all &rarr;</a>
-        </div>
-
-        <!-- TV Shows tab -->
-        @if (_activeTab == "tv")
+        <!-- new episodes row (only if user has TV shows with recent episodes) -->
+        @if (_newEpisodeItems.Count > 0)
         {
-            <div class="space-y-6 md:space-y-8 fade-in">
-                <section>
-                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">New This Season</h3>
-                    <PosterGrid Results="_newTv" Loading="_loading" EmptyMessage="No new shows found" />
-                </section>
-
-                <section>
-                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Popular Shows</h3>
-                    <PosterGrid Results="_popularTv" Loading="_loading" EmptyMessage="No popular shows" />
-                </section>
-            </div>
+            <WatchlistRow Title="New Episodes" Items="_newEpisodeItems" />
         }
 
-        <!-- Movies tab -->
-        @if (_activeTab == "movie")
+        <!-- continue watching row -->
+        @if (_watchingItems.Count > 0)
         {
-            <div class="space-y-6 md:space-y-8 fade-in">
-                <section>
-                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">New Releases</h3>
-                    <PosterGrid Results="_newMovies" Loading="_loading" EmptyMessage="No new movies found" />
-                </section>
+            <WatchlistRow Title="Continue Watching" Items="_watchingItems" />
+        }
 
-                <section>
-                    <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Popular Movies</h3>
-                    <PosterGrid Results="_popularMovies" Loading="_loading" EmptyMessage="No popular movies" />
-                </section>
-            </div>
+        <!-- new TV on your services -->
+        <ContentRow Title="New This Season" Subtitle="Recently aired" LoadData="LoadNewTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
+
+        <!-- trending TV on your services -->
+        <ContentRow Title="Trending TV Shows" Subtitle="Popular on your services" LoadData="LoadTrendingTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
+
+        <!-- new movies -->
+        <ContentRow Title="New Releases" Subtitle="Recently released" LoadData="LoadNewMovies" />
+
+        <!-- trending movies on your services -->
+        <ContentRow Title="Trending Movies" Subtitle="Popular on your services" LoadData="LoadTrendingMovies" />
+
+        <!-- liked row (shows the user's taste profile) -->
+        @if (_likedItems.Count > 0)
+        {
+            <WatchlistRow Title="Shows You Loved" Items="_likedItems" />
         }
     </div>
 }
@@ -84,13 +66,12 @@ else
     private List<int> _pendingServices = [];
     private bool _servicesLoaded;
     private bool _onboardingComplete;
-    private string _activeTab = "tv";
 
-    private List<SearchResult> _newTv = [];
-    private List<SearchResult> _popularTv = [];
-    private List<SearchResult> _newMovies = [];
-    private List<SearchResult> _popularMovies = [];
-    private bool _loading = true;
+    // watchlist items by status
+    private List<QueueItem> _watchingItems = [];
+    private List<QueueItem> _likedItems = [];
+    private List<QueueItem> _newEpisodeItems = [];
+    private HashSet<int> _newEpisodeTmdbIds = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -99,7 +80,7 @@ else
         _onboardingComplete = _userServices.Count > 0;
 
         if (_onboardingComplete)
-            await LoadContent();
+            await LoadWatchlistData();
     }
 
     private async Task SaveServices()
@@ -107,25 +88,31 @@ else
         _userServices = _pendingServices;
         await Api.SetUserServicesAsync(_userServices);
         _onboardingComplete = true;
-        await LoadContent();
+        await LoadWatchlistData();
     }
 
-    private async Task LoadContent()
+    private async Task LoadWatchlistData()
     {
-        _loading = true;
-        StateHasChanged();
+        List<QueueItem> allItems = await Api.GetQueueAsync();
 
-        Task<List<SearchResult>> newTvTask = Api.NewOnServicesAsync("tv");
-        Task<List<SearchResult>> popularTvTask = Api.ForYouAsync("tv");
-        Task<List<SearchResult>> newMoviesTask = Api.NewOnServicesAsync("movie");
-        Task<List<SearchResult>> popularMoviesTask = Api.ForYouAsync("movie");
-        await Task.WhenAll(newTvTask, popularTvTask, newMoviesTask, popularMoviesTask);
+        _watchingItems = allItems.Where(i => i.Status == QueueStatus.Watching).ToList();
+        _likedItems = allItems.Where(i => i.Status == QueueStatus.Liked).ToList();
 
-        _newTv = newTvTask.Result;
-        _popularTv = popularTvTask.Result;
-        _newMovies = newMoviesTask.Result;
-        _popularMovies = popularMoviesTask.Result;
-        _loading = false;
+        // new episodes: TV items that are Watching or WantToWatch with recent episode dates
+        _newEpisodeItems = allItems
+            .Where(i => i.MediaType == "tv"
+                && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
+                && (i.HasNewEpisode || i.HasUpcomingEpisode))
+            .ToList();
+
+        _newEpisodeTmdbIds = [.. _newEpisodeItems.Select(i => i.TmdbId)];
+
         StateHasChanged();
     }
+
+    // content row data loaders
+    private Task<List<SearchResult>> LoadTrendingTv() => Api.ForYouAsync("tv");
+    private Task<List<SearchResult>> LoadNewTv() => Api.NewOnServicesAsync("tv");
+    private Task<List<SearchResult>> LoadTrendingMovies() => Api.ForYouAsync("movie");
+    private Task<List<SearchResult>> LoadNewMovies() => Api.NewOnServicesAsync("movie");
 }
