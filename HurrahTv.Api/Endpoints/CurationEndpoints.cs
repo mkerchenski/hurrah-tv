@@ -24,11 +24,9 @@ public static class CurationEndpoints
 
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
 
-                // safety-net: exclude items now in user's watchlist or dismissed
                 HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
                 excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
-                foreach (AICuratedRow row in result.Rows)
-                    row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
+                ExcludeShows(result, excludeIds);
 
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
@@ -72,11 +70,9 @@ public static class CurationEndpoints
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
 
-                // safety-net: exclude items now in user's watchlist or dismissed
                 HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
                 excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
-                foreach (AICuratedRow row in result.Rows)
-                    row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
+                ExcludeShows(result, excludeIds);
 
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
@@ -132,6 +128,12 @@ public static class CurationEndpoints
             decimal monthlyCost = await db.GetMonthlyAICostAsync();
             return Results.Ok(new { userTotalCost = userCost, monthlyTotalCost = monthlyCost });
         });
+    }
+
+    private static void ExcludeShows(CurationResult result, HashSet<int> excludeIds)
+    {
+        foreach (AICuratedRow row in result.Rows)
+            row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
     }
 
     private static async Task<List<CuratedRowResponse>> ResolveRowsAsync(

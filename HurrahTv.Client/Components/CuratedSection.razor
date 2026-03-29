@@ -109,14 +109,16 @@
 
     private HashSet<int> _addedIds = [];
     private string _tab = "tv";
+    private List<CuratedItem> _tvItems = [];
+    private List<CuratedItem> _movieItems = [];
 
-    private List<CuratedItem> _tvItems => Items.Where(i => i.Result.MediaType == MediaTypes.Tv).ToList();
-    private List<CuratedItem> _movieItems => Items.Where(i => i.Result.MediaType == MediaTypes.Movie).ToList();
     private List<CuratedItem> FilteredItems => _tab == "tv" ? _tvItems : _movieItems;
 
     protected override void OnParametersSet()
     {
-        // auto-select the tab with more results, or fall back to TV
+        _tvItems = Items.Where(i => i.Result.MediaType == MediaTypes.Tv).ToList();
+        _movieItems = Items.Where(i => i.Result.MediaType == MediaTypes.Movie).ToList();
+
         if (_tvItems.Count == 0 && _movieItems.Count > 0)
             _tab = "movie";
     }
