@@ -18,6 +18,11 @@ Key design decisions:
 - **Cache by watchlist hash** — SHA256 of `tmdbId:status:rating` for all items. Changes when user adds/removes/rates anything. Only regenerates when hash changes.
 - **Never cache empty results** — an empty `[]` from a failed AI call creates a "stuck" state where the hash matches but nothing shows. Always skip caching failures.
 - **Cross-row dedup** — if using multiple rows, track `usedAcrossRows` HashSet so shows don't repeat
+- **Exclusion must happen at 3 layers:**
+  1. **Candidate pool** (`GatherCandidatePoolAsync`) — exclude watchlist + dismissed before AI sees them
+  2. **AI prompt** — tell the AI about disliked shows so it avoids similar content
+  3. **Safety-net post-filter** (`ExcludeShows` in endpoint) — strip out any shows the user added AFTER the AI cached its results
+  Any single layer is insufficient: the candidate pool can be cached stale, the AI can hallucinate, and the user can add shows between cache generation and serving.
 
 ## Example
 Cost per curation call: ~$0.003-0.005 (Haiku, ~2000 input tokens + 500 output)

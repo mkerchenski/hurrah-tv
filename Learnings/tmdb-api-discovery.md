@@ -63,6 +63,17 @@ Mitigation: 12-hour `IMemoryCache` on provider data. After first load, subsequen
 
 `sort_by=popularity.desc` uses TMDb's rolling popularity metric — a composite of page views, votes, additions to watchlists, and release recency. It heavily favors established hits. To surface genuinely new content, combine with date filtering (`first_air_date.gte` set to ~60 days ago).
 
+### Search (/search/multi) behavior
+
+TMDb search uses **n-gram matching from the start of titles**, not fuzzy matching. It searches original, translated, and alternative names. Key characteristics:
+- Case-insensitive
+- No typo tolerance — "breakin bad" won't find "Breaking Bad"
+- Phrasing sensitivity — "office" vs "the office" can produce different top-20 rankings
+- Returns ~20 results per page ranked by TMDb's internal relevance/popularity algorithm
+- The `language=en-US` parameter affects metadata localization, NOT result filtering
+
+Because search results are popularity-weighted, a less-popular title matching the query exactly can rank below popular partial matches. When post-filtering search results (e.g., to user's services), fetching multiple pages is essential to avoid losing relevant results that rank lower.
+
 ## Example
 
 ```csharp
