@@ -13,14 +13,8 @@ Reflect on what was just accomplished and capture non-obvious discoveries.
 - Check `git diff` and `git log` for recent changes
 - Understand what was built, fixed, or refactored
 
-### Step 2: Interview
-Ask the user (one question at a time, conversationally):
-1. "What was the trickiest part of this work?"
-2. "Was there anything surprising or non-obvious?"
-3. "Any gotchas future-you should know about?"
-4. "Did we make any architectural decisions worth recording?"
-
-Stop asking when the user indicates they're done.
+### Step 2: Draft Learnings Autonomously
+Review the changes and identify learnings yourself. Don't interview the user question-by-question — instead, draft a table of proposed learnings with destinations and present it for approval in one shot. The user can approve, modify, or reject items.
 
 ### Step 3: Route to Destination
 For each learning, decide where it belongs:
