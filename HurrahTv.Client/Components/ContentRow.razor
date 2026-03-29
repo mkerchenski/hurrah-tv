@@ -77,6 +77,7 @@
 
     private List<SearchResult> _results = [];
     private bool _loading = true;
+    private bool _loaded;
     private ElementReference _scrollContainer;
 
     protected override async Task OnParametersSetAsync()
@@ -88,8 +89,9 @@
             return;
         }
 
-        if (LoadData != null)
+        if (LoadData != null && !_loaded)
         {
+            _loaded = true;
             _loading = true;
             StateHasChanged();
             _results = await LoadData();

@@ -26,19 +26,15 @@ public static class QueueEndpoints
 
             if (stale.Count > 0)
             {
-                // refresh up to 10 items per request to avoid TMDb rate limits
-                _ = Task.Run(async () =>
+                _ = Task.WhenAll(stale.Take(10).Select(async item =>
                 {
-                    foreach (QueueItem item in stale.Take(10))
+                    try
                     {
-                        try
-                        {
-                            (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
-                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
-                        }
-                        catch { /* swallow — non-critical background work */ }
+                        (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
+                        await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
                     }
-                });
+                    catch { }
+                }));
             }
 
             return Results.Ok(items);

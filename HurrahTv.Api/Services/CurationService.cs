@@ -7,18 +7,32 @@ using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
 
-public class CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger)
+public class CurationService
 {
-    // Haiku pricing: $0.80/$4.00 per MTok (input/output)
-    private const decimal InputCostPerToken = 0.0000008m;
-    private const decimal OutputCostPerToken = 0.000004m;
+    private const decimal InputCostPerToken = 0.0000008m;  // Haiku: $0.80/MTok in
+    private const decimal OutputCostPerToken = 0.000004m;  // Haiku: $4.00/MTok out
 
-    private readonly bool _enabled = config.GetValue<bool>("AI:Enabled");
-    private readonly string _apiKey = config["AI:AnthropicApiKey"] ?? "";
-    private readonly string _model = config["AI:CurationModel"] ?? "claude-haiku-4-5-20251001";
-    private readonly decimal _monthlyBudget = config.GetValue<decimal>("AI:MonthlyBudgetUsd", 50m);
+    private readonly DbService _db;
+    private readonly TmdbService _tmdb;
+    private readonly ILogger<CurationService> _logger;
+    private readonly string _model;
+    private readonly decimal _monthlyBudget;
+    private readonly AnthropicClient? _client;
 
-    public bool IsEnabled => _enabled && !string.IsNullOrEmpty(_apiKey);
+    public bool IsEnabled => _client != null;
+
+    public CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger)
+    {
+        _db = db;
+        _tmdb = tmdb;
+        _logger = logger;
+        _model = config["AI:CurationModel"] ?? "claude-haiku-4-5-20251001";
+        _monthlyBudget = config.GetValue<decimal>("AI:MonthlyBudgetUsd", 50m);
+
+        bool enabled = config.GetValue<bool>("AI:Enabled");
+        string apiKey = config["AI:AnthropicApiKey"] ?? "";
+        _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { APIKey = apiKey } : null;
+    }
 
     public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds)
     {
@@ -28,7 +42,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         string currentHash = ComputeWatchlistHash(watchlist);
 
         // check cache
-        (string? rowsJson, string? watchlistHash)? cached = await db.GetCurationCacheAsync(userId);
+        (string? rowsJson, string? watchlistHash)? cached = await _db.GetCurationCacheAsync(userId);
         if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null
             && cached.Value.rowsJson != "[]")
         {
@@ -40,10 +54,10 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         bool watchlistChanged = cached != null && cached.Value.watchlistHash != currentHash;
 
         // budget check
-        decimal monthlyCost = await db.GetMonthlyAICostAsync();
+        decimal monthlyCost = await _db.GetMonthlyAICostAsync();
         if (monthlyCost >= _monthlyBudget)
         {
-            logger.LogWarning("AI monthly budget exceeded: ${Cost:F2} / ${Budget:F2}", monthlyCost, _monthlyBudget);
+            _logger.LogWarning("AI monthly budget exceeded: ${Cost:F2} / ${Budget:F2}", monthlyCost, _monthlyBudget);
             return new CurationResult { Error = "Monthly budget exceeded" };
         }
 
@@ -71,7 +85,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         if (rows.Count > 0)
         {
             string rowsJsonStr = JsonSerializer.Serialize(rows);
-            await db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
+            await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
         }
 
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
@@ -82,10 +96,10 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
 
         // fetch recent TV and movies in parallel across user's services
-        Task<List<SearchResult>> newTv = tmdb.NewOnServicesAsync(providerIds, "tv", deep: true);
-        Task<List<SearchResult>> newMovies = tmdb.NewOnServicesAsync(providerIds, "movie", deep: true);
-        Task<List<SearchResult>> popularTv = tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true);
-        Task<List<SearchResult>> popularMovies = tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true);
+        Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true);
+        Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true);
+        Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true);
+        Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true);
         await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
 
         // combine and deduplicate, excluding watchlist items
@@ -101,7 +115,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         }
 
         // enrich with provider info for shows that don't have it
-        pool = await tmdb.FilterToUserServicesAsync(pool, providerIds);
+        pool = await _tmdb.FilterToUserServicesAsync(pool, providerIds);
 
         return pool;
     }
@@ -143,8 +157,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
 
         try
         {
-            AnthropicClient client = new() { APIKey = _apiKey };
-            Message response = await client.Messages.Create(new MessageCreateParams
+            Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
                 MaxTokens = 1024,
@@ -159,9 +172,9 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
             int outputTokens = (int)response.Usage.OutputTokens;
             decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
 
-            await db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "curation");
+            await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "curation");
 
-            logger.LogInformation("AI curation for {UserId}: {InputTokens} in / {OutputTokens} out = ${Cost:F4}",
+            _logger.LogInformation("AI curation for {UserId}: {InputTokens} in / {OutputTokens} out = ${Cost:F4}",
                 userId, inputTokens, outputTokens, cost);
 
             // parse response
@@ -206,7 +219,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AI curation failed for {UserId}", userId);
+            _logger.LogError(ex, "AI curation failed for {UserId}", userId);
             return [];
         }
     }
@@ -270,7 +283,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         if (signalItems.Count < 2) return null;
 
         // budget check
-        decimal monthlyCost = await db.GetMonthlyAICostAsync();
+        decimal monthlyCost = await _db.GetMonthlyAICostAsync();
         if (monthlyCost >= _monthlyBudget) return null;
 
         string tasteProfile = BuildTasteProfile(signalItems, watchlist);
@@ -297,8 +310,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
 
         try
         {
-            AnthropicClient client = new() { APIKey = _apiKey };
-            Message response = await client.Messages.Create(new MessageCreateParams
+            Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
                 MaxTokens = 150,
@@ -313,7 +325,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
             int outputTokens = (int)response.Usage.OutputTokens;
             decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
 
-            await db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "show-match");
+            await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "show-match");
 
             // parse
             text = text.Trim();
@@ -329,7 +341,7 @@ public class CurationService(IConfiguration config, DbService db, TmdbService tm
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Show match failed for {UserId}/{TmdbId}", userId, show.TmdbId);
+            _logger.LogError(ex, "Show match failed for {UserId}/{TmdbId}", userId, show.TmdbId);
             return null;
         }
     }

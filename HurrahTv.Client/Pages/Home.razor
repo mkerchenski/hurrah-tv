@@ -133,13 +133,12 @@ else
     {
         try
         {
-            Console.WriteLine("[AI] LoadAICuration starting...");
+
             _aiLoading = true;
             StateHasChanged();
 
             CurationResponse? curation = await Api.GetCuratedRowsAsync();
             _aiLoading = false;
-            Console.WriteLine($"[AI] Response: {(curation == null ? "null" : $"enabled={curation.AiEnabled}, rows={curation.Rows.Count}, error={curation.Error}, candidates={curation.CandidateCount}")}");
 
             if (curation == null)
             {
@@ -167,12 +166,12 @@ else
                     _curatedItems.Add(new CuratedItem { Result = result, Reason = reason });
                 }
             }
-            Console.WriteLine($"[AI] Built {_curatedItems.Count} curated items");
+
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[AI] Exception: {ex}");
+
             _aiLoading = false;
             _aiError = $"Exception: {ex.Message}";
             StateHasChanged();

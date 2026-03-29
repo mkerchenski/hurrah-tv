@@ -63,30 +63,15 @@ public class ApiClient(HttpClient http)
     public async Task UpdateProgressAsync(int id, int? season, int? episode) =>
         await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
 
-    public async Task<QueueItem?> MarkAsLikedAsync(SearchResult result)
-    {
-        HttpResponseMessage response = await _http.PostAsJsonAsync("api/queue/liked", new
-        {
-            result.TmdbId,
-            result.MediaType,
-            result.Title,
-            result.PosterPath,
-            AvailableOnJson = System.Text.Json.JsonSerializer.Serialize(result.AvailableOn.Select(s => s.ProviderId).ToList())
-        });
-        if (response.IsSuccessStatusCode)
-            return await response.Content.ReadFromJsonAsync<QueueItem>();
-        return null;
-    }
+    public Task<QueueItem?> MarkAsLikedAsync(SearchResult result) => PostStatusAsync("api/queue/liked", result);
+    public Task<QueueItem?> MarkAsSeenAsync(SearchResult result) => PostStatusAsync("api/queue/seen", result);
 
-    public async Task<QueueItem?> MarkAsSeenAsync(SearchResult result)
+    private async Task<QueueItem?> PostStatusAsync(string endpoint, SearchResult result)
     {
-        HttpResponseMessage response = await _http.PostAsJsonAsync("api/queue/seen", new
+        QueueItem qi = result.ToQueueItem();
+        HttpResponseMessage response = await _http.PostAsJsonAsync(endpoint, new
         {
-            result.TmdbId,
-            result.MediaType,
-            result.Title,
-            result.PosterPath,
-            AvailableOnJson = System.Text.Json.JsonSerializer.Serialize(result.AvailableOn.Select(s => s.ProviderId).ToList())
+            result.TmdbId, result.MediaType, result.Title, result.PosterPath, qi.AvailableOnJson
         });
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<QueueItem>();
@@ -98,18 +83,9 @@ public class ApiClient(HttpClient http)
     {
         try
         {
-            Console.WriteLine("[ApiClient] Calling api/curation/rows...");
-            HttpResponseMessage response = await _http.GetAsync("api/curation/rows");
-            string body = await response.Content.ReadAsStringAsync();
-            Console.WriteLine($"[ApiClient] Status: {response.StatusCode}, Body length: {body.Length}, First 200: {body[..Math.Min(200, body.Length)]}");
-            if (!response.IsSuccessStatusCode) return null;
-            return System.Text.Json.JsonSerializer.Deserialize<CurationResponse>(body, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            return await _http.GetFromJsonAsync<CurationResponse>("api/curation/rows");
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[ApiClient] Curation error: {ex.Message}");
-            return null;
-        }
+        catch { return null; }
     }
 
     public async Task<CurationResponse?> RefreshCurationAsync()

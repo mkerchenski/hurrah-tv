@@ -254,29 +254,34 @@ public class DbService(IConfiguration config)
         return affected > 0;
     }
 
-    public async Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId)
+    public Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
+        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Finished,
+            existing => existing is QueueStatus.WantToWatch or QueueStatus.Watching);
+
+    public Task<QueueItem?> MarkAsLikedAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
+        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Liked);
+
+    private async Task<QueueItem?> UpsertWithStatusAsync(int tmdbId, string mediaType, string title, string posterPath,
+        string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
     {
         using SqlConnection db = await OpenAsync();
 
-        // check if already in list
         QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
             new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
 
         if (existing != null)
         {
-            // update status to Finished if currently WantToWatch or Watching
-            if (existing.Status is QueueStatus.WantToWatch or QueueStatus.Watching)
+            if (shouldUpdate == null || shouldUpdate(existing.Status))
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
-                    new { Status = (int)QueueStatus.Finished, Id = existing.Id });
-                existing.Status = QueueStatus.Finished;
+                    new { Status = (int)targetStatus, Id = existing.Id });
+                existing.Status = targetStatus;
             }
             return existing;
         }
 
-        // add as Finished
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
             "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
@@ -287,71 +292,15 @@ public class DbService(IConfiguration config)
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
             """, new
         {
-            UserId = userId,
-            TmdbId = tmdbId,
-            MediaType = mediaType,
-            Title = title,
-            PosterPath = posterPath,
-            Position = maxPos + 1,
-            Status = (int)QueueStatus.Finished,
-            AvailableOnJson = availableOnJson,
-            AddedAt = DateTime.UtcNow
-        });
-
-        return new QueueItem
-        {
-            Id = id,
-            TmdbId = tmdbId,
-            MediaType = mediaType,
-            Title = title,
-            PosterPath = posterPath,
-            Position = maxPos + 1,
-            Status = QueueStatus.Finished
-        };
-    }
-
-    public async Task<QueueItem?> MarkAsLikedAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId)
-    {
-        using SqlConnection db = await OpenAsync();
-
-        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
-            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
-
-        if (existing != null)
-        {
-            await db.ExecuteAsync(
-                "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
-                new { Status = (int)QueueStatus.Liked, Id = existing.Id });
-            existing.Status = QueueStatus.Liked;
-            return existing;
-        }
-
-        int maxPos = await db.QuerySingleOrDefaultAsync<int>(
-            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
-            new { UserId = userId });
-
-        int id = await db.QuerySingleAsync<int>("""
-            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
-            OUTPUT INSERTED.Id
-            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
-            """, new
-        {
-            UserId = userId,
-            TmdbId = tmdbId,
-            MediaType = mediaType,
-            Title = title,
-            PosterPath = posterPath,
-            Position = maxPos + 1,
-            Status = (int)QueueStatus.Liked,
-            AvailableOnJson = availableOnJson,
-            AddedAt = DateTime.UtcNow
+            UserId = userId, TmdbId = tmdbId, MediaType = mediaType, Title = title,
+            PosterPath = posterPath, Position = maxPos + 1, Status = (int)targetStatus,
+            AvailableOnJson = availableOnJson, AddedAt = DateTime.UtcNow
         });
 
         return new QueueItem
         {
             Id = id, TmdbId = tmdbId, MediaType = mediaType, Title = title,
-            PosterPath = posterPath, Position = maxPos + 1, Status = QueueStatus.Liked
+            PosterPath = posterPath, Position = maxPos + 1, Status = targetStatus
         };
     }
 

@@ -108,22 +108,24 @@ public static class CurationEndpoints
 
         foreach (AICuratedRow aiRow in aiRows)
         {
-            List<SearchResult> results = [];
-            foreach (int tmdbId in aiRow.TmdbIds)
+            // resolve all shows in parallel
+            Task<ShowDetails?>[] tasks = [.. aiRow.TmdbIds.Select(async tmdbId =>
             {
-                // try TV first, then movie
-                ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, "tv");
-                details ??= await tmdb.GetDetailsAsync(tmdbId, "movie");
+                ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv);
+                details ??= await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Movie);
 
                 if (details != null)
                 {
                     List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, details.MediaType);
                     details.AvailableOn = providers
-                        .Where(p => (p.Type is "flatrate" or "ads") && providerSet.Contains(p.ProviderId))
+                        .Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && providerSet.Contains(p.ProviderId))
                         .ToList();
-                    results.Add(details);
                 }
-            }
+                return details;
+            })];
+
+            ShowDetails?[] resolved = await Task.WhenAll(tasks);
+            List<SearchResult> results = [.. resolved.Where(d => d != null).Cast<SearchResult>()];
 
             if (results.Count > 0)
             {
