@@ -39,6 +39,12 @@ public class SearchResult
     };
 }
 
+public class SearchResponse
+{
+    public List<SearchResult> Results { get; set; } = [];
+    public bool HasResultsOnOtherServices { get; set; }
+}
+
 public class AvailableService
 {
     public int ProviderId { get; set; }

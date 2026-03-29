@@ -53,7 +53,7 @@
         _cts?.Cancel();
         _cts?.Dispose();
 
-        if (string.IsNullOrWhiteSpace(_query))
+        if (string.IsNullOrWhiteSpace(_query) || _query.Trim().Length < 2)
         {
             _results = [];
             _emptyMessage = "Start typing to search";
@@ -69,16 +69,24 @@
     {
         try
         {
-            await Task.Delay(400, token);
+            await Task.Delay(300, token);
             await InvokeAsync(async () =>
             {
                 if (token.IsCancellationRequested || string.IsNullOrWhiteSpace(_query)) return;
 
                 _loading = true;
-                _emptyMessage = "No results found";
                 StateHasChanged();
 
-                _results = await Api.SearchAsync(_query);
+                SearchResponse response = await Api.SearchAsync(_query);
+                _results = response.Results;
+
+                if (_results.Count == 0 && response.HasResultsOnOtherServices)
+                    _emptyMessage = "Found on other services, but not on yours";
+                else if (_results.Count == 0)
+                    _emptyMessage = "No results found — try different spelling or keywords";
+                else
+                    _emptyMessage = "";
+
                 _loading = false;
                 StateHasChanged();
             });

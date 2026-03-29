@@ -25,23 +25,42 @@ public class TmdbService
         _http.DefaultRequestHeaders.Add("Accept", "application/json");
     }
 
-    public async Task<List<SearchResult>> SearchAsync(string query, int page = 1)
+    public async Task<List<SearchResult>> SearchAsync(string query)
     {
-        string cacheKey = $"search:{query}:{page}";
+        string cacheKey = $"search:{query.ToLowerInvariant()}";
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
-        string url = $"search/multi?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&page={page}&language=en-US";
-        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
-        if (response == null) return [];
+        // fetch page 1, then conditionally fetch more if TMDb has additional pages
+        TmdbPagedResponse<TmdbMultiResult>? firstPage = await FetchSearchPageAsync(query, 1);
+        if (firstPage == null) return [];
 
-        List<SearchResult> results = [.. response.Results
-            .Where(r => r.MediaType is MediaTypes.Movie or MediaTypes.Tv)
-            .Select(MapToSearchResult)];
+        List<SearchResult> results = [.. ExtractResults(firstPage)];
+
+        if (firstPage.TotalPages > 1)
+        {
+            int extraPages = Math.Min(2, firstPage.TotalPages - 1);
+            TmdbPagedResponse<TmdbMultiResult>?[] pages = [.. await Task.WhenAll(Enumerable.Range(2, extraPages)
+                .Select(p => FetchSearchPageAsync(query, p)))];
+
+            results.AddRange(pages.Where(p => p != null).SelectMany(p => ExtractResults(p!)));
+            results = [.. results.DistinctBy(r => r.TmdbId)];
+        }
 
         _cache.Set(cacheKey, results, TimeSpan.FromMinutes(30));
         return results;
     }
+
+    private async Task<TmdbPagedResponse<TmdbMultiResult>?> FetchSearchPageAsync(string query, int page)
+    {
+        string url = $"search/multi?api_key={_apiKey}&query={Uri.EscapeDataString(query)}&page={page}&language=en-US";
+        return await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
+    }
+
+    private static List<SearchResult> ExtractResults(TmdbPagedResponse<TmdbMultiResult> response) =>
+        [.. response.Results
+            .Where(r => r.MediaType is MediaTypes.Movie or MediaTypes.Tv)
+            .Select(MapToSearchResult)];
 
     public async Task<List<SearchResult>> TrendingAsync(string mediaType = "all", string timeWindow = "week")
     {

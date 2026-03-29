@@ -1,25 +1,34 @@
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using HurrahTv.Api.Services;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Endpoints;
 
-public static class SearchEndpoints
+public static partial class SearchEndpoints
 {
+    private const int MaxResultsToEnrich = 30;
+
+    [GeneratedRegex(@"\s+")]
+    private static partial Regex WhitespaceRegex();
+
     public static void MapSearchEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup("/api/search");
 
-        group.MapGet("", async (string q, int page, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
+        group.MapGet("", async (string? q, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
         {
-            if (string.IsNullOrWhiteSpace(q)) return Results.BadRequest("Query required");
-            List<SearchResult> results = await tmdb.SearchAsync(q, page > 0 ? page : 1);
+            string query = NormalizeQuery(q ?? "");
+            if (query.Length < 2) return Results.BadRequest("Query too short");
+            if (query.Length > 200) return Results.BadRequest("Query too long");
+            List<SearchResult> results = await tmdb.SearchAsync(query);
+            bool hadResults = results.Count > 0;
 
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
-            results = await tmdb.FilterToUserServicesAsync(results, providerIds);
+            results = await tmdb.FilterToUserServicesAsync([.. results.Take(MaxResultsToEnrich)], providerIds);
 
-            return Results.Ok(results);
+            return Results.Ok(new SearchResponse { Results = results, HasResultsOnOtherServices = hadResults && results.Count == 0 });
         }).RequireAuthorization();
 
         group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
@@ -95,5 +104,15 @@ public static class SearchEndpoints
         List<SearchResult> older = [.. results.Where(r => (r.DisplayDate ?? "").CompareTo(cutoff) < 0)];
 
         return [.. recent, .. older];
+    }
+
+    private static string NormalizeQuery(string query)
+    {
+        string normalized = query
+            .Replace('\u2018', '\'').Replace('\u2019', '\'')
+            .Replace('\u201C', '"').Replace('\u201D', '"')
+            .Replace('\u2014', '-').Replace('\u2013', '-');
+
+        return WhitespaceRegex().Replace(normalized, " ").Trim();
     }
 }

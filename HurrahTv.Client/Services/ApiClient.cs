@@ -23,8 +23,9 @@ public class ApiClient(HttpClient http)
     }
 
     // search
-    public async Task<List<SearchResult>> SearchAsync(string query, int page = 1) =>
-        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search?q={Uri.EscapeDataString(query)}&page={page}") ?? [];
+    public async Task<SearchResponse> SearchAsync(string query) =>
+        await _http.GetFromJsonAsync<SearchResponse>($"api/search?q={Uri.EscapeDataString(query)}")
+        ?? new SearchResponse();
 
     public async Task<List<SearchResult>> ForYouAsync(string mediaType = "all") =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/for-you?mediaType={mediaType}") ?? [];
