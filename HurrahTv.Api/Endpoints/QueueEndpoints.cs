@@ -18,11 +18,10 @@ public static class QueueEndpoints
             List<QueueItem> items = await db.GetQueueAsync(userId);
 
             // refresh stale episode dates for TV items in background (fire-and-forget for this request)
-            List<QueueItem> stale = items
+            List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
                     && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
-                    && (i.LastEpisodeCheckAt == null || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter))
-                .ToList();
+                    && (i.LastEpisodeCheckAt == null || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter))];
 
             if (stale.Count > 0)
             {

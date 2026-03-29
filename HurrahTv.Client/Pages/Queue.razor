@@ -93,7 +93,7 @@ else
                                 }
                             </span>
                         }
-                        @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue)
+                        @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
                         {
                             <span>S@(item.LastSeasonWatched)E@(item.LastEpisodeWatched)</span>
                         }

@@ -1,5 +1,6 @@
 @page "/details/{MediaType}/{TmdbId:int}"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -328,6 +329,9 @@ else
     private string _lastMediaType = "";
     private ShowMatchResult? _showMatch;
     private bool _matchLoading;
+    private bool _disposed;
+
+    public void Dispose() => _disposed = true;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -349,10 +353,10 @@ else
     private async Task LoadShowMatch()
     {
         _matchLoading = true;
-        StateHasChanged();
+        if (!_disposed) StateHasChanged();
         _showMatch = await Api.GetShowMatchAsync(TmdbId, MediaType);
         _matchLoading = false;
-        StateHasChanged();
+        if (!_disposed) StateHasChanged();
     }
 
     private async Task GoBack() => await JS.InvokeVoidAsync("history.back");

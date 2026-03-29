@@ -7,12 +7,14 @@ namespace HurrahTv.Api.Endpoints;
 
 public static class CurationEndpoints
 {
+    private static readonly TimeSpan RefreshCooldown = TimeSpan.FromMinutes(5);
+
     public static void MapCurationEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup("/api/curation").RequireAuthorization();
 
         // get AI-curated rows for the home page
-        group.MapGet("/rows", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb) =>
+        group.MapGet("/rows", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb, ILogger<CurationService> logger) =>
         {
             try
             {
@@ -21,7 +23,6 @@ public static class CurationEndpoints
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
 
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
-
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
                 return Results.Ok(new CurationResponse
@@ -36,33 +37,52 @@ public static class CurationEndpoints
             }
             catch (Exception ex)
             {
+                logger.LogError(ex, "Curation rows endpoint failed");
                 return Results.Ok(new CurationResponse
                 {
                     AiEnabled = curation.IsEnabled,
-                    Error = $"Endpoint error: {ex.Message}"
+                    Error = "Curation temporarily unavailable"
                 });
             }
         });
 
-        // force refresh AI curation
-        group.MapPost("/refresh", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb) =>
+        // force refresh AI curation (rate-limited per user)
+        group.MapPost("/refresh", async (ClaimsPrincipal user, DbService db, CurationService curation,
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger) =>
         {
-            string userId = user.GetUserId();
-            await db.SetCurationCacheAsync(userId, "[]", "force-refresh");
-
-            List<QueueItem> watchlist = await db.GetQueueAsync(userId);
-            List<int> providerIds = await db.GetUserServicesAsync(userId);
-            CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
-
-            List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
-
-            return Results.Ok(new CurationResponse
+            try
             {
-                Rows = rows,
-                FromCache = false,
-                WatchlistChanged = true,
-                AiEnabled = curation.IsEnabled
-            });
+                string userId = user.GetUserId();
+                string rateLimitKey = $"refresh-limit:{userId}";
+
+                if (cache.TryGetValue(rateLimitKey, out _))
+                    return Results.Ok(new CurationResponse { AiEnabled = curation.IsEnabled, Error = "Please wait before refreshing again" });
+
+                cache.Set(rateLimitKey, true, RefreshCooldown);
+                await db.SetCurationCacheAsync(userId, "[]", "force-refresh");
+
+                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+                List<int> providerIds = await db.GetUserServicesAsync(userId);
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
+
+                return Results.Ok(new CurationResponse
+                {
+                    Rows = rows,
+                    FromCache = false,
+                    WatchlistChanged = true,
+                    AiEnabled = curation.IsEnabled
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Curation refresh endpoint failed");
+                return Results.Ok(new CurationResponse
+                {
+                    AiEnabled = curation.IsEnabled,
+                    Error = "Refresh failed, try again later"
+                });
+            }
         });
 
         // personalized match for a specific show
@@ -90,7 +110,7 @@ public static class CurationEndpoints
             return Results.Ok(result);
         });
 
-        // AI cost stats
+        // ai cost stats
         group.MapGet("/usage", async (ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
@@ -108,7 +128,6 @@ public static class CurationEndpoints
 
         foreach (AICuratedRow aiRow in aiRows)
         {
-            // resolve all shows in parallel
             Task<ShowDetails?>[] tasks = [.. aiRow.TmdbIds.Select(async tmdbId =>
             {
                 ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv);
@@ -117,9 +136,7 @@ public static class CurationEndpoints
                 if (details != null)
                 {
                     List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, details.MediaType);
-                    details.AvailableOn = providers
-                        .Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && providerSet.Contains(p.ProviderId))
-                        .ToList();
+                    details.AvailableOn = [.. providers.Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && providerSet.Contains(p.ProviderId))];
                 }
                 return details;
             })];

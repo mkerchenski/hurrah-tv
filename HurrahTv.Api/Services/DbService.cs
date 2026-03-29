@@ -276,7 +276,7 @@ public class DbService(IConfiguration config)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
-                    new { Status = (int)targetStatus, Id = existing.Id });
+                    new { Status = (int)targetStatus, existing.Id });
                 existing.Status = targetStatus;
             }
             return existing;
@@ -292,15 +292,26 @@ public class DbService(IConfiguration config)
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
             """, new
         {
-            UserId = userId, TmdbId = tmdbId, MediaType = mediaType, Title = title,
-            PosterPath = posterPath, Position = maxPos + 1, Status = (int)targetStatus,
-            AvailableOnJson = availableOnJson, AddedAt = DateTime.UtcNow
+            UserId = userId,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Position = maxPos + 1,
+            Status = (int)targetStatus,
+            AvailableOnJson = availableOnJson,
+            AddedAt = DateTime.UtcNow
         });
 
         return new QueueItem
         {
-            Id = id, TmdbId = tmdbId, MediaType = mediaType, Title = title,
-            PosterPath = posterPath, Position = maxPos + 1, Status = targetStatus
+            Id = id,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Position = maxPos + 1,
+            Status = targetStatus
         };
     }
 
@@ -445,7 +456,7 @@ public class DbService(IConfiguration config)
         return userId;
     }
 
-    // AI usage tracking
+    // ai usage tracking
     public async Task TrackAIUsageAsync(string userId, int inputTokens, int outputTokens, decimal costUsd, string requestType)
     {
         using SqlConnection db = await OpenAsync();
@@ -460,7 +471,7 @@ public class DbService(IConfiguration config)
         using SqlConnection db = await OpenAsync();
         return await db.QuerySingleOrDefaultAsync<decimal>(
             "SELECT ISNULL(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE YEAR(CreatedAt) = @Year AND MONTH(CreatedAt) = @Month",
-            new { Year = DateTime.UtcNow.Year, Month = DateTime.UtcNow.Month });
+            new { DateTime.UtcNow.Year, DateTime.UtcNow.Month });
     }
 
     public async Task<decimal> GetUserAICostAsync(string userId)
@@ -475,7 +486,7 @@ public class DbService(IConfiguration config)
     public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId)
     {
         using SqlConnection db = await OpenAsync();
-        var row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(
+        (string RowsJson, string WatchlistHash)? row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(
             "SELECT RowsJson, WatchlistHash FROM CurationCache WHERE UserId = @UserId",
             new { UserId = userId });
         return row;

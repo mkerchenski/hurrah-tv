@@ -93,7 +93,6 @@
         {
             _loaded = true;
             _loading = true;
-            StateHasChanged();
             _results = await LoadData();
             _loading = false;
         }

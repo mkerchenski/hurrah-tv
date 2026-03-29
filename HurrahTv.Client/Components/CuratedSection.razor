@@ -68,11 +68,21 @@
                                     }
                                 }
                             </div>
-                            <button class="text-gray-500 hover:text-accent text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
-                                    @onclick="() => AddToWatchlist(item.Result)" @onclick:stopPropagation="true">
-                                <span class="icon-[heroicons--plus] w-3.5 h-3.5"></span>
-                                <span>Add</span>
-                            </button>
+                            @if (_addedIds.Contains(item.Result.TmdbId))
+                            {
+                                <span class="text-green-400 text-xs flex items-center gap-1">
+                                    <span class="icon-[heroicons--check] w-3.5 h-3.5"></span>
+                                    <span>Added</span>
+                                </span>
+                            }
+                            else
+                            {
+                                <button class="text-gray-500 hover:text-accent text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
+                                        @onclick="() => AddToWatchlist(item.Result)" @onclick:stopPropagation="true">
+                                    <span class="icon-[heroicons--plus] w-3.5 h-3.5"></span>
+                                    <span>Add</span>
+                                </button>
+                            }
                         </div>
                     </div>
                 </div>
@@ -85,10 +95,17 @@
     [Parameter, EditorRequired] public List<CuratedItem> Items { get; set; } = [];
     [Parameter] public bool Loading { get; set; }
 
+    private HashSet<int> _addedIds = [];
+
     private void GoToDetails(SearchResult result) => Nav.NavigateTo($"/details/{result.MediaType}/{result.TmdbId}");
 
     private async Task AddToWatchlist(SearchResult result)
     {
-        await Api.AddToQueueAsync(result.ToQueueItem());
+        QueueItem? added = await Api.AddToQueueAsync(result.ToQueueItem());
+        if (added != null)
+        {
+            _addedIds.Add(result.TmdbId);
+            StateHasChanged();
+        }
     }
 }

@@ -71,7 +71,11 @@ public class ApiClient(HttpClient http)
         QueueItem qi = result.ToQueueItem();
         HttpResponseMessage response = await _http.PostAsJsonAsync(endpoint, new
         {
-            result.TmdbId, result.MediaType, result.Title, result.PosterPath, qi.AvailableOnJson
+            result.TmdbId,
+            result.MediaType,
+            result.Title,
+            result.PosterPath,
+            qi.AvailableOnJson
         });
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<QueueItem>();

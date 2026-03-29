@@ -44,7 +44,7 @@
                         <!-- title overlay at bottom -->
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 rounded-b-lg">
                             <div class="text-white text-xs font-medium leading-tight truncate">@item.Title</div>
-                            @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue)
+                            @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
                             {
                                 <div class="text-gray-400 text-[10px]">S@(item.LastSeasonWatched)E@(item.LastEpisodeWatched)</div>
                             }

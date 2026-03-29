@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject ApiClient Api
 
 <div class="poster-card relative rounded-lg overflow-hidden bg-surface-50 cursor-pointer group"
@@ -126,6 +127,7 @@
     [Inject] NavigationManager Nav { get; set; } = null!;
 
     private ActionState _actionState = ActionState.None;
+    private bool _disposed;
 
     private enum ActionState { None, Added, Seen, Liked }
 
@@ -134,42 +136,35 @@
         Nav.NavigateTo($"/details/{Result.MediaType}/{Result.TmdbId}");
     }
 
+    public void Dispose() => _disposed = true;
+
     private async Task AddToQueue()
     {
         QueueItem? added = await Api.AddToQueueAsync(Result.ToQueueItem());
         if (added != null)
-        {
-            _actionState = ActionState.Added;
-            StateHasChanged();
-            await Task.Delay(1500);
-            _actionState = ActionState.None;
-            StateHasChanged();
-        }
+            await ShowTemporaryState(ActionState.Added);
     }
 
     private async Task MarkLiked()
     {
         QueueItem? item = await Api.MarkAsLikedAsync(Result);
         if (item != null)
-        {
-            _actionState = ActionState.Liked;
-            StateHasChanged();
-            await Task.Delay(1500);
-            _actionState = ActionState.None;
-            StateHasChanged();
-        }
+            await ShowTemporaryState(ActionState.Liked);
     }
 
     private async Task MarkSeen()
     {
         QueueItem? item = await Api.MarkAsSeenAsync(Result);
         if (item != null)
-        {
-            _actionState = ActionState.Seen;
-            StateHasChanged();
-            await Task.Delay(1500);
-            _actionState = ActionState.None;
-            StateHasChanged();
-        }
+            await ShowTemporaryState(ActionState.Seen);
+    }
+
+    private async Task ShowTemporaryState(ActionState state)
+    {
+        _actionState = state;
+        if (!_disposed) StateHasChanged();
+        await Task.Delay(1500);
+        _actionState = ActionState.None;
+        if (!_disposed) StateHasChanged();
     }
 }

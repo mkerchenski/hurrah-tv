@@ -36,7 +36,9 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | Continue Watching | User's "Watching" list | Items sorted by recent activity |
 | AI-Curated | Claude AI + TMDb discover | "High-Stakes Hospital Nights" |
 | New This Season | TMDb discover (date-filtered) | Recently aired TV across your services |
-| Trending | TMDb popularity + recency boost | Popular shows, newer ones first |
+| Trending TV Shows | TMDb popularity + recency boost | Popular TV, newer ones first |
+| New Releases | TMDb discover (date-filtered) | Recently released movies |
+| Trending Movies | TMDb popularity + recency boost | Popular movies, newer ones first |
 | Because You Liked X | TMDb recommendations API | Similar shows to your favorites |
 
 ### API Endpoints
@@ -46,7 +48,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | `/api/search` | TMDb search proxy, trending, discover, recommendations |
 | `/api/details` | Show/movie details with watch providers and episode info |
 | `/api/queue` | Watchlist CRUD — statuses, ratings, progress, "seen it" |
-| `/api/curation` | AI-curated row generation, usage tracking |
+| `/api/curation` | AI-curated picks, per-show match scoring, usage tracking |
 | `/api/services` | Manage subscribed streaming services |
 | `/api/auth` | Phone OTP login (SMS-based, no passwords) |
 
@@ -75,6 +77,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
      "ConnectionStrings": { "Default": "Server=YOUR_SERVER;Database=HurrahTv;Trusted_Connection=True;TrustServerCertificate=True;" },
      "Tmdb": { "ApiKey": "your-tmdb-api-key" },
      "Jwt": { "Key": "your-base64-jwt-key" },
+     "Twilio": { "AccountSid": "your-sid", "AuthToken": "your-token", "FromNumber": "+1234567890" },
      "AI": { "Enabled": true, "AnthropicApiKey": "your-anthropic-api-key" }
    }
    ```

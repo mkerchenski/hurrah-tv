@@ -9,8 +9,8 @@ namespace HurrahTv.Api.Services;
 
 public class CurationService
 {
-    private const decimal InputCostPerToken = 0.0000008m;  // Haiku: $0.80/MTok in
-    private const decimal OutputCostPerToken = 0.000004m;  // Haiku: $4.00/MTok out
+    private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
+    private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
 
     private readonly DbService _db;
     private readonly TmdbService _tmdb;
@@ -62,20 +62,18 @@ public class CurationService
         }
 
         // need enough signal
-        List<QueueItem> signalItems = watchlist
-            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)
-            .ToList();
+        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)];
 
         if (signalItems.Count < 2)
             return new CurationResult { Error = $"Need 2+ signal items, have {signalItems.Count}" };
 
-        // Phase 1: gather candidate pool from TMDb
+        // phase 1: gather candidate pool from TMDb
         List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = $"Candidate pool too small: {candidatePool.Count}", CandidateCount = candidatePool.Count };
 
-        // Phase 2: send candidates + taste profile to AI for curation
+        // phase 2: send candidates + taste profile to AI for curation
         List<AICuratedRow> rows = await CurateWithAIAsync(userId, signalItems, watchlist, candidatePool);
 
         if (rows.Count == 0)
@@ -228,11 +226,11 @@ public class CurationService
     {
         StringBuilder sb = new();
 
-        List<QueueItem> liked = signalItems.Where(i => i.Status == QueueStatus.Liked).ToList();
-        List<QueueItem> watched = signalItems.Where(i => i.Status == QueueStatus.Finished).ToList();
-        List<QueueItem> watching = signalItems.Where(i => i.Status == QueueStatus.Watching).ToList();
-        List<QueueItem> wantToWatch = allItems.Where(i => i.Status == QueueStatus.WantToWatch).ToList();
-        List<QueueItem> disliked = allItems.Where(i => i.Status == QueueStatus.NotForMe).ToList();
+        List<QueueItem> liked = [.. signalItems.Where(i => i.Status == QueueStatus.Liked)];
+        List<QueueItem> watched = [.. signalItems.Where(i => i.Status == QueueStatus.Finished)];
+        List<QueueItem> watching = [.. signalItems.Where(i => i.Status == QueueStatus.Watching)];
+        List<QueueItem> wantToWatch = [.. allItems.Where(i => i.Status == QueueStatus.WantToWatch)];
+        List<QueueItem> disliked = [.. allItems.Where(i => i.Status == QueueStatus.NotForMe)];
 
         // strongest signal first
         if (liked.Count > 0)
@@ -246,7 +244,7 @@ public class CurationService
         if (disliked.Count > 0)
             sb.AppendLine($"DISLIKED (avoid similar): {string.Join(", ", disliked.Take(10).Select(i => i.Title))}");
 
-        List<QueueItem> rated = signalItems.Where(i => i.Rating.HasValue).ToList();
+        List<QueueItem> rated = [.. signalItems.Where(i => i.Rating.HasValue)];
         if (rated.Count > 0)
             sb.AppendLine($"RATINGS: {string.Join(", ", rated.Select(i => $"{i.Title}={i.Rating}/5"))}");
 
@@ -271,14 +269,12 @@ public class CurationService
         return sb.ToString();
     }
 
-    // generate a personalized match blurb for a specific show
+    // personalized match blurb for a specific show
     public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist)
     {
         if (!IsEnabled) return null;
 
-        List<QueueItem> signalItems = watchlist
-            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)
-            .ToList();
+        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)];
 
         if (signalItems.Count < 2) return null;
 
@@ -299,7 +295,7 @@ public class CurationService
 
             SHOW: {{show.Title}} ({{show.MediaType.ToUpper()}}, {{show.Year}})
             Genres: {{genres}}
-            Rating: {{show.VoteAverage.ToString("F1")}}/10
+            Rating: {{show.VoteAverage:F1}}/10
             Overview: {{overview}}
 
             Write 1-2 sentences MAX. Be direct and specific — reference what in their taste connects (or doesn't connect) to this show. Don't hedge. If it's a strong match, say so confidently. If it's a stretch, say why it might surprise them. If it's not for them, be honest.
