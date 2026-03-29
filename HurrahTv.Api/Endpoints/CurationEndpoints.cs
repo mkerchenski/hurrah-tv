@@ -23,6 +23,13 @@ public static class CurationEndpoints
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
 
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+
+                // safety-net: exclude items now in user's watchlist or dismissed
+                HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
+                excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
+                foreach (AICuratedRow row in result.Rows)
+                    row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
+
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
                 return Results.Ok(new CurationResponse
@@ -64,6 +71,13 @@ public static class CurationEndpoints
                 List<QueueItem> watchlist = await db.GetQueueAsync(userId);
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+
+                // safety-net: exclude items now in user's watchlist or dismissed
+                HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
+                excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
+                foreach (AICuratedRow row in result.Rows)
+                    row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
+
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
                 return Results.Ok(new CurationResponse

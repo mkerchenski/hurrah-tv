@@ -22,7 +22,7 @@
         <div class="flex gap-3 overflow-hidden">
             @for (int i = 0; i < 6; i++)
             {
-                <div class="flex-shrink-0 w-28 md:w-36">
+                <div class="flex-shrink-0 w-24 sm:w-28 md:w-36">
                     <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
                 </div>
             }
@@ -47,7 +47,7 @@
                  class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
                 @foreach (SearchResult result in _results)
                 {
-                    <div class="flex-shrink-0 w-28 md:w-36 snap-start">
+                    <div class="flex-shrink-0 w-24 sm:w-28 md:w-36 snap-start">
                         <PosterCard Result="result" HasNewEpisode="NewEpisodeTmdbIds?.Contains(result.TmdbId) == true" />
                     </div>
                 }

@@ -472,8 +472,8 @@
   .w-16 {
     width: calc(var(--spacing) * 16);
   }
-  .w-28 {
-    width: calc(var(--spacing) * 28);
+  .w-24 {
+    width: calc(var(--spacing) * 24);
   }
   .w-32 {
     width: calc(var(--spacing) * 32);
@@ -769,12 +769,6 @@
   .bg-red-900 {
     background-color: var(--color-red-900);
   }
-  .bg-red-900\/20 {
-    background-color: color-mix(in srgb, oklch(39.6% 0.141 25.723) 20%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-red-900) 20%, transparent);
-    }
-  }
   .bg-surface {
     background-color: var(--color-surface);
   }
@@ -1016,12 +1010,6 @@
   }
   .text-accent-light {
     color: var(--color-accent-light);
-  }
-  .text-accent-light\/80 {
-    color: color-mix(in srgb, #818cf8 80%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      color: color-mix(in oklab, var(--color-accent-light) 80%, transparent);
-    }
   }
   .text-blue-300 {
     color: var(--color-blue-300);
@@ -1335,6 +1323,11 @@
   .disabled\:opacity-40 {
     &:disabled {
       opacity: 40%;
+    }
+  }
+  .sm\:w-28 {
+    @media (width >= 40rem) {
+      width: calc(var(--spacing) * 28);
     }
   }
   .sm\:grid-cols-2 {

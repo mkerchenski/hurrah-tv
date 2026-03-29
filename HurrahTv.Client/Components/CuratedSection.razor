@@ -7,7 +7,7 @@
         <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent"></span>
         <h2 class="text-lg md:text-xl font-bold text-white">Curated for You</h2>
     </div>
-    <p class="text-xs text-gray-500 mb-4">AI picks based on your taste — add what looks good</p>
+    <p class="text-xs text-gray-500 mb-3">AI picks based on your taste — add what looks good</p>
 
     @if (Loading)
     {
@@ -18,8 +18,20 @@
     }
     else if (Items.Count > 0)
     {
+        <!-- tv / movies toggle -->
+        <div class="flex bg-surface-50 rounded-full p-1 mb-4 w-fit">
+            <button class="@(_tab == "tv" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 py-1.5 rounded-full text-sm font-medium transition-all"
+                    @onclick="@(() => _tab = "tv")">
+                TV Shows (@_tvItems.Count)
+            </button>
+            <button class="@(_tab == "movie" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 py-1.5 rounded-full text-sm font-medium transition-all"
+                    @onclick="@(() => _tab = "movie")">
+                Movies (@_movieItems.Count)
+            </button>
+        </div>
+
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            @foreach (CuratedItem item in Items)
+            @foreach (CuratedItem item in FilteredItems)
             {
                 <div class="flex gap-3 bg-surface-50 rounded-lg p-3 hover:bg-surface-100 transition-colors cursor-pointer group"
                      @onclick="() => GoToDetails(item.Result)">
@@ -44,7 +56,7 @@
                             @item.Result.Title
                         </div>
                         <div class="text-xs text-gray-500 mt-0.5">
-                            @item.Result.Year &middot; @item.Result.MediaType.ToUpper()
+                            @item.Result.Year
                             @if (item.Result.VoteAverage > 0)
                             {
                                 <span>&middot; <span class="icon-[heroicons--star-20-solid] w-3 h-3 text-yellow-400 inline-block align-text-bottom"></span> @item.Result.VoteAverage.ToString("F1")</span>
@@ -52,7 +64,7 @@
                         </div>
                         @if (!string.IsNullOrEmpty(item.Reason))
                         {
-                            <div class="text-xs text-accent-light/80 mt-1.5 leading-snug italic">
+                            <div class="text-xs text-gray-400 mt-1.5 leading-snug italic">
                                 &ldquo;@item.Reason&rdquo;
                             </div>
                         }
@@ -96,6 +108,18 @@
     [Parameter] public bool Loading { get; set; }
 
     private HashSet<int> _addedIds = [];
+    private string _tab = "tv";
+
+    private List<CuratedItem> _tvItems => Items.Where(i => i.Result.MediaType == MediaTypes.Tv).ToList();
+    private List<CuratedItem> _movieItems => Items.Where(i => i.Result.MediaType == MediaTypes.Movie).ToList();
+    private List<CuratedItem> FilteredItems => _tab == "tv" ? _tvItems : _movieItems;
+
+    protected override void OnParametersSet()
+    {
+        // auto-select the tab with more results, or fall back to TV
+        if (_tvItems.Count == 0 && _movieItems.Count > 0)
+            _tab = "movie";
+    }
 
     private void GoToDetails(SearchResult result) => Nav.NavigateTo($"/details/{result.MediaType}/{result.TmdbId}");
 
