@@ -24,9 +24,12 @@ public static class CurationEndpoints
 
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
 
-                HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
-                excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
-                ExcludeShows(result, excludeIds);
+                if (result.Rows.Count > 0)
+                {
+                    HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
+                    excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
+                    ExcludeShows(result, excludeIds);
+                }
 
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
@@ -70,9 +73,12 @@ public static class CurationEndpoints
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
                 CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
 
-                HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
-                excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
-                ExcludeShows(result, excludeIds);
+                if (result.Rows.Count > 0)
+                {
+                    HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
+                    excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
+                    ExcludeShows(result, excludeIds);
+                }
 
                 List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
 
