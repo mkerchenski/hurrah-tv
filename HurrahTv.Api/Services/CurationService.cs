@@ -58,26 +58,27 @@ public class CurationService
         if (monthlyCost >= _monthlyBudget)
         {
             _logger.LogWarning("AI monthly budget exceeded: ${Cost:F2} / ${Budget:F2}", monthlyCost, _monthlyBudget);
-            return new CurationResult { Error = "Monthly budget exceeded" };
+            return new CurationResult { Error = "AI recommendations are taking a break — check back soon" };
         }
 
         // need enough signal
-        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)];
+        // any watchlist activity counts as signal — stronger statuses weighted in the prompt
+        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is not QueueStatus.NotForMe)];
 
         if (signalItems.Count < 2)
-            return new CurationResult { Error = $"Need 2+ signal items, have {signalItems.Count}" };
+            return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
         // phase 1: gather candidate pool from TMDb
         List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist);
 
         if (candidatePool.Count < 10)
-            return new CurationResult { Error = $"Candidate pool too small: {candidatePool.Count}", CandidateCount = candidatePool.Count };
+            return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
 
         // phase 2: send candidates + taste profile to AI for curation
         List<AICuratedRow> rows = await CurateWithAIAsync(userId, signalItems, watchlist, candidatePool);
 
         if (rows.Count == 0)
-            return new CurationResult { Error = "AI returned no rows", CandidateCount = candidatePool.Count };
+            return new CurationResult { Error = "Couldn't generate recommendations right now — try again later", CandidateCount = candidatePool.Count };
 
         // only cache non-empty results
         if (rows.Count > 0)
@@ -274,7 +275,7 @@ public class CurationService
     {
         if (!IsEnabled) return null;
 
-        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)];
+        List<QueueItem> signalItems = [.. watchlist.Where(i => i.Status is not QueueStatus.NotForMe)];
 
         if (signalItems.Count < 2) return null;
 
