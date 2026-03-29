@@ -76,6 +76,30 @@ public class DbService(IConfiguration config)
                 PRIMARY KEY (UserId, TmdbId)
             );
 
+            -- AI usage tracking per user
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AIUsage')
+            CREATE TABLE AIUsage (
+                Id INT IDENTITY(1,1) PRIMARY KEY,
+                UserId NVARCHAR(50) NOT NULL,
+                InputTokens INT NOT NULL DEFAULT 0,
+                OutputTokens INT NOT NULL DEFAULT 0,
+                EstimatedCostUsd DECIMAL(10,6) NOT NULL DEFAULT 0,
+                RequestType NVARCHAR(50) NOT NULL,
+                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+
+            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AIUsage_UserId')
+            CREATE INDEX IX_AIUsage_UserId ON AIUsage(UserId, CreatedAt);
+
+            -- cached AI curation rows per user
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CurationCache')
+            CREATE TABLE CurationCache (
+                UserId NVARCHAR(50) PRIMARY KEY,
+                RowsJson NVARCHAR(MAX) NOT NULL,
+                WatchlistHash NVARCHAR(64) NOT NULL,
+                GeneratedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            );
+
             -- watchlist evolution: add new columns to QueueItems
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'Rating')
             ALTER TABLE QueueItems ADD Rating INT NULL;
@@ -286,6 +310,51 @@ public class DbService(IConfiguration config)
         };
     }
 
+    public async Task<QueueItem?> MarkAsLikedAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+
+        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+
+        if (existing != null)
+        {
+            await db.ExecuteAsync(
+                "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
+                new { Status = (int)QueueStatus.Liked, Id = existing.Id });
+            existing.Status = QueueStatus.Liked;
+            return existing;
+        }
+
+        int maxPos = await db.QuerySingleOrDefaultAsync<int>(
+            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
+            new { UserId = userId });
+
+        int id = await db.QuerySingleAsync<int>("""
+            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
+            OUTPUT INSERTED.Id
+            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            """, new
+        {
+            UserId = userId,
+            TmdbId = tmdbId,
+            MediaType = mediaType,
+            Title = title,
+            PosterPath = posterPath,
+            Position = maxPos + 1,
+            Status = (int)QueueStatus.Liked,
+            AvailableOnJson = availableOnJson,
+            AddedAt = DateTime.UtcNow
+        });
+
+        return new QueueItem
+        {
+            Id = id, TmdbId = tmdbId, MediaType = mediaType, Title = title,
+            PosterPath = posterPath, Position = maxPos + 1, Status = QueueStatus.Liked
+        };
+    }
+
     public async Task UpdateEpisodeDatesAsync(int id, DateTime? latestEpisodeDate, DateTime? nextEpisodeDate)
     {
         using SqlConnection db = await OpenAsync();
@@ -425,6 +494,53 @@ public class DbService(IConfiguration config)
             new { Id = userId, PhoneNumber = phoneNumber, CreatedAt = DateTime.UtcNow });
 
         return userId;
+    }
+
+    // AI usage tracking
+    public async Task TrackAIUsageAsync(string userId, int inputTokens, int outputTokens, decimal costUsd, string requestType)
+    {
+        using SqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            INSERT INTO AIUsage (UserId, InputTokens, OutputTokens, EstimatedCostUsd, RequestType, CreatedAt)
+            VALUES (@UserId, @InputTokens, @OutputTokens, @CostUsd, @RequestType, @CreatedAt)
+            """, new { UserId = userId, InputTokens = inputTokens, OutputTokens = outputTokens, CostUsd = costUsd, RequestType = requestType, CreatedAt = DateTime.UtcNow });
+    }
+
+    public async Task<decimal> GetMonthlyAICostAsync()
+    {
+        using SqlConnection db = await OpenAsync();
+        return await db.QuerySingleOrDefaultAsync<decimal>(
+            "SELECT ISNULL(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE YEAR(CreatedAt) = @Year AND MONTH(CreatedAt) = @Month",
+            new { Year = DateTime.UtcNow.Year, Month = DateTime.UtcNow.Month });
+    }
+
+    public async Task<decimal> GetUserAICostAsync(string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+        return await db.QuerySingleOrDefaultAsync<decimal>(
+            "SELECT ISNULL(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE UserId = @UserId",
+            new { UserId = userId });
+    }
+
+    // curation cache
+    public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+        var row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(
+            "SELECT RowsJson, WatchlistHash FROM CurationCache WHERE UserId = @UserId",
+            new { UserId = userId });
+        return row;
+    }
+
+    public async Task SetCurationCacheAsync(string userId, string rowsJson, string watchlistHash)
+    {
+        using SqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            MERGE CurationCache AS target
+            USING (SELECT @UserId AS UserId) AS source ON target.UserId = source.UserId
+            WHEN MATCHED THEN UPDATE SET RowsJson = @RowsJson, WatchlistHash = @Hash, GeneratedAt = GETUTCDATE()
+            WHEN NOT MATCHED THEN INSERT (UserId, RowsJson, WatchlistHash) VALUES (@UserId, @RowsJson, @Hash);
+            """, new { UserId = userId, RowsJson = rowsJson, Hash = watchlistHash });
     }
 
     private async Task<SqlConnection> OpenAsync()

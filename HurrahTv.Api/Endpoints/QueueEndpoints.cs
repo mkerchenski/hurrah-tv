@@ -104,6 +104,19 @@ public static class QueueEndpoints
                 request.PosterPath, request.AvailableOnJson, userId);
             return Results.Ok(item);
         });
+
+        // "I loved this" — adds as Liked or updates existing to Liked
+        group.MapPost("/liked", async (SeenRequest request, ClaimsPrincipal user, DbService db) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Title) || !MediaTypes.IsValid(request.MediaType) || request.TmdbId <= 0)
+                return Results.BadRequest("Invalid request");
+
+            string userId = user.GetUserId();
+            QueueItem? item = await db.MarkAsLikedAsync(
+                request.TmdbId, request.MediaType, request.Title,
+                request.PosterPath, request.AvailableOnJson, userId);
+            return Results.Ok(item);
+        });
     }
 
     public record QueueStatusUpdate(QueueStatus Status);

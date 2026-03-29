@@ -1,0 +1,94 @@
+@inject NavigationManager Nav
+@inject ApiClient Api
+
+<div class="mb-8 md:mb-10">
+    <!-- section header -->
+    <div class="flex items-center gap-2 mb-1">
+        <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent"></span>
+        <h2 class="text-lg md:text-xl font-bold text-white">Curated for You</h2>
+    </div>
+    <p class="text-xs text-gray-500 mb-4">AI picks based on your taste — add what looks good</p>
+
+    @if (Loading)
+    {
+        <div class="flex items-center gap-2 text-sm text-gray-500 py-6">
+            <div class="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+            <span>Analyzing your taste...</span>
+        </div>
+    }
+    else if (Items.Count > 0)
+    {
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            @foreach (CuratedItem item in Items)
+            {
+                <div class="flex gap-3 bg-surface-50 rounded-lg p-3 hover:bg-surface-100 transition-colors cursor-pointer group"
+                     @onclick="() => GoToDetails(item.Result)">
+                    <!-- poster -->
+                    <div class="flex-shrink-0 w-16 md:w-20">
+                        @if (!string.IsNullOrEmpty(item.Result.PosterUrl("w185")))
+                        {
+                            <img src="@item.Result.PosterUrl("w185")" alt="@item.Result.Title"
+                                 class="w-full aspect-[2/3] object-cover rounded" loading="lazy" />
+                        }
+                        else
+                        {
+                            <div class="w-full aspect-[2/3] bg-surface-200 rounded flex items-center justify-center">
+                                <span class="text-gray-600 text-xs">?</span>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- info -->
+                    <div class="flex-1 min-w-0 flex flex-col justify-center">
+                        <div class="font-semibold text-sm text-white group-hover:text-accent transition-colors leading-tight">
+                            @item.Result.Title
+                        </div>
+                        <div class="text-xs text-gray-500 mt-0.5">
+                            @item.Result.Year &middot; @item.Result.MediaType.ToUpper()
+                            @if (item.Result.VoteAverage > 0)
+                            {
+                                <span>&middot; <span class="icon-[heroicons--star-20-solid] w-3 h-3 text-yellow-400 inline-block align-text-bottom"></span> @item.Result.VoteAverage.ToString("F1")</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(item.Reason))
+                        {
+                            <div class="text-xs text-accent-light/80 mt-1.5 leading-snug italic">
+                                &ldquo;@item.Reason&rdquo;
+                            </div>
+                        }
+                        <!-- service badges + add button -->
+                        <div class="flex items-center justify-between mt-1.5">
+                            <div class="flex gap-1">
+                                @foreach (AvailableService svc in item.Result.AvailableOn.Take(3))
+                                {
+                                    @if (!string.IsNullOrEmpty(svc.LogoUrl()))
+                                    {
+                                        <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" title="@svc.ProviderName"
+                                             class="w-4 h-4 rounded" />
+                                    }
+                                }
+                            </div>
+                            <button class="text-gray-500 hover:text-accent text-xs flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all"
+                                    @onclick="() => AddToWatchlist(item.Result)" @onclick:stopPropagation="true">
+                                <span class="icon-[heroicons--plus] w-3.5 h-3.5"></span>
+                                <span>Add</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public List<CuratedItem> Items { get; set; } = [];
+    [Parameter] public bool Loading { get; set; }
+
+    private void GoToDetails(SearchResult result) => Nav.NavigateTo($"/details/{result.MediaType}/{result.TmdbId}");
+
+    private async Task AddToWatchlist(SearchResult result)
+    {
+        await Api.AddToQueueAsync(result.ToQueueItem());
+    }
+}

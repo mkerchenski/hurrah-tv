@@ -68,5 +68,13 @@ Show issues scoring 50+ in a table sorted by score:
 | Score | Reviewer | File:Line | Issue | Suggestion |
 |-------|----------|-----------|-------|------------|
 
-### Step 6: Fix
+### Step 6: README Check
+Verify that `README.md` accurately reflects the current state of the project:
+- Tech stack matches what's actually used (database, AI, CSS build, auth)
+- Feature descriptions match what's implemented
+- Setup instructions are correct and complete
+- Architecture diagram/table matches current project structure
+If README is out of date, flag it as an issue and offer to update.
+
+### Step 7: Fix
 Ask: "Would you like me to fix any of these issues?"

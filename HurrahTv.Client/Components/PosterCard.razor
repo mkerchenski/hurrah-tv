@@ -83,6 +83,12 @@
                     title="Want to watch">
                 <span class="icon-[heroicons--plus] w-4 h-4"></span>
             </button>
+            <button class="bg-black/60 hover:bg-pink-600 text-white rounded-full w-8 h-8
+                           flex items-center justify-center transition-colors"
+                    @onclick="MarkLiked" @onclick:stopPropagation="true"
+                    title="Loved it">
+                <span class="icon-[heroicons--heart] w-4 h-4"></span>
+            </button>
             <button class="bg-black/60 hover:bg-blue-600 text-white rounded-full w-8 h-8
                            flex items-center justify-center transition-colors"
                     @onclick="MarkSeen" @onclick:stopPropagation="true"
@@ -105,6 +111,13 @@
             <span class="icon-[heroicons--eye] w-4 h-4"></span>
         </div>
     }
+    else if (_actionState == ActionState.Liked)
+    {
+        <div class="absolute top-2 right-2 bg-pink-600 text-white rounded-full w-8 h-8
+                    flex items-center justify-center transition-all">
+            <span class="icon-[heroicons--heart] w-4 h-4"></span>
+        </div>
+    }
 </div>
 
 @code {
@@ -114,7 +127,7 @@
 
     private ActionState _actionState = ActionState.None;
 
-    private enum ActionState { None, Added, Seen }
+    private enum ActionState { None, Added, Seen, Liked }
 
     private void NavigateToDetails()
     {
@@ -127,6 +140,19 @@
         if (added != null)
         {
             _actionState = ActionState.Added;
+            StateHasChanged();
+            await Task.Delay(1500);
+            _actionState = ActionState.None;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MarkLiked()
+    {
+        QueueItem? item = await Api.MarkAsLikedAsync(Result);
+        if (item != null)
+        {
+            _actionState = ActionState.Liked;
             StateHasChanged();
             await Task.Delay(1500);
             _actionState = ActionState.None;

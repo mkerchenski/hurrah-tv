@@ -34,7 +34,7 @@ public enum QueueStatus
 {
     WantToWatch = 0,  // was "Queued" — bookmarked for later
     Watching = 1,     // actively watching
-    Finished = 2,     // was "Watched" — completed
+    Finished = 2,     // "Watched" in UI — seen it, not necessarily completed
     Liked = 3,        // finished and loved — feeds recommendations
     NotForMe = 4      // negative signal (replaces dismissals over time)
 }

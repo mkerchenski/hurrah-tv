@@ -1,0 +1,369 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Anthropic;
+using Anthropic.Models.Messages;
+using HurrahTv.Shared.Models;
+
+namespace HurrahTv.Api.Services;
+
+public class CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger)
+{
+    // Haiku pricing: $0.80/$4.00 per MTok (input/output)
+    private const decimal InputCostPerToken = 0.0000008m;
+    private const decimal OutputCostPerToken = 0.000004m;
+
+    private readonly bool _enabled = config.GetValue<bool>("AI:Enabled");
+    private readonly string _apiKey = config["AI:AnthropicApiKey"] ?? "";
+    private readonly string _model = config["AI:CurationModel"] ?? "claude-haiku-4-5-20251001";
+    private readonly decimal _monthlyBudget = config.GetValue<decimal>("AI:MonthlyBudgetUsd", 50m);
+
+    public bool IsEnabled => _enabled && !string.IsNullOrEmpty(_apiKey);
+
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds)
+    {
+        if (!IsEnabled)
+            return new CurationResult { Error = "AI not enabled" };
+
+        string currentHash = ComputeWatchlistHash(watchlist);
+
+        // check cache
+        (string? rowsJson, string? watchlistHash)? cached = await db.GetCurationCacheAsync(userId);
+        if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null
+            && cached.Value.rowsJson != "[]")
+        {
+            List<AICuratedRow> cachedRows = JsonSerializer.Deserialize<List<AICuratedRow>>(cached.Value.rowsJson) ?? [];
+            if (cachedRows.Count > 0)
+                return new CurationResult { Rows = cachedRows, FromCache = true, WatchlistChanged = false };
+        }
+
+        bool watchlistChanged = cached != null && cached.Value.watchlistHash != currentHash;
+
+        // budget check
+        decimal monthlyCost = await db.GetMonthlyAICostAsync();
+        if (monthlyCost >= _monthlyBudget)
+        {
+            logger.LogWarning("AI monthly budget exceeded: ${Cost:F2} / ${Budget:F2}", monthlyCost, _monthlyBudget);
+            return new CurationResult { Error = "Monthly budget exceeded" };
+        }
+
+        // need enough signal
+        List<QueueItem> signalItems = watchlist
+            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)
+            .ToList();
+
+        if (signalItems.Count < 2)
+            return new CurationResult { Error = $"Need 2+ signal items, have {signalItems.Count}" };
+
+        // Phase 1: gather candidate pool from TMDb
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist);
+
+        if (candidatePool.Count < 10)
+            return new CurationResult { Error = $"Candidate pool too small: {candidatePool.Count}", CandidateCount = candidatePool.Count };
+
+        // Phase 2: send candidates + taste profile to AI for curation
+        List<AICuratedRow> rows = await CurateWithAIAsync(userId, signalItems, watchlist, candidatePool);
+
+        if (rows.Count == 0)
+            return new CurationResult { Error = "AI returned no rows", CandidateCount = candidatePool.Count };
+
+        // only cache non-empty results
+        if (rows.Count > 0)
+        {
+            string rowsJsonStr = JsonSerializer.Serialize(rows);
+            await db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
+        }
+
+        return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
+    }
+
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist)
+    {
+        HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
+
+        // fetch recent TV and movies in parallel across user's services
+        Task<List<SearchResult>> newTv = tmdb.NewOnServicesAsync(providerIds, "tv", deep: true);
+        Task<List<SearchResult>> newMovies = tmdb.NewOnServicesAsync(providerIds, "movie", deep: true);
+        Task<List<SearchResult>> popularTv = tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true);
+        Task<List<SearchResult>> popularMovies = tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true);
+        await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
+
+        // combine and deduplicate, excluding watchlist items
+        HashSet<int> seen = [.. watchlistIds];
+        List<SearchResult> pool = [];
+        foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result })
+        {
+            foreach (SearchResult r in batch)
+            {
+                if (seen.Add(r.TmdbId))
+                    pool.Add(r);
+            }
+        }
+
+        // enrich with provider info for shows that don't have it
+        pool = await tmdb.FilterToUserServicesAsync(pool, providerIds);
+
+        return pool;
+    }
+
+    private async Task<List<AICuratedRow>> CurateWithAIAsync(string userId, List<QueueItem> signalItems,
+        List<QueueItem> allItems, List<SearchResult> candidates)
+    {
+        string tasteProfile = BuildTasteProfile(signalItems, allItems);
+        string candidateList = BuildCandidateList(candidates);
+
+        string prompt = $$"""
+            You are the AI curator for hurrah.tv. You find surprising connections in what people watch and surface shows they didn't know they'd love.
+
+            ## USER'S TASTE PROFILE
+            {{tasteProfile}}
+
+            ## CANDIDATE SHOWS (available on their streaming services)
+            {{candidateList}}
+
+            ## YOUR TASK
+            Pick the 12-15 best shows from the candidates for this user. Rank them by how strongly you'd recommend them. For each, write a short reason (10-20 words) explaining WHY this user specifically would like it.
+
+            Think beyond genre. Look for:
+            - Unexpected connections (they like medical dramas AND comedies → dark comedy about doctors)
+            - Mood and pacing matches (if they watch intense dramas, recommend intense dramas)
+            - Character archetypes they gravitate toward
+            - Non-obvious patterns in their taste
+
+            Rules:
+            - STRONGLY prefer shows from 2024-2026. Legacy shows only if the taste connection is truly compelling.
+            - Be opinionated and specific in your reasons. Don't hedge.
+            - The list is for adding to their watchlist, not necessarily watching tonight.
+
+            Respond with ONLY a JSON array (no markdown, no explanation):
+            [{"id":1,"reason":"Why this user specifically would love this show"}]
+
+            The "id" is the candidate number (# before each show). Order by recommendation strength (best first).
+            """;
+
+        try
+        {
+            AnthropicClient client = new() { APIKey = _apiKey };
+            Message response = await client.Messages.Create(new MessageCreateParams
+            {
+                Model = _model,
+                MaxTokens = 1024,
+                Messages = [new MessageParam { Role = Role.User, Content = prompt }]
+            });
+
+            string text = "";
+            if (response.Content.Count > 0 && response.Content[0].TryPickText(out TextBlock? textBlock))
+                text = textBlock.Text;
+
+            int inputTokens = (int)response.Usage.InputTokens;
+            int outputTokens = (int)response.Usage.OutputTokens;
+            decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
+
+            await db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "curation");
+
+            logger.LogInformation("AI curation for {UserId}: {InputTokens} in / {OutputTokens} out = ${Cost:F4}",
+                userId, inputTokens, outputTokens, cost);
+
+            // parse response
+            text = text.Trim();
+            int jsonStart = text.IndexOf('[');
+            int jsonEnd = text.LastIndexOf(']');
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+                text = text[jsonStart..(jsonEnd + 1)];
+
+            List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            }) ?? [];
+
+            // build a single flat curated list
+            List<int> tmdbIds = [];
+            Dictionary<int, string> reasons = [];
+
+            foreach (AIPick pick in picks)
+            {
+                if (pick.Id >= 1 && pick.Id <= candidates.Count)
+                {
+                    SearchResult candidate = candidates[pick.Id - 1];
+                    if (!tmdbIds.Contains(candidate.TmdbId))
+                    {
+                        tmdbIds.Add(candidate.TmdbId);
+                        if (!string.IsNullOrEmpty(pick.Reason))
+                            reasons[candidate.TmdbId] = pick.Reason;
+                    }
+                }
+            }
+
+            if (tmdbIds.Count == 0) return [];
+
+            return [new AICuratedRow
+            {
+                Title = "Curated for You",
+                Subtitle = "Personalized picks based on your taste",
+                TmdbIds = tmdbIds,
+                Reasons = reasons
+            }];
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "AI curation failed for {UserId}", userId);
+            return [];
+        }
+    }
+
+    private static string BuildTasteProfile(List<QueueItem> signalItems, List<QueueItem> allItems)
+    {
+        StringBuilder sb = new();
+
+        List<QueueItem> liked = signalItems.Where(i => i.Status == QueueStatus.Liked).ToList();
+        List<QueueItem> watched = signalItems.Where(i => i.Status == QueueStatus.Finished).ToList();
+        List<QueueItem> watching = signalItems.Where(i => i.Status == QueueStatus.Watching).ToList();
+        List<QueueItem> wantToWatch = allItems.Where(i => i.Status == QueueStatus.WantToWatch).ToList();
+        List<QueueItem> disliked = allItems.Where(i => i.Status == QueueStatus.NotForMe).ToList();
+
+        // strongest signal first
+        if (liked.Count > 0)
+            sb.AppendLine($"LOVED (strongest signal): {string.Join(", ", liked.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (watched.Count > 0)
+            sb.AppendLine($"WATCHED (strong signal): {string.Join(", ", watched.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (watching.Count > 0)
+            sb.AppendLine($"CURRENTLY WATCHING (strong signal): {string.Join(", ", watching.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (wantToWatch.Count > 0)
+            sb.AppendLine($"WANT TO WATCH (weaker signal — interest but not proven taste): {string.Join(", ", wantToWatch.Take(10).Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (disliked.Count > 0)
+            sb.AppendLine($"DISLIKED (avoid similar): {string.Join(", ", disliked.Take(10).Select(i => i.Title))}");
+
+        List<QueueItem> rated = signalItems.Where(i => i.Rating.HasValue).ToList();
+        if (rated.Count > 0)
+            sb.AppendLine($"RATINGS: {string.Join(", ", rated.Select(i => $"{i.Title}={i.Rating}/5"))}");
+
+        sb.AppendLine();
+        sb.AppendLine("Weight recommendations heavily toward LOVED and WATCHED shows. Want to Watch items indicate interest direction but are weaker signals.");
+
+        return sb.ToString();
+    }
+
+    private static string BuildCandidateList(List<SearchResult> candidates)
+    {
+        StringBuilder sb = new();
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            SearchResult c = candidates[i];
+            string services = c.AvailableOn.Count > 0
+                ? string.Join("/", c.AvailableOn.Take(3).Select(s => s.ProviderName))
+                : "";
+            string overview = c.Overview.Length > 100 ? c.Overview[..100] + "..." : c.Overview;
+            sb.AppendLine($"#{i + 1} {c.Title} ({c.MediaType.ToUpper()}, {c.Year}) [{services}] — {overview}");
+        }
+        return sb.ToString();
+    }
+
+    // generate a personalized match blurb for a specific show
+    public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist)
+    {
+        if (!IsEnabled) return null;
+
+        List<QueueItem> signalItems = watchlist
+            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished or QueueStatus.Watching)
+            .ToList();
+
+        if (signalItems.Count < 2) return null;
+
+        // budget check
+        decimal monthlyCost = await db.GetMonthlyAICostAsync();
+        if (monthlyCost >= _monthlyBudget) return null;
+
+        string tasteProfile = BuildTasteProfile(signalItems, watchlist);
+
+        string genres = show.Genres.Count > 0 ? string.Join(", ", show.Genres) : "unknown";
+        string overview = show.Overview.Length > 200 ? show.Overview[..200] + "..." : show.Overview;
+
+        string prompt = $$"""
+            You are the AI curator for hurrah.tv. Based on this user's taste profile, write a brief personalized take on whether they'd enjoy this show.
+
+            USER'S TASTE:
+            {{tasteProfile}}
+
+            SHOW: {{show.Title}} ({{show.MediaType.ToUpper()}}, {{show.Year}})
+            Genres: {{genres}}
+            Rating: {{show.VoteAverage.ToString("F1")}}/10
+            Overview: {{overview}}
+
+            Write 1-2 sentences MAX. Be direct and specific — reference what in their taste connects (or doesn't connect) to this show. Don't hedge. If it's a strong match, say so confidently. If it's a stretch, say why it might surprise them. If it's not for them, be honest.
+
+            Respond with ONLY a JSON object (no markdown):
+            {"match":"strong" or "good" or "stretch" or "miss","reason":"Your 1-2 sentence take"}
+            """;
+
+        try
+        {
+            AnthropicClient client = new() { APIKey = _apiKey };
+            Message response = await client.Messages.Create(new MessageCreateParams
+            {
+                Model = _model,
+                MaxTokens = 150,
+                Messages = [new MessageParam { Role = Role.User, Content = prompt }]
+            });
+
+            string text = "";
+            if (response.Content.Count > 0 && response.Content[0].TryPickText(out TextBlock? textBlock))
+                text = textBlock.Text;
+
+            int inputTokens = (int)response.Usage.InputTokens;
+            int outputTokens = (int)response.Usage.OutputTokens;
+            decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
+
+            await db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "show-match");
+
+            // parse
+            text = text.Trim();
+            int jsonStart = text.IndexOf('{');
+            int jsonEnd = text.LastIndexOf('}');
+            if (jsonStart >= 0 && jsonEnd > jsonStart)
+                text = text[jsonStart..(jsonEnd + 1)];
+
+            return JsonSerializer.Deserialize<ShowMatchResult>(text, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Show match failed for {UserId}/{TmdbId}", userId, show.TmdbId);
+            return null;
+        }
+    }
+
+    private static string ComputeWatchlistHash(List<QueueItem> items)
+    {
+        string input = string.Join("|", items
+            .OrderBy(i => i.TmdbId)
+            .Select(i => $"{i.TmdbId}:{(int)i.Status}:{i.Rating}"));
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
+        return Convert.ToHexString(hash)[..16];
+    }
+
+    private class AIPick
+    {
+        public int Id { get; set; }
+        public string Reason { get; set; } = "";
+    }
+}
+
+// cached row data
+public class AICuratedRow
+{
+    public string Title { get; set; } = "";
+    public string Subtitle { get; set; } = "";
+    public List<int> TmdbIds { get; set; } = [];
+    public Dictionary<int, string> Reasons { get; set; } = []; // TmdbId → reason
+}
+
+public class CurationResult
+{
+    public List<AICuratedRow> Rows { get; set; } = [];
+    public bool FromCache { get; set; }
+    public bool WatchlistChanged { get; set; }
+    public string? Error { get; set; }
+    public int CandidateCount { get; set; }
+}

@@ -63,28 +63,30 @@ public class TmdbService
 
     private const int NewContentDaysBack = 60;
     private const int ResultsPerProvider = 5;
+    private const int DeepResultsPerProvider = 15; // for AI curation — larger pool
 
     // popular content on user's services (no date filter — best for "trending")
     public async Task<List<SearchResult>> PopularOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false);
+        List<int>? genreIds = null, bool deep = false) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false, deep: deep);
 
     // recently released content on user's services (date-filtered — "new this season")
     public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true);
+        List<int>? genreIds = null, bool deep = false) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep);
 
     private async Task<List<SearchResult>> InterleaveByProviderAsync(List<int> providerIds, string mediaType,
-        List<int>? genreIds, bool recentOnly)
+        List<int>? genreIds, bool recentOnly, bool deep = false)
     {
         if (providerIds.Count == 0) return [];
 
+        int perProvider = deep ? DeepResultsPerProvider : ResultsPerProvider;
         Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly))];
         await Task.WhenAll(tasks);
 
         List<SearchResult> interleaved = [];
         HashSet<int> seen = [];
-        for (int i = 0; i < ResultsPerProvider; i++)
+        for (int i = 0; i < perProvider; i++)
         {
             foreach (Task<List<SearchResult>> task in tasks)
             {
@@ -295,6 +297,25 @@ public class TmdbService
         }
 
         return providers;
+    }
+
+    // recommendations based on a specific title
+    public async Task<List<SearchResult>> GetRecommendationsAsync(int tmdbId, string mediaType)
+    {
+        string cacheKey = $"recs:{mediaType}:{tmdbId}";
+        if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
+            return cached!;
+
+        string url = $"{mediaType}/{tmdbId}/recommendations?api_key={_apiKey}&language=en-US&page=1";
+        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
+        if (response == null) return [];
+
+        List<SearchResult> results = [.. response.Results
+            .Where(r => (r.MediaType ?? mediaType) is MediaTypes.Movie or MediaTypes.Tv)
+            .Select(r => { r.MediaType ??= mediaType; return MapToSearchResult(r); })];
+
+        _cache.Set(cacheKey, results, TimeSpan.FromHours(6));
+        return results;
     }
 
     // returns (lastAiredDate, nextAirDate) for a TV show

@@ -29,7 +29,7 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- new episodes row (only if user has TV shows with recent episodes) -->
+        <!-- new episodes row -->
         @if (_newEpisodeItems.Count > 0)
         {
             <WatchlistRow Title="New Episodes" Items="_newEpisodeItems" />
@@ -39,6 +39,16 @@ else
         @if (_watchingItems.Count > 0)
         {
             <WatchlistRow Title="Continue Watching" Items="_watchingItems" />
+        }
+
+        <!-- AI-curated section -->
+        @if (_curatedItems.Count > 0 || _aiLoading)
+        {
+            <CuratedSection Items="_curatedItems" Loading="_aiLoading" />
+        }
+        @if (!string.IsNullOrEmpty(_aiError))
+        {
+            <div class="text-xs text-red-400 mb-4 px-2 py-1 bg-red-900/20 rounded">AI debug: @_aiError</div>
         }
 
         <!-- new TV on your services -->
@@ -53,10 +63,12 @@ else
         <!-- trending movies on your services -->
         <ContentRow Title="Trending Movies" Subtitle="Popular on your services" LoadData="LoadTrendingMovies" />
 
-        <!-- liked row (shows the user's taste profile) -->
-        @if (_likedItems.Count > 0)
+        <!-- "because you liked X" rows -->
+        @foreach (QueueItem seed in _recSeeds)
         {
-            <WatchlistRow Title="Shows You Loved" Items="_likedItems" />
+            <ContentRow Title="@($"Because You Liked {seed.Title}")"
+                        LoadData="@(() => Api.GetRecommendationsAsync(seed.TmdbId, seed.MediaType))"
+                        NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
         }
     </div>
 }
@@ -69,9 +81,14 @@ else
 
     // watchlist items by status
     private List<QueueItem> _watchingItems = [];
-    private List<QueueItem> _likedItems = [];
     private List<QueueItem> _newEpisodeItems = [];
     private HashSet<int> _newEpisodeTmdbIds = [];
+    private List<QueueItem> _recSeeds = [];
+
+    // AI curation
+    private List<CuratedItem> _curatedItems = [];
+    private bool _aiLoading;
+    private string? _aiError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -96,9 +113,8 @@ else
         List<QueueItem> allItems = await Api.GetQueueAsync();
 
         _watchingItems = allItems.Where(i => i.Status == QueueStatus.Watching).ToList();
-        _likedItems = allItems.Where(i => i.Status == QueueStatus.Liked).ToList();
+        _recSeeds = PickRecSeeds(allItems, 3);
 
-        // new episodes: TV items that are Watching or WantToWatch with recent episode dates
         _newEpisodeItems = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
@@ -108,6 +124,59 @@ else
         _newEpisodeTmdbIds = [.. _newEpisodeItems.Select(i => i.TmdbId)];
 
         StateHasChanged();
+
+        // load AI curation (awaited so StateHasChanged works properly)
+        await LoadAICuration();
+    }
+
+    private async Task LoadAICuration()
+    {
+        try
+        {
+            Console.WriteLine("[AI] LoadAICuration starting...");
+            _aiLoading = true;
+            StateHasChanged();
+
+            CurationResponse? curation = await Api.GetCuratedRowsAsync();
+            _aiLoading = false;
+            Console.WriteLine($"[AI] Response: {(curation == null ? "null" : $"enabled={curation.AiEnabled}, rows={curation.Rows.Count}, error={curation.Error}, candidates={curation.CandidateCount}")}");
+
+            if (curation == null)
+            {
+                _aiError = "Failed to reach curation API";
+                StateHasChanged();
+                return;
+            }
+
+            if (!curation.AiEnabled)
+            {
+                _aiError = $"AI not enabled (candidates: {curation.CandidateCount})";
+                StateHasChanged();
+                return;
+            }
+
+            _aiError = curation.Error;
+
+            // flatten into a single ranked list
+            _curatedItems = [];
+            foreach (CuratedRowResponse row in curation.Rows)
+            {
+                foreach (SearchResult result in row.Results)
+                {
+                    string reason = row.Reasons.TryGetValue(result.TmdbId, out string? r) ? r : "";
+                    _curatedItems.Add(new CuratedItem { Result = result, Reason = reason });
+                }
+            }
+            Console.WriteLine($"[AI] Built {_curatedItems.Count} curated items");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AI] Exception: {ex}");
+            _aiLoading = false;
+            _aiError = $"Exception: {ex.Message}";
+            StateHasChanged();
+        }
     }
 
     // content row data loaders
@@ -115,4 +184,22 @@ else
     private Task<List<SearchResult>> LoadNewTv() => Api.NewOnServicesAsync("tv");
     private Task<List<SearchResult>> LoadTrendingMovies() => Api.ForYouAsync("movie");
     private Task<List<SearchResult>> LoadNewMovies() => Api.NewOnServicesAsync("movie");
+
+    private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count)
+    {
+        List<QueueItem> candidates = allItems
+            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished)
+            .ToList();
+
+        if (candidates.Count <= count) return candidates;
+
+        DateTime recentCutoff = DateTime.UtcNow.AddDays(-30);
+        Random rng = new();
+        List<(QueueItem item, double weight)> weighted = candidates
+            .Select(i => (i, weight: (i.AddedAt >= recentCutoff ? 3.0 : 1.0) * rng.NextDouble()))
+            .OrderByDescending(x => x.weight)
+            .ToList();
+
+        return weighted.Take(count).Select(x => x.item).ToList();
+    }
 }

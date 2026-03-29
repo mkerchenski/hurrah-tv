@@ -1,0 +1,142 @@
+using System.Security.Claims;
+using Microsoft.Extensions.Caching.Memory;
+using HurrahTv.Api.Services;
+using HurrahTv.Shared.Models;
+
+namespace HurrahTv.Api.Endpoints;
+
+public static class CurationEndpoints
+{
+    public static void MapCurationEndpoints(this WebApplication app)
+    {
+        RouteGroupBuilder group = app.MapGroup("/api/curation").RequireAuthorization();
+
+        // get AI-curated rows for the home page
+        group.MapGet("/rows", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb) =>
+        {
+            try
+            {
+                string userId = user.GetUserId();
+                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+                List<int> providerIds = await db.GetUserServicesAsync(userId);
+
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+
+                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
+
+                return Results.Ok(new CurationResponse
+                {
+                    Rows = rows,
+                    FromCache = result.FromCache,
+                    WatchlistChanged = result.WatchlistChanged,
+                    AiEnabled = curation.IsEnabled,
+                    Error = result.Error,
+                    CandidateCount = result.CandidateCount
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Ok(new CurationResponse
+                {
+                    AiEnabled = curation.IsEnabled,
+                    Error = $"Endpoint error: {ex.Message}"
+                });
+            }
+        });
+
+        // force refresh AI curation
+        group.MapPost("/refresh", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb) =>
+        {
+            string userId = user.GetUserId();
+            await db.SetCurationCacheAsync(userId, "[]", "force-refresh");
+
+            List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+            List<int> providerIds = await db.GetUserServicesAsync(userId);
+            CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+
+            List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
+
+            return Results.Ok(new CurationResponse
+            {
+                Rows = rows,
+                FromCache = false,
+                WatchlistChanged = true,
+                AiEnabled = curation.IsEnabled
+            });
+        });
+
+        // personalized match for a specific show
+        group.MapGet("/match/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
+            ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb,
+            IMemoryCache cache) =>
+        {
+            if (!curation.IsEnabled) return Results.Ok<ShowMatchResult?>(null);
+
+            string userId = user.GetUserId();
+            string cacheKey = $"match:{userId}:{mediaType}:{tmdbId}";
+
+            if (cache.TryGetValue(cacheKey, out ShowMatchResult? cached))
+                return Results.Ok(cached);
+
+            ShowDetails? show = await tmdb.GetDetailsAsync(tmdbId, mediaType);
+            if (show == null) return Results.NotFound();
+
+            List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+            ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist);
+
+            if (result is not null)
+                cache.Set(cacheKey, result, TimeSpan.FromHours(12));
+
+            return Results.Ok(result);
+        });
+
+        // AI cost stats
+        group.MapGet("/usage", async (ClaimsPrincipal user, DbService db) =>
+        {
+            string userId = user.GetUserId();
+            decimal userCost = await db.GetUserAICostAsync(userId);
+            decimal monthlyCost = await db.GetMonthlyAICostAsync();
+            return Results.Ok(new { userTotalCost = userCost, monthlyTotalCost = monthlyCost });
+        });
+    }
+
+    private static async Task<List<CuratedRowResponse>> ResolveRowsAsync(
+        List<AICuratedRow> aiRows, List<int> providerIds, TmdbService tmdb)
+    {
+        List<CuratedRowResponse> rows = [];
+        HashSet<int> providerSet = [.. providerIds];
+
+        foreach (AICuratedRow aiRow in aiRows)
+        {
+            List<SearchResult> results = [];
+            foreach (int tmdbId in aiRow.TmdbIds)
+            {
+                // try TV first, then movie
+                ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, "tv");
+                details ??= await tmdb.GetDetailsAsync(tmdbId, "movie");
+
+                if (details != null)
+                {
+                    List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, details.MediaType);
+                    details.AvailableOn = providers
+                        .Where(p => (p.Type is "flatrate" or "ads") && providerSet.Contains(p.ProviderId))
+                        .ToList();
+                    results.Add(details);
+                }
+            }
+
+            if (results.Count > 0)
+            {
+                rows.Add(new CuratedRowResponse
+                {
+                    Title = aiRow.Title,
+                    Subtitle = aiRow.Subtitle,
+                    Results = results,
+                    Reasons = aiRow.Reasons
+                });
+            }
+        }
+
+        return rows;
+    }
+}

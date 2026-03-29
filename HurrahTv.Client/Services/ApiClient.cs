@@ -32,6 +32,9 @@ public class ApiClient(HttpClient http)
     public async Task<List<SearchResult>> NewOnServicesAsync(string mediaType = "tv") =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/new?mediaType={mediaType}") ?? [];
 
+    public async Task<List<SearchResult>> GetRecommendationsAsync(int tmdbId, string mediaType) =>
+        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/recommendations/{mediaType}/{tmdbId}") ?? [];
+
     // details
     public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType) =>
         await _http.GetFromJsonAsync<ShowDetails>($"api/details/{mediaType}/{tmdbId}");
@@ -60,6 +63,21 @@ public class ApiClient(HttpClient http)
     public async Task UpdateProgressAsync(int id, int? season, int? episode) =>
         await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
 
+    public async Task<QueueItem?> MarkAsLikedAsync(SearchResult result)
+    {
+        HttpResponseMessage response = await _http.PostAsJsonAsync("api/queue/liked", new
+        {
+            result.TmdbId,
+            result.MediaType,
+            result.Title,
+            result.PosterPath,
+            AvailableOnJson = System.Text.Json.JsonSerializer.Serialize(result.AvailableOn.Select(s => s.ProviderId).ToList())
+        });
+        if (response.IsSuccessStatusCode)
+            return await response.Content.ReadFromJsonAsync<QueueItem>();
+        return null;
+    }
+
     public async Task<QueueItem?> MarkAsSeenAsync(SearchResult result)
     {
         HttpResponseMessage response = await _http.PostAsJsonAsync("api/queue/seen", new
@@ -73,6 +91,46 @@ public class ApiClient(HttpClient http)
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<QueueItem>();
         return null;
+    }
+
+    // curation
+    public async Task<CurationResponse?> GetCuratedRowsAsync()
+    {
+        try
+        {
+            Console.WriteLine("[ApiClient] Calling api/curation/rows...");
+            HttpResponseMessage response = await _http.GetAsync("api/curation/rows");
+            string body = await response.Content.ReadAsStringAsync();
+            Console.WriteLine($"[ApiClient] Status: {response.StatusCode}, Body length: {body.Length}, First 200: {body[..Math.Min(200, body.Length)]}");
+            if (!response.IsSuccessStatusCode) return null;
+            return System.Text.Json.JsonSerializer.Deserialize<CurationResponse>(body, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ApiClient] Curation error: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<CurationResponse?> RefreshCurationAsync()
+    {
+        try
+        {
+            HttpResponseMessage response = await _http.PostAsync("api/curation/refresh", null);
+            if (response.IsSuccessStatusCode)
+                return await response.Content.ReadFromJsonAsync<CurationResponse>();
+            return null;
+        }
+        catch { return null; }
+    }
+
+    public async Task<ShowMatchResult?> GetShowMatchAsync(int tmdbId, string mediaType)
+    {
+        try
+        {
+            return await _http.GetFromJsonAsync<ShowMatchResult?>($"api/curation/match/{mediaType}/{tmdbId}");
+        }
+        catch { return null; }
     }
 
     // user services

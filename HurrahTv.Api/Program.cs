@@ -10,6 +10,7 @@ builder.Services.AddHttpClient<TmdbService>();
 builder.Services.AddSingleton<DbService>();
 builder.Services.AddSingleton<SmsService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<CurationService>();
 
 // jwt auth
 string jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");
@@ -69,6 +70,7 @@ app.MapSearchEndpoints();
 app.MapDetailsEndpoints();
 app.MapQueueEndpoints();
 app.MapUserServiceEndpoints();
+app.MapCurationEndpoints();
 
 // health check
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
