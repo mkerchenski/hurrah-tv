@@ -81,12 +81,8 @@ public class CurationService
         if (rows.Count == 0)
             return new CurationResult { Error = "Couldn't generate recommendations right now — try again later", CandidateCount = candidatePool.Count };
 
-        // only cache non-empty results
-        if (rows.Count > 0)
-        {
-            string rowsJsonStr = JsonSerializer.Serialize(rows);
-            await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
-        }
+        string rowsJsonStr = JsonSerializer.Serialize(rows);
+        await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
 
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }

@@ -34,8 +34,8 @@
     @if (_loaded)
     {
         <div class="flex items-center gap-3 mb-4 md:mb-6">
-            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors"
-                    @onclick="Save">
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors disabled:opacity-40"
+                    @onclick="Save" disabled="@_saving">
                 Save
             </button>
             @if (_saved)
@@ -50,7 +50,7 @@
         <label class="flex items-center gap-3 cursor-pointer">
             <div class="relative">
                 <input type="checkbox" class="sr-only peer" @bind="_englishOnly" />
-                <div class="w-10 h-6 bg-surface-200 rounded-full peer peer-checked:bg-accent transition-colors"></div>
+                <div class="w-10 h-6 bg-surface-200 rounded-full peer-checked:bg-accent transition-colors"></div>
                 <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
             </div>
             <div>
@@ -87,6 +87,7 @@
     private List<int> _selectedGenres = [];
     private bool _englishOnly;
     private bool _loaded;
+    private bool _saving;
     private bool _saved;
     private bool _dismissalsCleared;
 
@@ -105,14 +106,20 @@
 
     private async Task Save()
     {
-        await Task.WhenAll(
-            Api.SetUserServicesAsync(_selectedServices),
-            Api.SetUserGenresAsync(_selectedGenres),
-            Api.SetUserSettingsAsync(new UserSettings { EnglishOnly = _englishOnly }));
-        _saved = true;
-        StateHasChanged();
-        await Task.Delay(2000);
-        _saved = false;
+        if (_saving) return;
+        _saving = true;
+        try
+        {
+            await Task.WhenAll(
+                Api.SetUserServicesAsync(_selectedServices),
+                Api.SetUserGenresAsync(_selectedGenres),
+                Api.SetUserSettingsAsync(new UserSettings { EnglishOnly = _englishOnly }));
+            _saved = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _saved = false;
+        }
+        finally { _saving = false; }
     }
 
     private async Task ResetDismissals()

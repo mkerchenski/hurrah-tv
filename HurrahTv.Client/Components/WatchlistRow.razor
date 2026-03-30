@@ -46,7 +46,7 @@
                             </div>
                         }
 
-                        @if (ShowAirDates && item.LatestEpisodeDate.HasValue)
+                        @if (ShowAirDates && (item.LatestEpisodeDate.HasValue || item.NextEpisodeDate.HasValue))
                         {
                             <div class="absolute top-1.5 left-1.5 bg-black/60 text-gray-200 text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
                                 @FormatAirBadge(item)
@@ -94,9 +94,10 @@
 
     private static string FormatAirBadge(QueueItem item)
     {
-        if (item.NextEpisodeDate.HasValue && item.NextEpisodeDate.Value > DateTime.UtcNow)
+        DateTime now = DateTime.Now; // local time in WASM — matches user's timezone
+        if (item.NextEpisodeDate.HasValue && item.NextEpisodeDate.Value > now)
         {
-            int daysUntil = (int)(item.NextEpisodeDate.Value.Date - DateTime.UtcNow.Date).TotalDays;
+            int daysUntil = (int)(item.NextEpisodeDate.Value.Date - now.Date).TotalDays;
             return daysUntil switch
             {
                 0 => "Today",
@@ -105,7 +106,7 @@
             };
         }
         if (!item.LatestEpisodeDate.HasValue) return "";
-        int daysAgo = (int)(DateTime.UtcNow.Date - item.LatestEpisodeDate.Value.Date).TotalDays;
+        int daysAgo = (int)(now.Date - item.LatestEpisodeDate.Value.Date).TotalDays;
         return daysAgo switch
         {
             0 => "Today",

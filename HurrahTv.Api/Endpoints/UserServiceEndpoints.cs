@@ -61,8 +61,8 @@ public static class UserServiceEndpoints
         settings.MapGet("", async (ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            UserSettings s = await db.GetUserSettingsAsync(userId);
-            return Results.Ok(s);
+            UserSettings settings = await db.GetUserSettingsAsync(userId);
+            return Results.Ok(settings);
         });
 
         settings.MapPut("", async (UserSettings body, ClaimsPrincipal user, DbService db) =>

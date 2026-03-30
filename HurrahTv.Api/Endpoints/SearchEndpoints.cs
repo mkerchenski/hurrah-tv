@@ -90,7 +90,7 @@ public static partial class SearchEndpoints
         if (prefs.Dismissed.Count > 0)
             results = [.. results.Where(r => !prefs.Dismissed.Contains(r.TmdbId))];
         if (prefs.EnglishOnly)
-            results = [.. results.Where(r => r.OriginalLanguage == "en")];
+            results = [.. results.Where(r => r.OriginalLanguage is "" or "en")];
 
         return results;
     }

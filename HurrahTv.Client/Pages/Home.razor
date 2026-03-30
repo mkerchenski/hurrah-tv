@@ -122,7 +122,8 @@ else
             .Where(i => i.MediaType == "tv"
                 && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
                 && (i.HasEpisodeThisWeek || i.HasUpcomingSoon))
-            .OrderByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
+            .OrderByDescending(i => i.HasUpcomingSoon ? 1 : 0)
+            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
             .ToList();
 
         _newEpisodeTmdbIds = [.. _newEpisodeItems.Select(i => i.TmdbId)];

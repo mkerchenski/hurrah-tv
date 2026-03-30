@@ -19,11 +19,14 @@ public static class CurationEndpoints
             try
             {
                 string userId = user.GetUserId();
-                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
-                List<int> providerIds = await db.GetUserServicesAsync(userId);
-                UserSettings settings = await db.GetUserSettingsAsync(userId);
+                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId);
+                Task<List<int>> providerTask = db.GetUserServicesAsync(userId);
+                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId);
+                await Task.WhenAll(watchlistTask, providerTask, settingsTask);
 
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settings.EnglishOnly);
+                List<QueueItem> watchlist = watchlistTask.Result;
+                List<int> providerIds = providerTask.Result;
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly);
 
                 if (result.Rows.Count > 0)
                 {
@@ -70,10 +73,14 @@ public static class CurationEndpoints
                 cache.Set(rateLimitKey, true, RefreshCooldown);
                 await db.SetCurationCacheAsync(userId, "[]", "force-refresh");
 
-                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
-                List<int> providerIds = await db.GetUserServicesAsync(userId);
-                UserSettings settings = await db.GetUserSettingsAsync(userId);
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settings.EnglishOnly);
+                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId);
+                Task<List<int>> providerTask = db.GetUserServicesAsync(userId);
+                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId);
+                await Task.WhenAll(watchlistTask, providerTask, settingsTask);
+
+                List<QueueItem> watchlist = watchlistTask.Result;
+                List<int> providerIds = providerTask.Result;
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly);
 
                 if (result.Rows.Count > 0)
                 {
@@ -106,26 +113,34 @@ public static class CurationEndpoints
         // personalized match for a specific show
         group.MapGet("/match/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
             ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb,
-            IMemoryCache cache) =>
+            IMemoryCache cache, ILogger<CurationService> logger) =>
         {
-            if (!curation.IsEnabled) return Results.Ok<ShowMatchResult?>(null);
+            try
+            {
+                if (!curation.IsEnabled) return Results.Ok<ShowMatchResult?>(null);
 
-            string userId = user.GetUserId();
-            string cacheKey = $"match:{userId}:{mediaType}:{tmdbId}";
+                string userId = user.GetUserId();
+                string cacheKey = $"match:{userId}:{mediaType}:{tmdbId}";
 
-            if (cache.TryGetValue(cacheKey, out ShowMatchResult? cached))
-                return Results.Ok(cached);
+                if (cache.TryGetValue(cacheKey, out ShowMatchResult? cached))
+                    return Results.Ok(cached);
 
-            ShowDetails? show = await tmdb.GetDetailsAsync(tmdbId, mediaType);
-            if (show == null) return Results.NotFound();
+                ShowDetails? show = await tmdb.GetDetailsAsync(tmdbId, mediaType);
+                if (show == null) return Results.NotFound();
 
-            List<QueueItem> watchlist = await db.GetQueueAsync(userId);
-            ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist);
+                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+                ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist);
 
-            if (result is not null)
-                cache.Set(cacheKey, result, TimeSpan.FromHours(12));
+                if (result is not null)
+                    cache.Set(cacheKey, result, TimeSpan.FromHours(12));
 
-            return Results.Ok(result);
+                return Results.Ok(result);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Match endpoint failed for {MediaType}/{TmdbId}", mediaType, tmdbId);
+                return Results.Ok<ShowMatchResult?>(null);
+            }
         });
 
         // ai cost stats
