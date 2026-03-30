@@ -14,7 +14,7 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 
 | Project | Purpose | Port |
 |---------|---------|------|
-| **HurrahTv.Api** | Minimal API — TMDb proxy, SQL Server database, auth | https://localhost:7201 |
+| **HurrahTv.Api** | Minimal API — TMDb proxy, PostgreSQL database, auth | https://localhost:7201 |
 | **HurrahTv.Client** | Blazor WASM — UI, runs in browser | https://localhost:7267 |
 | **HurrahTv.Shared** | DTOs shared between API and Client | — |
 
@@ -22,7 +22,7 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 
 - .NET 10, Blazor WebAssembly (standalone)
 - Minimal API (not controllers)
-- Dapper + SQL Server (migrated from SQLite)
+- Dapper + PostgreSQL (migrated from SQL Server)
 - Tailwind CSS via CDN (v1 — will switch to CLI build for production)
 - TMDb API for catalog data (watch providers sourced from JustWatch)
 - No Hurrah.Core dependency — this is a standalone product
@@ -61,7 +61,7 @@ All endpoints are Minimal API, organized by feature in `Endpoints/` directory:
 - Provider IDs: Netflix=8, Prime=9, Hulu=15, Disney+=337, Paramount+=2303, Peacock=386, Max=1899, Apple TV+=350
 
 ### Data Model
-SQL Server via Dapper. Tables:
+PostgreSQL via Dapper (Npgsql). Tables:
 - `QueueItems` — UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson
 - `UserServices` — UserId, ProviderId (composite PK)
 
@@ -111,10 +111,10 @@ Engineering learnings stored in `Learnings/` at repo root. Tracked in git.
 
 ## Deployment
 
-- Frontend: Azure Static Web Apps (WASM = static files)
-- API: Azure App Service or Azure Container Apps
+- Frontend + API: Azure App Service (API serves WASM static files)
+- Database: Azure Database for PostgreSQL Flexible Server
 - GitHub Actions workflow on push to `main`
-- Domain: hurrah.tv (pending registration)
+- Domain: hurrah.tv
 
 ## Attribution Requirements
 

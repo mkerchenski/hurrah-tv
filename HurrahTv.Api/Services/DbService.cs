@@ -1,5 +1,5 @@
 using Dapper;
-using Microsoft.Data.SqlClient;
+using Npgsql;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
@@ -11,56 +11,49 @@ public class DbService(IConfiguration config)
 
     public async Task InitializeAsync()
     {
-        using SqlConnection db = await OpenAsync();
-        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
 
         await db.ExecuteAsync("""
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
-            CREATE TABLE Users (
-                Id NVARCHAR(50) PRIMARY KEY,
-                PhoneNumber NVARCHAR(20) NOT NULL UNIQUE,
-                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            CREATE TABLE IF NOT EXISTS Users (
+                Id VARCHAR(50) PRIMARY KEY,
+                PhoneNumber VARCHAR(20) NOT NULL UNIQUE,
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'OtpCodes')
-            CREATE TABLE OtpCodes (
-                Id INT IDENTITY(1,1) PRIMARY KEY,
-                PhoneNumber NVARCHAR(20) NOT NULL,
-                Code NVARCHAR(10) NOT NULL,
-                ExpiresAt DATETIME2 NOT NULL,
-                Used BIT NOT NULL DEFAULT 0
+            CREATE TABLE IF NOT EXISTS OtpCodes (
+                Id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                PhoneNumber VARCHAR(20) NOT NULL,
+                Code VARCHAR(10) NOT NULL,
+                ExpiresAt TIMESTAMPTZ NOT NULL,
+                Used BOOLEAN NOT NULL DEFAULT FALSE
             );
 
-            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_OtpCodes_Phone')
-            CREATE INDEX IX_OtpCodes_Phone ON OtpCodes(PhoneNumber, Used);
+            CREATE INDEX IF NOT EXISTS IX_OtpCodes_Phone ON OtpCodes(PhoneNumber, Used);
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'QueueItems')
-            CREATE TABLE QueueItems (
-                Id INT IDENTITY(1,1) PRIMARY KEY,
-                UserId NVARCHAR(50) NOT NULL,
+            CREATE TABLE IF NOT EXISTS QueueItems (
+                Id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                UserId VARCHAR(50) NOT NULL,
                 TmdbId INT NOT NULL,
-                MediaType NVARCHAR(10) NOT NULL,
-                Title NVARCHAR(500) NOT NULL,
-                PosterPath NVARCHAR(500) NOT NULL DEFAULT '',
+                MediaType VARCHAR(10) NOT NULL,
+                Title VARCHAR(500) NOT NULL,
+                PosterPath VARCHAR(500) NOT NULL DEFAULT '',
                 Position INT NOT NULL DEFAULT 0,
                 Status INT NOT NULL DEFAULT 0,
-                AvailableOnJson NVARCHAR(MAX) NOT NULL DEFAULT '[]',
-                AddedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                AvailableOnJson TEXT NOT NULL DEFAULT '[]',
+                AddedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_QueueItems_UserId')
-            CREATE INDEX IX_QueueItems_UserId ON QueueItems(UserId);
+            CREATE INDEX IF NOT EXISTS IX_QueueItems_UserId ON QueueItems(UserId);
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserServices')
-            CREATE TABLE UserServices (
-                UserId NVARCHAR(50) NOT NULL,
+            CREATE TABLE IF NOT EXISTS UserServices (
+                UserId VARCHAR(50) NOT NULL,
                 ProviderId INT NOT NULL,
                 PRIMARY KEY (UserId, ProviderId)
             );
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserGenres')
-            CREATE TABLE UserGenres (
-                UserId NVARCHAR(50) NOT NULL,
+            CREATE TABLE IF NOT EXISTS UserGenres (
+                UserId VARCHAR(50) NOT NULL,
                 GenreId INT NOT NULL,
                 PRIMARY KEY (UserId, GenreId)
             );
@@ -68,61 +61,45 @@ public class DbService(IConfiguration config)
             -- migrate old Paramount+ provider ID (531 → 2303)
             UPDATE UserServices SET ProviderId = 2303 WHERE ProviderId = 531;
 
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserDismissals')
-            CREATE TABLE UserDismissals (
-                UserId NVARCHAR(50) NOT NULL,
+            CREATE TABLE IF NOT EXISTS UserDismissals (
+                UserId VARCHAR(50) NOT NULL,
                 TmdbId INT NOT NULL,
-                DismissedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+                DismissedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 PRIMARY KEY (UserId, TmdbId)
             );
 
             -- AI usage tracking per user
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'AIUsage')
-            CREATE TABLE AIUsage (
-                Id INT IDENTITY(1,1) PRIMARY KEY,
-                UserId NVARCHAR(50) NOT NULL,
+            CREATE TABLE IF NOT EXISTS AIUsage (
+                Id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                UserId VARCHAR(50) NOT NULL,
                 InputTokens INT NOT NULL DEFAULT 0,
                 OutputTokens INT NOT NULL DEFAULT 0,
                 EstimatedCostUsd DECIMAL(10,6) NOT NULL DEFAULT 0,
-                RequestType NVARCHAR(50) NOT NULL,
-                CreatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                RequestType VARCHAR(50) NOT NULL,
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
-            IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_AIUsage_UserId')
-            CREATE INDEX IX_AIUsage_UserId ON AIUsage(UserId, CreatedAt);
+            CREATE INDEX IF NOT EXISTS IX_AIUsage_UserId ON AIUsage(UserId, CreatedAt);
 
             -- cached AI curation rows per user
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'CurationCache')
-            CREATE TABLE CurationCache (
-                UserId NVARCHAR(50) PRIMARY KEY,
-                RowsJson NVARCHAR(MAX) NOT NULL,
-                WatchlistHash NVARCHAR(64) NOT NULL,
-                GeneratedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+            CREATE TABLE IF NOT EXISTS CurationCache (
+                UserId VARCHAR(50) PRIMARY KEY,
+                RowsJson TEXT NOT NULL,
+                WatchlistHash VARCHAR(64) NOT NULL,
+                GeneratedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             -- watchlist evolution: add new columns to QueueItems
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'Rating')
-            ALTER TABLE QueueItems ADD Rating INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS Rating INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastSeasonWatched INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastEpisodeWatched INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeDate TIMESTAMPTZ NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS NextEpisodeDate TIMESTAMPTZ NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastEpisodeCheckAt TIMESTAMPTZ NULL;
 
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastSeasonWatched')
-            ALTER TABLE QueueItems ADD LastSeasonWatched INT NULL;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastEpisodeWatched')
-            ALTER TABLE QueueItems ADD LastEpisodeWatched INT NULL;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LatestEpisodeDate')
-            ALTER TABLE QueueItems ADD LatestEpisodeDate DATETIME2 NULL;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'NextEpisodeDate')
-            ALTER TABLE QueueItems ADD NextEpisodeDate DATETIME2 NULL;
-
-            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastEpisodeCheckAt')
-            ALTER TABLE QueueItems ADD LastEpisodeCheckAt DATETIME2 NULL;
-
-            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserSettings')
-            CREATE TABLE UserSettings (
-                UserId NVARCHAR(50) PRIMARY KEY,
-                EnglishOnly BIT NOT NULL DEFAULT 0
+            CREATE TABLE IF NOT EXISTS UserSettings (
+                UserId VARCHAR(50) PRIMARY KEY,
+                EnglishOnly BOOLEAN NOT NULL DEFAULT FALSE
             );
             """, transaction: tx);
 
@@ -132,7 +109,7 @@ public class DbService(IConfiguration config)
     // queue operations
     public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
             SELECT * FROM QueueItems WHERE UserId = @UserId
             ORDER BY
@@ -143,7 +120,7 @@ public class DbService(IConfiguration config)
                     WHEN 2 THEN 3  -- Finished fourth
                     WHEN 4 THEN 4  -- NotForMe last
                 END,
-                CASE WHEN LatestEpisodeDate >= DATEADD(DAY, -7, GETUTCDATE()) THEN 0 ELSE 1 END,
+                CASE WHEN LatestEpisodeDate >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END,
                 LatestEpisodeDate DESC,
                 Position
             """, new { UserId = userId });
@@ -152,7 +129,7 @@ public class DbService(IConfiguration config)
 
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
 
         // check for duplicate
         int? existing = await db.QuerySingleOrDefaultAsync<int?>(
@@ -163,15 +140,15 @@ public class DbService(IConfiguration config)
 
         // get next position
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
-            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
+            "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
 
         item.Position = maxPos + 1;
 
         int id = await db.QuerySingleAsync<int>("""
             INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
-            OUTPUT INSERTED.Id
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            RETURNING Id
             """, new
         {
             UserId = userId,
@@ -191,7 +168,7 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "DELETE FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
             new { Id = id, UserId = userId });
@@ -200,7 +177,7 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> UpdateStatusAsync(int id, QueueStatus status, string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "UPDATE QueueItems SET Status = @Status WHERE Id = @Id AND UserId = @UserId",
             new { Status = (int)status, Id = id, UserId = userId });
@@ -209,8 +186,8 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> ReorderAsync(int id, int newPosition, string userId)
     {
-        using SqlConnection db = await OpenAsync();
-        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
 
         QueueItem? item = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE Id = @Id AND UserId = @UserId",
@@ -244,7 +221,7 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> UpdateRatingAsync(int id, int? rating, string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "UPDATE QueueItems SET Rating = @Rating WHERE Id = @Id AND UserId = @UserId",
             new { Rating = rating, Id = id, UserId = userId });
@@ -253,7 +230,7 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> UpdateProgressAsync(int id, int? season, int? episode, string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
             "UPDATE QueueItems SET LastSeasonWatched = @Season, LastEpisodeWatched = @Episode WHERE Id = @Id AND UserId = @UserId",
             new { Season = season, Episode = episode, Id = id, UserId = userId });
@@ -270,7 +247,7 @@ public class DbService(IConfiguration config)
     private async Task<QueueItem?> UpsertWithStatusAsync(int tmdbId, string mediaType, string title, string posterPath,
         string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
 
         QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
@@ -289,13 +266,13 @@ public class DbService(IConfiguration config)
         }
 
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
-            "SELECT ISNULL(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
+            "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
 
         int id = await db.QuerySingleAsync<int>("""
             INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
-            OUTPUT INSERTED.Id
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            RETURNING Id
             """, new
         {
             UserId = userId,
@@ -323,7 +300,7 @@ public class DbService(IConfiguration config)
 
     public async Task UpdateEpisodeDatesAsync(int id, DateTime? latestEpisodeDate, DateTime? nextEpisodeDate)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
             UPDATE QueueItems SET LatestEpisodeDate = @Latest, NextEpisodeDate = @Next, LastEpisodeCheckAt = @CheckedAt
             WHERE Id = @Id
@@ -346,7 +323,7 @@ public class DbService(IConfiguration config)
     // user services
     public async Task<List<int>> GetUserServicesAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT ProviderId FROM UserServices WHERE UserId = @UserId",
             new { UserId = userId });
@@ -355,8 +332,8 @@ public class DbService(IConfiguration config)
 
     public async Task SetUserServicesAsync(List<int> providerIds, string userId)
     {
-        using SqlConnection db = await OpenAsync();
-        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
         await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId }, tx);
         foreach (int pid in providerIds)
         {
@@ -370,7 +347,7 @@ public class DbService(IConfiguration config)
     // user genres
     public async Task<List<int>> GetUserGenresAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT GenreId FROM UserGenres WHERE UserId = @UserId",
             new { UserId = userId });
@@ -379,8 +356,8 @@ public class DbService(IConfiguration config)
 
     public async Task SetUserGenresAsync(List<int> genreIds, string userId)
     {
-        using SqlConnection db = await OpenAsync();
-        using SqlTransaction tx = (SqlTransaction)await db.BeginTransactionAsync();
+        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
         await db.ExecuteAsync("DELETE FROM UserGenres WHERE UserId = @UserId", new { UserId = userId }, tx);
         foreach (int gid in genreIds)
         {
@@ -394,7 +371,7 @@ public class DbService(IConfiguration config)
     // dismissals
     public async Task<HashSet<int>> GetDismissalsAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
             "SELECT TmdbId FROM UserDismissals WHERE UserId = @UserId",
             new { UserId = userId });
@@ -403,27 +380,26 @@ public class DbService(IConfiguration config)
 
     public async Task DismissAsync(int tmdbId, string userId)
     {
-        using SqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("""
-            IF NOT EXISTS (SELECT 1 FROM UserDismissals WHERE UserId = @UserId AND TmdbId = @TmdbId)
-            INSERT INTO UserDismissals (UserId, TmdbId) VALUES (@UserId, @TmdbId)
-            """, new { UserId = userId, TmdbId = tmdbId });
+        using NpgsqlConnection db = await OpenAsync();
+        await db.ExecuteAsync(
+            "INSERT INTO UserDismissals (UserId, TmdbId) VALUES (@UserId, @TmdbId) ON CONFLICT DO NOTHING",
+            new { UserId = userId, TmdbId = tmdbId });
     }
 
     public async Task ClearDismissalsAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("DELETE FROM UserDismissals WHERE UserId = @UserId", new { UserId = userId });
     }
 
     // auth operations
     public async Task SaveOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
 
         // invalidate previous unused codes for this phone
         await db.ExecuteAsync(
-            "UPDATE OtpCodes SET Used = 1 WHERE PhoneNumber = @PhoneNumber AND Used = 0",
+            "UPDATE OtpCodes SET Used = TRUE WHERE PhoneNumber = @PhoneNumber AND Used = FALSE",
             new { PhoneNumber = phoneNumber });
 
         await db.ExecuteAsync(
@@ -433,21 +409,21 @@ public class DbService(IConfiguration config)
 
     public async Task<bool> VerifyOtpCodeAsync(string phoneNumber, string code)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
 
         int? id = await db.QuerySingleOrDefaultAsync<int?>(
-            "SELECT Id FROM OtpCodes WHERE PhoneNumber = @PhoneNumber AND Code = @Code AND Used = 0 AND ExpiresAt > @Now",
+            "SELECT Id FROM OtpCodes WHERE PhoneNumber = @PhoneNumber AND Code = @Code AND Used = FALSE AND ExpiresAt > @Now",
             new { PhoneNumber = phoneNumber, Code = code, Now = DateTime.UtcNow });
 
         if (id == null) return false;
 
-        await db.ExecuteAsync("UPDATE OtpCodes SET Used = 1 WHERE Id = @Id", new { Id = id });
+        await db.ExecuteAsync("UPDATE OtpCodes SET Used = TRUE WHERE Id = @Id", new { Id = id });
         return true;
     }
 
     public async Task<string> GetOrCreateUserAsync(string phoneNumber)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
 
         string? userId = await db.QuerySingleOrDefaultAsync<string?>(
             "SELECT Id FROM Users WHERE PhoneNumber = @PhoneNumber",
@@ -466,7 +442,7 @@ public class DbService(IConfiguration config)
     // ai usage tracking
     public async Task TrackAIUsageAsync(string userId, int inputTokens, int outputTokens, decimal costUsd, string requestType)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
             INSERT INTO AIUsage (UserId, InputTokens, OutputTokens, EstimatedCostUsd, RequestType, CreatedAt)
             VALUES (@UserId, @InputTokens, @OutputTokens, @CostUsd, @RequestType, @CreatedAt)
@@ -475,24 +451,24 @@ public class DbService(IConfiguration config)
 
     public async Task<decimal> GetMonthlyAICostAsync()
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         return await db.QuerySingleOrDefaultAsync<decimal>(
-            "SELECT ISNULL(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE YEAR(CreatedAt) = @Year AND MONTH(CreatedAt) = @Month",
+            "SELECT COALESCE(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE EXTRACT(YEAR FROM CreatedAt) = @Year AND EXTRACT(MONTH FROM CreatedAt) = @Month",
             new { DateTime.UtcNow.Year, DateTime.UtcNow.Month });
     }
 
     public async Task<decimal> GetUserAICostAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         return await db.QuerySingleOrDefaultAsync<decimal>(
-            "SELECT ISNULL(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE UserId = @UserId",
+            "SELECT COALESCE(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE UserId = @UserId",
             new { UserId = userId });
     }
 
     // curation cache
     public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         (string RowsJson, string WatchlistHash)? row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(
             "SELECT RowsJson, WatchlistHash FROM CurationCache WHERE UserId = @UserId",
             new { UserId = userId });
@@ -501,19 +477,18 @@ public class DbService(IConfiguration config)
 
     public async Task SetCurationCacheAsync(string userId, string rowsJson, string watchlistHash)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            MERGE CurationCache AS target
-            USING (SELECT @UserId AS UserId) AS source ON target.UserId = source.UserId
-            WHEN MATCHED THEN UPDATE SET RowsJson = @RowsJson, WatchlistHash = @Hash, GeneratedAt = GETUTCDATE()
-            WHEN NOT MATCHED THEN INSERT (UserId, RowsJson, WatchlistHash) VALUES (@UserId, @RowsJson, @Hash);
+            INSERT INTO CurationCache (UserId, RowsJson, WatchlistHash, GeneratedAt)
+            VALUES (@UserId, @RowsJson, @Hash, NOW())
+            ON CONFLICT (UserId) DO UPDATE SET RowsJson = @RowsJson, WatchlistHash = @Hash, GeneratedAt = NOW()
             """, new { UserId = userId, RowsJson = rowsJson, Hash = watchlistHash });
     }
 
     // user settings
     public async Task<UserSettings> GetUserSettingsAsync(string userId)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
             "SELECT EnglishOnly FROM UserSettings WHERE UserId = @UserId",
             new { UserId = userId });
@@ -522,18 +497,17 @@ public class DbService(IConfiguration config)
 
     public async Task SaveUserSettingsAsync(string userId, UserSettings settings)
     {
-        using SqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            MERGE UserSettings AS target
-            USING (SELECT @UserId AS UserId) AS source ON target.UserId = source.UserId
-            WHEN MATCHED THEN UPDATE SET EnglishOnly = @EnglishOnly
-            WHEN NOT MATCHED THEN INSERT (UserId, EnglishOnly) VALUES (@UserId, @EnglishOnly);
+            INSERT INTO UserSettings (UserId, EnglishOnly)
+            VALUES (@UserId, @EnglishOnly)
+            ON CONFLICT (UserId) DO UPDATE SET EnglishOnly = @EnglishOnly
             """, new { UserId = userId, settings.EnglishOnly });
     }
 
-    private async Task<SqlConnection> OpenAsync()
+    private async Task<NpgsqlConnection> OpenAsync()
     {
-        SqlConnection conn = new(_connectionString);
+        NpgsqlConnection conn = new(_connectionString);
         await conn.OpenAsync();
         return conn;
     }

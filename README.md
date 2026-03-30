@@ -2,7 +2,7 @@
 
 AI-curated streaming across all your services. One smart watchlist that learns what you love and surfaces what to watch next.
 
-![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) ![Blazor WASM](https://img.shields.io/badge/Blazor-WebAssembly-512BD4) ![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927) ![Claude AI](https://img.shields.io/badge/Claude_AI-Anthropic-D4A574)
+![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) ![Blazor WASM](https://img.shields.io/badge/Blazor-WebAssembly-512BD4) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1) ![Claude AI](https://img.shields.io/badge/Claude_AI-Anthropic-D4A574)
 
 ## What it does
 
@@ -22,7 +22,7 @@ Hurrah.tv is an opinionated streaming platform that curates content across Netfl
 Three-project solution: Blazor WebAssembly frontend + .NET Minimal API backend + shared DTOs.
 
 ```
-HurrahTv.Api/        .NET Minimal API — TMDb proxy, Claude AI curation, SQL Server
+HurrahTv.Api/        .NET Minimal API — TMDb proxy, Claude AI curation, PostgreSQL
 HurrahTv.Client/     Blazor WASM — runs entirely in the browser
 HurrahTv.Shared/     DTOs shared between API and Client
 ```
@@ -60,7 +60,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download)
 - [Node.js](https://nodejs.org/) (for Tailwind CSS build)
-- SQL Server (LocalDB or full instance)
+- PostgreSQL 17+ (`brew install postgresql@17` on Mac, `winget install PostgreSQL.PostgreSQL` on Windows)
 - A [TMDb API key](https://www.themoviedb.org/settings/api) (free)
 - An [Anthropic API key](https://console.anthropic.com/) (for AI curation — optional, app works without it)
 
@@ -76,7 +76,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 2. Configure `HurrahTv.Api/appsettings.Development.json` with your keys:
    ```json
    {
-     "ConnectionStrings": { "Default": "Server=YOUR_SERVER;Database=HurrahTv;Trusted_Connection=True;TrustServerCertificate=True;" },
+     "ConnectionStrings": { "Default": "Host=localhost;Database=HurrahTv;Username=postgres;Password=your-password" },
      "Tmdb": { "ApiKey": "your-tmdb-api-key" },
      "Jwt": { "Key": "your-base64-jwt-key" },
      "Twilio": { "AccountSid": "your-sid", "AuthToken": "your-token", "FromNumber": "+1234567890" },
@@ -101,13 +101,13 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 |-------|------------|
 | Frontend | Blazor WebAssembly (standalone) |
 | Backend | .NET 10 Minimal API |
-| Database | SQL Server + Dapper |
+| Database | PostgreSQL + Dapper |
 | Styling | Tailwind CSS v4 (CLI build) |
 | AI | Claude Haiku (Anthropic SDK) — content curation |
 | Catalog data | TMDb API |
 | Watch providers | JustWatch (via TMDb) |
 | Auth | Phone OTP via Twilio |
-| Hosting | Azure App Service + Azure SQL |
+| Hosting | Azure App Service + Azure PostgreSQL |
 
 ## AI Curation
 
