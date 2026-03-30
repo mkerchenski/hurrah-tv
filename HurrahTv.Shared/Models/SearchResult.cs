@@ -21,6 +21,7 @@ public class SearchResult
     public string? ReleaseDate { get; set; }
     public double VoteAverage { get; set; }
     public List<int> GenreIds { get; set; } = [];
+    public string OriginalLanguage { get; set; } = "";
     public List<AvailableService> AvailableOn { get; set; } = [];
 
     public string DisplayDate => MediaType == MediaTypes.Tv ? FirstAirDate ?? "" : ReleaseDate ?? "";

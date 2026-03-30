@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Modern TV body — rounded rectangle with screen cutout -->
+  <defs>
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#444"/>
+      <stop offset="100%" stop-color="#333"/>
+    </linearGradient>
+    <linearGradient id="screenGlow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.08)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+  </defs>
+
+  <!-- TV stand/legs -->
+  <rect x="140" y="430" width="28" height="50" rx="8" fill="#333"/>
+  <rect x="344" y="430" width="28" height="50" rx="8" fill="#333"/>
+  <!-- Stand base bar -->
+  <rect x="118" y="468" width="276" height="16" rx="8" fill="#3a3a3a"/>
+
+  <!-- TV body -->
+  <rect x="48" y="58" width="416" height="384" rx="40" fill="url(#bodyGrad)" stroke="#555" stroke-width="3"/>
+
+  <!-- Screen bezel (inner rounded rect) -->
+  <rect x="72" y="82" width="368" height="320" rx="24" fill="#111"/>
+
+  <!-- Screen area with rainbow static bars -->
+  <rect x="86" y="96" width="340" height="292" rx="16" fill="#0a0a0a"/>
+
+  <!-- Rainbow bars — Hurrah.Core colors as TV static/test pattern -->
+  <!-- Each bar has slight gaps to feel like a test pattern, not plain stripes -->
+  <g opacity="0.92">
+    <!-- Red (bottom) -->
+    <rect x="86" y="340" width="340" height="40" rx="0" fill="#F87171"/>
+    <!-- subtle scan line -->
+    <rect x="86" y="358" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Orange -->
+    <rect x="86" y="295" width="340" height="40" rx="0" fill="#FB923C"/>
+    <rect x="86" y="313" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Yellow -->
+    <rect x="86" y="250" width="340" height="40" rx="0" fill="#FDE68A"/>
+    <rect x="86" y="268" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Green -->
+    <rect x="86" y="205" width="340" height="40" rx="0" fill="#86EFAC"/>
+    <rect x="86" y="223" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Blue -->
+    <rect x="86" y="160" width="340" height="40" rx="0" fill="#93C5FD"/>
+    <rect x="86" y="178" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+
+    <!-- Purple (top) -->
+    <rect x="86" y="115" width="340" height="40" rx="0" fill="#C4B5FD"/>
+    <rect x="86" y="133" width="340" height="2" fill="rgba(0,0,0,0.15)"/>
+  </g>
+
+  <!-- Static/noise overlay for TV effect — small scattered dots -->
+  <g opacity="0.06">
+    <rect x="100" y="110" width="3" height="3" fill="white"/>
+    <rect x="180" y="125" width="2" height="2" fill="white"/>
+    <rect x="250" y="105" width="3" height="3" fill="white"/>
+    <rect x="320" y="140" width="2" height="2" fill="white"/>
+    <rect x="150" y="180" width="3" height="3" fill="white"/>
+    <rect x="380" y="170" width="2" height="2" fill="white"/>
+    <rect x="120" y="230" width="3" height="3" fill="white"/>
+    <rect x="290" y="220" width="2" height="2" fill="white"/>
+    <rect x="350" y="260" width="3" height="3" fill="white"/>
+    <rect x="200" y="290" width="2" height="2" fill="white"/>
+    <rect x="130" y="330" width="3" height="3" fill="white"/>
+    <rect x="400" y="310" width="2" height="2" fill="white"/>
+    <rect x="220" y="350" width="3" height="3" fill="white"/>
+    <rect x="370" y="360" width="2" height="2" fill="white"/>
+  </g>
+
+  <!-- Screen reflection/gloss -->
+  <rect x="86" y="96" width="340" height="292" rx="16" fill="url(#screenGlow)"/>
+
+  <!-- Small gap between bars at very top and bottom for screen edge -->
+  <rect x="86" y="96" width="340" height="19" rx="16" fill="#0a0a0a"/>
+  <rect x="86" y="380" width="340" height="8" rx="0" fill="#0a0a0a"/>
+  <!-- Bottom corners of screen -->
+  <rect x="86" y="372" width="16" height="16" fill="#0a0a0a"/>
+  <rect x="410" y="372" width="16" height="16" fill="#0a0a0a"/>
+
+  <!-- Power indicator LED -->
+  <circle cx="256" cy="454" r="4" fill="#E50914" opacity="0.8"/>
+</svg>

@@ -34,7 +34,7 @@ public class CurationService
         _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { APIKey = apiKey } : null;
     }
 
-    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds)
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false)
     {
         if (!IsEnabled)
             return new CurationResult { Error = "AI not enabled" };
@@ -70,7 +70,7 @@ public class CurationService
 
         // phase 1: gather candidate pool from TMDb (excluding watchlist + dismissed)
         HashSet<int> dismissed = await _db.GetDismissalsAsync(userId);
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, dismissed);
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, dismissed, englishOnly);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
@@ -91,16 +91,16 @@ public class CurationService
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, HashSet<int> dismissed)
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, HashSet<int> dismissed, bool englishOnly)
     {
         HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
         watchlistIds.UnionWith(dismissed); // exclude both watchlist and dismissed items
 
         // fetch recent TV and movies in parallel across user's services
-        Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true);
-        Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true);
-        Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true);
-        Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true);
+        Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly);
+        Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly);
+        Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly);
+        Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly);
         await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
 
         // combine and deduplicate, excluding watchlist items

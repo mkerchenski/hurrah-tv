@@ -21,8 +21,9 @@ public static class CurationEndpoints
                 string userId = user.GetUserId();
                 List<QueueItem> watchlist = await db.GetQueueAsync(userId);
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
+                UserSettings settings = await db.GetUserSettingsAsync(userId);
 
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settings.EnglishOnly);
 
                 if (result.Rows.Count > 0)
                 {
@@ -71,7 +72,8 @@ public static class CurationEndpoints
 
                 List<QueueItem> watchlist = await db.GetQueueAsync(userId);
                 List<int> providerIds = await db.GetUserServicesAsync(userId);
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds);
+                UserSettings settings = await db.GetUserSettingsAsync(userId);
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settings.EnglishOnly);
 
                 if (result.Rows.Count > 0)
                 {

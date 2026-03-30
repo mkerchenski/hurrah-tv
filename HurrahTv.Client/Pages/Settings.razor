@@ -46,6 +46,21 @@
     }
 
     <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">Content Filters</h2>
+        <label class="flex items-center gap-3 cursor-pointer">
+            <div class="relative">
+                <input type="checkbox" class="sr-only peer" @bind="_englishOnly" />
+                <div class="w-10 h-6 bg-surface-200 rounded-full peer peer-checked:bg-accent transition-colors"></div>
+                <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-4"></div>
+            </div>
+            <div>
+                <span class="text-sm text-white">English originals only</span>
+                <p class="text-xs text-gray-500">Hide dubbed and subtitled shows from your feed</p>
+            </div>
+        </label>
+    </div>
+
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
         <h2 class="text-lg font-semibold mb-2">Hidden Content</h2>
         <p class="text-gray-400 text-sm mb-4">Reset titles you've dismissed from your home page.</p>
         <button class="bg-surface-100 hover:bg-surface-200 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
@@ -70,6 +85,7 @@
 @code {
     private List<int> _selectedServices = [];
     private List<int> _selectedGenres = [];
+    private bool _englishOnly;
     private bool _loaded;
     private bool _saved;
     private bool _dismissalsCleared;
@@ -78,10 +94,12 @@
     {
         Task<List<int>> servicesTask = Api.GetUserServicesAsync();
         Task<List<int>> genresTask = Api.GetUserGenresAsync();
-        await Task.WhenAll(servicesTask, genresTask);
+        Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
+        await Task.WhenAll(servicesTask, genresTask, settingsTask);
 
         _selectedServices = servicesTask.Result;
         _selectedGenres = genresTask.Result;
+        _englishOnly = settingsTask.Result.EnglishOnly;
         _loaded = true;
     }
 
@@ -89,7 +107,8 @@
     {
         await Task.WhenAll(
             Api.SetUserServicesAsync(_selectedServices),
-            Api.SetUserGenresAsync(_selectedGenres));
+            Api.SetUserGenresAsync(_selectedGenres),
+            Api.SetUserSettingsAsync(new UserSettings { EnglishOnly = _englishOnly }));
         _saved = true;
         StateHasChanged();
         await Task.Delay(2000);

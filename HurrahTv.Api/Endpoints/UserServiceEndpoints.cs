@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using HurrahTv.Api.Services;
+using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Endpoints;
 
@@ -52,6 +53,22 @@ public static class UserServiceEndpoints
         {
             string userId = user.GetUserId();
             await db.ClearDismissalsAsync(userId);
+            return Results.Ok();
+        });
+
+        RouteGroupBuilder settings = app.MapGroup("/api/settings").RequireAuthorization();
+
+        settings.MapGet("", async (ClaimsPrincipal user, DbService db) =>
+        {
+            string userId = user.GetUserId();
+            UserSettings s = await db.GetUserSettingsAsync(userId);
+            return Results.Ok(s);
+        });
+
+        settings.MapPut("", async (UserSettings body, ClaimsPrincipal user, DbService db) =>
+        {
+            string userId = user.GetUserId();
+            await db.SaveUserSettingsAsync(userId, body);
             return Results.Ok();
         });
     }

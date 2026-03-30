@@ -86,21 +86,21 @@ public class TmdbService
 
     // popular content on user's services (no date filter — best for "trending")
     public async Task<List<SearchResult>> PopularOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null, bool deep = false) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false, deep: deep);
+        List<int>? genreIds = null, bool deep = false, bool englishOnly = false) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false, deep: deep, englishOnly: englishOnly);
 
     // recently released content on user's services (date-filtered — "new this season")
     public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null, bool deep = false) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep);
+        List<int>? genreIds = null, bool deep = false, bool englishOnly = false) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep, englishOnly: englishOnly);
 
     private async Task<List<SearchResult>> InterleaveByProviderAsync(List<int> providerIds, string mediaType,
-        List<int>? genreIds, bool recentOnly, bool deep = false)
+        List<int>? genreIds, bool recentOnly, bool deep = false, bool englishOnly = false)
     {
         if (providerIds.Count == 0) return [];
 
         int perProvider = deep ? DeepResultsPerProvider : ResultsPerProvider;
-        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly))];
+        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly, englishOnly))];
         await Task.WhenAll(tasks);
 
         List<SearchResult> interleaved = [];
@@ -118,11 +118,12 @@ public class TmdbService
     }
 
     private async Task<List<SearchResult>> DiscoverForProviderAsync(int providerId, string mediaType,
-        List<int>? genreIds, bool recentOnly)
+        List<int>? genreIds, bool recentOnly, bool englishOnly = false)
     {
         string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
         string dateSuffix = recentOnly ? $":{DateTime.UtcNow.AddDays(-NewContentDaysBack):yyyy-MM-dd}" : ":all";
-        string cacheKey = $"discover-provider:{providerId}:{mediaType}:{genres}{dateSuffix}";
+        string langSuffix = englishOnly ? ":en" : "";
+        string cacheKey = $"discover-provider:{providerId}:{mediaType}:{genres}{dateSuffix}{langSuffix}";
 
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
@@ -143,6 +144,9 @@ public class TmdbService
 
         if (!string.IsNullOrEmpty(genres))
             url += $"&with_genres={genres}";
+
+        if (englishOnly)
+            url += "&with_original_language=en";
 
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
         if (response == null) return [];
@@ -383,6 +387,7 @@ public class TmdbService
         ReleaseDate = r.ReleaseDate,
         VoteAverage = r.VoteAverage,
         GenreIds = r.GenreIds ?? [],
+        OriginalLanguage = r.OriginalLanguage ?? "",
     };
 
     private async Task<T?> GetAsync<T>(string url)
@@ -423,5 +428,6 @@ public class TmdbService
         public string? ReleaseDate { get; set; }
         public double VoteAverage { get; set; }
         public List<int>? GenreIds { get; set; }
+        public string? OriginalLanguage { get; set; }
     }
 }

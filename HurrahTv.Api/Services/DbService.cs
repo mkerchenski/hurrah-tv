@@ -118,6 +118,12 @@ public class DbService(IConfiguration config)
 
             IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('QueueItems') AND name = 'LastEpisodeCheckAt')
             ALTER TABLE QueueItems ADD LastEpisodeCheckAt DATETIME2 NULL;
+
+            IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'UserSettings')
+            CREATE TABLE UserSettings (
+                UserId NVARCHAR(50) PRIMARY KEY,
+                EnglishOnly BIT NOT NULL DEFAULT 0
+            );
             """, transaction: tx);
 
         await tx.CommitAsync();
@@ -324,16 +330,17 @@ public class DbService(IConfiguration config)
             """, new { Latest = latestEpisodeDate, Next = nextEpisodeDate, CheckedAt = DateTime.UtcNow, Id = id });
     }
 
-    // user preferences (loads services, genres, and dismissals in parallel)
-    public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, HashSet<int> Dismissed);
+    // user preferences (loads services, genres, dismissals, and settings in parallel)
+    public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, HashSet<int> Dismissed, bool EnglishOnly);
 
     public async Task<UserPreferences> GetUserPreferencesAsync(string userId)
     {
         Task<List<int>> providers = GetUserServicesAsync(userId);
         Task<List<int>> genres = GetUserGenresAsync(userId);
         Task<HashSet<int>> dismissed = GetDismissalsAsync(userId);
-        await Task.WhenAll(providers, genres, dismissed);
-        return new UserPreferences(providers.Result, genres.Result, dismissed.Result);
+        Task<UserSettings> settings = GetUserSettingsAsync(userId);
+        await Task.WhenAll(providers, genres, dismissed, settings);
+        return new UserPreferences(providers.Result, genres.Result, dismissed.Result, settings.Result.EnglishOnly);
     }
 
     // user services
@@ -501,6 +508,27 @@ public class DbService(IConfiguration config)
             WHEN MATCHED THEN UPDATE SET RowsJson = @RowsJson, WatchlistHash = @Hash, GeneratedAt = GETUTCDATE()
             WHEN NOT MATCHED THEN INSERT (UserId, RowsJson, WatchlistHash) VALUES (@UserId, @RowsJson, @Hash);
             """, new { UserId = userId, RowsJson = rowsJson, Hash = watchlistHash });
+    }
+
+    // user settings
+    public async Task<UserSettings> GetUserSettingsAsync(string userId)
+    {
+        using SqlConnection db = await OpenAsync();
+        UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
+            "SELECT EnglishOnly FROM UserSettings WHERE UserId = @UserId",
+            new { UserId = userId });
+        return settings ?? new UserSettings();
+    }
+
+    public async Task SaveUserSettingsAsync(string userId, UserSettings settings)
+    {
+        using SqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            MERGE UserSettings AS target
+            USING (SELECT @UserId AS UserId) AS source ON target.UserId = source.UserId
+            WHEN MATCHED THEN UPDATE SET EnglishOnly = @EnglishOnly
+            WHEN NOT MATCHED THEN INSERT (UserId, EnglishOnly) VALUES (@UserId, @EnglishOnly);
+            """, new { UserId = userId, settings.EnglishOnly });
     }
 
     private async Task<SqlConnection> OpenAsync()

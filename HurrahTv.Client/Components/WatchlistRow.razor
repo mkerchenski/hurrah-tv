@@ -3,7 +3,13 @@
 
 <section class="mb-6 md:mb-8">
     <div class="flex items-baseline justify-between mb-3">
-        <h3 class="text-sm md:text-base font-semibold text-white">@Title</h3>
+        <div class="flex items-baseline gap-2">
+            <h3 class="text-sm md:text-base font-semibold text-white">@Title</h3>
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <span class="text-xs text-gray-500">@Subtitle</span>
+            }
+        </div>
         <a href="/queue" class="text-accent text-xs hover:text-accent-light whitespace-nowrap ml-4">See all &rarr;</a>
     </div>
 
@@ -26,7 +32,7 @@
                  class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
                 @foreach (QueueItem item in Items)
                 {
-                    <div class="flex-shrink-0 w-24 sm:w-28 md:w-36 snap-start cursor-pointer relative group"
+                    <div class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer relative group"
                          @onclick="() => GoToDetails(item)">
                         @if (!string.IsNullOrEmpty(item.PosterUrl()))
                         {
@@ -40,6 +46,12 @@
                             </div>
                         }
 
+                        @if (ShowAirDates && item.LatestEpisodeDate.HasValue)
+                        {
+                            <div class="absolute top-1.5 left-1.5 bg-black/60 text-gray-200 text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
+                                @FormatAirBadge(item)
+                            </div>
+                        }
 
                         <!-- title overlay at bottom -->
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 rounded-b-lg">
@@ -66,8 +78,10 @@
 
 @code {
     [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
     [Parameter] public string EmptyMessage { get; set; } = "Nothing here yet";
     [Parameter, EditorRequired] public List<QueueItem> Items { get; set; } = [];
+    [Parameter] public bool ShowAirDates { get; set; }
 
     private ElementReference _scrollContainer;
 
@@ -76,5 +90,27 @@
     private async Task Scroll(int direction)
     {
         await JS.InvokeVoidAsync("hurrahScrollRow", _scrollContainer, direction * 480);
+    }
+
+    private static string FormatAirBadge(QueueItem item)
+    {
+        if (item.NextEpisodeDate.HasValue && item.NextEpisodeDate.Value > DateTime.UtcNow)
+        {
+            int daysUntil = (int)(item.NextEpisodeDate.Value.Date - DateTime.UtcNow.Date).TotalDays;
+            return daysUntil switch
+            {
+                0 => "Today",
+                1 => "Tomorrow",
+                _ => item.NextEpisodeDate.Value.ToString("ddd")
+            };
+        }
+        if (!item.LatestEpisodeDate.HasValue) return "";
+        int daysAgo = (int)(DateTime.UtcNow.Date - item.LatestEpisodeDate.Value.Date).TotalDays;
+        return daysAgo switch
+        {
+            0 => "Today",
+            1 => "Yesterday",
+            _ => item.LatestEpisodeDate.Value.ToString("ddd")
+        };
     }
 }

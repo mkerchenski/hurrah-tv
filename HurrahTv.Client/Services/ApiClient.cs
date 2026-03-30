@@ -114,6 +114,13 @@ public class ApiClient(HttpClient http)
         catch { return null; }
     }
 
+    // user settings
+    public async Task<UserSettings> GetUserSettingsAsync() =>
+        await _http.GetFromJsonAsync<UserSettings>("api/settings") ?? new UserSettings();
+
+    public async Task SetUserSettingsAsync(UserSettings settings) =>
+        await _http.PutAsJsonAsync("api/settings", settings);
+
     // user services
     public async Task<List<int>> GetUserServicesAsync() =>
         await _http.GetFromJsonAsync<List<int>>("api/services") ?? [];

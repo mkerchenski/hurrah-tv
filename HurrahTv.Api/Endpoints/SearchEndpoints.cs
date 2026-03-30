@@ -67,8 +67,8 @@ public static partial class SearchEndpoints
         DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId);
 
         List<SearchResult> results = recentOnly
-            ? await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds)
-            : await tmdb.PopularOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds);
+            ? await tmdb.NewOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds, englishOnly: prefs.EnglishOnly)
+            : await tmdb.PopularOnServicesAsync(prefs.ProviderIds, resolvedType, prefs.GenreIds, englishOnly: prefs.EnglishOnly);
 
         results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
         results = ApplyPreferenceFilters(results, prefs);
@@ -89,6 +89,8 @@ public static partial class SearchEndpoints
         }
         if (prefs.Dismissed.Count > 0)
             results = [.. results.Where(r => !prefs.Dismissed.Contains(r.TmdbId))];
+        if (prefs.EnglishOnly)
+            results = [.. results.Where(r => r.OriginalLanguage == "en")];
 
         return results;
     }

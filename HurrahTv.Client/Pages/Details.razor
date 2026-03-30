@@ -193,7 +193,7 @@ else
             {
                 <span class="px-2 py-0.5 bg-surface-100 rounded text-xs">@_details.Status</span>
             }
-            @if (_details.MediaType == "tv" && _details.LastEpisodeAirDate != null && !IsRecent(_details.LastEpisodeAirDate))
+            @if (_details.MediaType == "tv" && _details.LastEpisodeAirDate != null)
             {
                 <span>Last aired @FormatAirDate(_details.LastEpisodeAirDate)</span>
             }

@@ -8,8 +8,9 @@
 <div class="min-h-screen flex flex-col">
     <!-- desktop top nav (hidden on mobile) -->
     <nav class="hidden md:flex bg-surface-50 border-b border-surface-200 px-6 py-3 items-center justify-between sticky top-0 z-50">
-        <a href="/" class="text-2xl font-bold text-accent hover:text-accent-light transition-colors">
-            hurrah.tv
+        <a href="/" class="flex items-center gap-2 hover:opacity-90 transition-opacity">
+            <img src="icon.svg" alt="" class="w-6 h-6" />
+            <span class="text-2xl font-bold text-accent">hurrah.tv</span>
         </a>
 
         <div class="flex items-center gap-4">
@@ -32,7 +33,10 @@
 
     <!-- mobile top bar (logo only, minimal) -->
     <div class="md:hidden flex items-center justify-between px-4 py-2 bg-surface sticky top-0 z-50">
-        <a href="/" class="text-xl font-bold text-accent">hurrah.tv</a>
+        <a href="/" class="flex items-center gap-1.5">
+            <img src="icon.svg" alt="" class="w-5 h-5" />
+            <span class="text-xl font-bold text-accent">hurrah.tv</span>
+        </a>
         <button @onclick="SignOut" class="text-gray-500 p-2" title="Sign out">
             <span class="icon-[heroicons--arrow-right-start-on-rectangle] w-5 h-5"></span>
         </button>

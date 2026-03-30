@@ -32,13 +32,13 @@ else
         <!-- new episodes row -->
         @if (_newEpisodeItems.Count > 0)
         {
-            <WatchlistRow Title="New Episodes" Items="_newEpisodeItems" />
+            <WatchlistRow Title="New Episodes" Subtitle="This week" Items="_newEpisodeItems" ShowAirDates="true" />
         }
 
         <!-- continue watching row -->
         @if (_watchingItems.Count > 0)
         {
-            <WatchlistRow Title="Continue Watching" Items="_watchingItems" />
+            <WatchlistRow Title="Continue Watching" Subtitle="Your queue" Items="_watchingItems" />
         }
 
         <!-- AI-curated section -->
@@ -115,16 +115,23 @@ else
     {
         List<QueueItem> allItems = await Api.GetQueueAsync();
 
-        _watchingItems = allItems.Where(i => i.Status == QueueStatus.Watching).ToList();
         _recSeeds = PickRecSeeds(allItems, 3);
 
+        // new episodes: aired this week or upcoming within 3 days, sorted by air date
         _newEpisodeItems = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
-                && (i.HasNewEpisode || i.HasUpcomingEpisode))
+                && (i.HasEpisodeThisWeek || i.HasUpcomingSoon))
+            .OrderByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
             .ToList();
 
         _newEpisodeTmdbIds = [.. _newEpisodeItems.Select(i => i.TmdbId)];
+
+        // continue watching: queue order, exclude items already in new episodes
+        _watchingItems = allItems
+            .Where(i => i.Status == QueueStatus.Watching && !_newEpisodeTmdbIds.Contains(i.TmdbId))
+            .OrderBy(i => i.Position)
+            .ToList();
 
         StateHasChanged();
 
