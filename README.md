@@ -13,6 +13,7 @@ Hurrah.tv is an opinionated streaming platform that curates content across Netfl
 - **New episode alerts** — Shows in your list with new or upcoming episodes are flagged automatically
 - **"I've Seen This"** — One-click signal building while browsing. Mark shows you've already watched to improve recommendations without managing a list.
 - **Balanced discovery** — Content is interleaved across your services so no single provider dominates your feed
+- **Language filter** — Option to show English originals only, hiding dubbed and subtitled content
 
 **Live at:** [hurrah.tv](https://hurrah.tv)
 
@@ -32,8 +33,8 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 
 | Row type | Source | Example |
 |----------|--------|---------|
-| New Episodes | User's watchlist + TMDb air dates | Shows with episodes in the last 7 days |
-| Continue Watching | User's "Watching" list | Items sorted by recent activity |
+| New Episodes | User's watchlist + TMDb air dates | Shows with episodes this week or upcoming soon |
+| Continue Watching | User's "Watching" list (excludes New Episodes) | Sorted by queue position |
 | AI-Curated | Claude AI + TMDb discover | "High-Stakes Hospital Nights" |
 | New This Season | TMDb discover (date-filtered) | Recently aired TV across your services |
 | Trending TV Shows | TMDb popularity + recency boost | Popular TV, newer ones first |
@@ -50,6 +51,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | `/api/queue` | Watchlist CRUD — statuses, ratings, progress, "seen it" |
 | `/api/curation` | AI-curated picks, per-show match scoring, usage tracking |
 | `/api/services` | Manage subscribed streaming services |
+| `/api/settings` | User preferences (English-only filter, etc.) |
 | `/api/auth` | Phone OTP login (SMS-based, no passwords) |
 
 ## Getting Started
