@@ -276,7 +276,7 @@ public class CurationService
     }
 
     // personalized match blurb for a specific show
-    public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist)
+    public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist, ShowSentiments? showSentiments = null, QueueItem? queueItem = null)
     {
         if (!IsEnabled) return null;
 
@@ -293,18 +293,43 @@ public class CurationService
         string genres = show.Genres.Count > 0 ? string.Join(", ", show.Genres) : "unknown";
         string overview = show.Overview.Length > 200 ? show.Overview[..200] + "..." : show.Overview;
 
+        // build episode sentiment context if available
+        string sentimentContext = "";
+        if (showSentiments != null && (showSentiments.Seasons.Count > 0 || showSentiments.Episodes.Count > 0))
+        {
+            StringBuilder sentSb = new();
+            sentSb.AppendLine("USER'S SENTIMENT ON THIS SHOW:");
+            foreach (SeasonSentiment ss in showSentiments.Seasons.OrderBy(s => s.SeasonNumber))
+                sentSb.AppendLine($"  Season {ss.SeasonNumber}: {SentimentLabel(ss.Sentiment)}");
+            if (showSentiments.Episodes.Count > 0)
+            {
+                var bySeason = showSentiments.Episodes.GroupBy(e => e.SeasonNumber).OrderBy(g => g.Key);
+                foreach (var group in bySeason)
+                {
+                    int ups = group.Count(e => e.Sentiment == SentimentLevel.Up);
+                    int favs = group.Count(e => e.Sentiment == SentimentLevel.Favorite);
+                    int downs = group.Count(e => e.Sentiment == SentimentLevel.Down);
+                    sentSb.AppendLine($"  Season {group.Key} episodes: {ups} liked, {favs} loved, {downs} disliked");
+                }
+            }
+            sentimentContext = sentSb.ToString();
+        }
+
+        // adapt the prompt based on the user's relationship with this show
+        string roleInstruction = BuildRoleInstruction(queueItem);
+
         string prompt = $$"""
-            You are the AI curator for hurrah.tv. Based on this user's taste profile, write a brief personalized take on whether they'd enjoy this show.
+            You are the AI curator for hurrah.tv. {{roleInstruction}}
 
             USER'S TASTE:
             {{tasteProfile}}
-
+            {{sentimentContext}}
             SHOW: {{show.Title}} ({{show.MediaType.ToUpper()}}, {{show.Year}})
             Genres: {{genres}}
             Rating: {{show.VoteAverage:F1}}/10
             Overview: {{overview}}
 
-            Write 1-2 sentences MAX. Be direct and specific — reference what in their taste connects (or doesn't connect) to this show. Don't hedge. If it's a strong match, say so confidently. If it's a stretch, say why it might surprise them. If it's not for them, be honest.
+            Write 1-2 sentences MAX. Be direct and specific — reference what in their taste connects to this show. If the user has rated seasons or episodes, reference their experience. Don't hedge.
 
             Respond with ONLY a JSON object (no markdown):
             {"match":"strong" or "good" or "stretch" or "miss","reason":"Your 1-2 sentence take"}
@@ -347,6 +372,44 @@ public class CurationService
             return null;
         }
     }
+
+    private static string BuildRoleInstruction(QueueItem? queueItem)
+    {
+        if (queueItem == null)
+            return "Based on this user's taste profile, write a brief personalized take on whether they'd enjoy this show. If it's a strong match, say so confidently. If it's a stretch, say why it might surprise them. If it's not for them, be honest.";
+
+        string sentimentNote = queueItem.Sentiment switch
+        {
+            SentimentLevel.Favorite => " They marked it as a favorite.",
+            SentimentLevel.Up => " They gave it a thumbs up.",
+            SentimentLevel.Down => " They gave it a thumbs down.",
+            _ => ""
+        };
+
+        return queueItem.Status switch
+        {
+            QueueStatus.Watching =>
+                $"This user is currently watching this show.{sentimentNote} Don't tell them whether they'd like it — they already chose it. Instead, give insight into WHY this show appeals to them based on their taste patterns, or what to look forward to.",
+            QueueStatus.Finished when queueItem.Sentiment == SentimentLevel.Down =>
+                "This user watched this show and disliked it. Reflect on why it didn't work for them based on their taste profile — what specifically clashed with their preferences.",
+            QueueStatus.Finished =>
+                $"This user already watched this show.{sentimentNote} Don't ask if they'd enjoy it. Instead, connect it to their broader taste — what does loving (or just finishing) this show reveal about what they're drawn to? Suggest what itch it scratched.",
+            QueueStatus.WantToWatch =>
+                $"This user has bookmarked this show but hasn't started it yet.{sentimentNote} Build excitement — based on their taste, highlight specifically why this will deliver for them.",
+            QueueStatus.NotForMe =>
+                "This user dismissed this show. Be honest about why it probably isn't for them based on their taste profile.",
+            _ =>
+                "Based on this user's taste profile, write a brief personalized take on this show."
+        };
+    }
+
+    private static string SentimentLabel(int sentiment) => sentiment switch
+    {
+        SentimentLevel.Down => "disliked",
+        SentimentLevel.Up => "liked",
+        SentimentLevel.Favorite => "loved",
+        _ => "unknown"
+    };
 
     private static string ComputeWatchlistHash(List<QueueItem> items)
     {

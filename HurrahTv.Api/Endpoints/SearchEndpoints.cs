@@ -26,9 +26,9 @@ public static partial class SearchEndpoints
 
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
-            results = await tmdb.FilterToUserServicesAsync([.. results.Take(MaxResultsToEnrich)], providerIds);
+            results = await tmdb.EnrichUserServicesOnlyAsync([.. results.Take(MaxResultsToEnrich)], providerIds, flagOtherServices: true);
 
-            return Results.Ok(new SearchResponse { Results = results, HasResultsOnOtherServices = hadResults && results.Count == 0 });
+            return Results.Ok(new SearchResponse { Results = results });
         }).RequireAuthorization();
 
         group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>

@@ -23,6 +23,8 @@ public class SearchResult
     public List<int> GenreIds { get; set; } = [];
     public string OriginalLanguage { get; set; } = "";
     public List<AvailableService> AvailableOn { get; set; } = [];
+    public bool NotOnYourServices { get; set; } // streaming exists but not on user's services
+    public bool NoStreamingInfo { get; set; } // no provider data at all from TMDb
 
     public string DisplayDate => MediaType == MediaTypes.Tv ? FirstAirDate ?? "" : ReleaseDate ?? "";
     public string Year => DisplayDate.Length >= 4 ? DisplayDate[..4] : "";

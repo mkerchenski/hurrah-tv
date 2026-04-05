@@ -68,22 +68,40 @@
                     else if (_seasonDetail != null)
                     {
                         <div class="border-t border-surface-200">
-                            @foreach (EpisodeInfo ep in _seasonDetail.Episodes)
+                            @{
+                                DateTime today = DateTime.Now.Date;
+                                List<EpisodeInfo> aired = [.. _seasonDetail.Episodes.Where(e => !IsFuture(e.AirDate, today))];
+                                EpisodeInfo? nextUp = _seasonDetail.Episodes
+                                    .Where(e => IsFuture(e.AirDate, today))
+                                    .OrderBy(e => e.EpisodeNumber)
+                                    .FirstOrDefault();
+                                List<EpisodeInfo> visible = [.. aired];
+                                if (nextUp != null) visible.Add(nextUp);
+                            }
+                            @foreach (EpisodeInfo ep in visible.OrderByDescending(e => e.EpisodeNumber))
                             {
                                 int en = ep.EpisodeNumber;
+                                bool upcoming = ep == nextUp;
                                 EpisodeSentiment? epSent = epSents.FirstOrDefault(e => e.EpisodeNumber == en);
 
-                                <div class="flex items-center justify-between px-4 py-2.5 hover:bg-surface-100 transition-colors border-b border-surface-200 last:border-b-0">
+                                <div class="flex items-center justify-between px-4 py-2.5 hover:bg-surface-100 transition-colors border-b border-surface-200 last:border-b-0 @(upcoming ? "opacity-70" : "")">
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2">
-                                            <span class="text-xs text-gray-500 w-6 flex-shrink-0">E@(en)</span>
-                                            <span class="text-sm text-white truncate">@ep.Name</span>
+                                            <span class="text-xs text-gray-500 flex-shrink-0">E@(en)</span>
+                                            <span class="text-xs text-gray-600">·</span>
+                                            <span class="text-sm @(upcoming ? "text-gray-400" : "text-white") truncate">@ep.Name</span>
+                                            @if (upcoming)
+                                            {
+                                                <span class="text-[10px] text-blue-400 bg-blue-600/20 px-1.5 py-0.5 rounded flex-shrink-0">Upcoming</span>
+                                            }
                                         </div>
                                         @if (!string.IsNullOrEmpty(ep.AirDate))
                                         {
                                             <div class="text-[10px] text-gray-600 ml-8">@FormatDate(ep.AirDate)</div>
                                         }
                                     </div>
+                                    @if (!upcoming)
+                                    {
                                     <div class="flex gap-1 flex-shrink-0 ml-2">
                                         <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(epSent?.Sentiment == SentimentLevel.Down ? "bg-red-600/20 text-red-400" : "text-gray-600 hover:text-red-400")}")"
                                                 @onclick="() => SetEpisodeSentiment(sn, en, SentimentLevel.Down)">
@@ -98,6 +116,7 @@
                                             <span class="icon-[heroicons--heart] w-3.5 h-3.5"></span>
                                         </button>
                                     </div>
+                                    }
                                 </div>
                             }
                         </div>
@@ -149,6 +168,12 @@
         _sentiments.Seasons.RemoveAll(s => s.SeasonNumber == seasonNumber);
         if (newSentiment.HasValue)
             _sentiments.Seasons.Add(new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value });
+    }
+
+    private static bool IsFuture(string? dateStr, DateTime today)
+    {
+        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return false;
+        return date.Date > today;
     }
 
     private static string FormatDate(string? dateStr)

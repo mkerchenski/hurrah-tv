@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject ApiClient Api
+@inject NavigationManager Nav
 
 <PageTitle>Search - Hurrah.tv</PageTitle>
 
@@ -48,6 +49,22 @@
         ? _results
         : _results.Where(r => r.MediaType == _activeTab).ToList();
 
+    protected override async Task OnInitializedAsync()
+    {
+        // restore query from URL on back navigation
+        Uri uri = new(Nav.Uri);
+        string? q = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("q");
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            _query = q;
+            _loading = true;
+            SearchResponse response = await Api.SearchAsync(_query);
+            _results = response.Results;
+            _emptyMessage = _results.Count == 0 ? "No results found" : "";
+            _loading = false;
+        }
+    }
+
     private void HandleKeyUp(KeyboardEventArgs e)
     {
         _cts?.Cancel();
@@ -57,6 +74,7 @@
         {
             _results = [];
             _emptyMessage = "Start typing to search";
+            UpdateUrl("");
             return;
         }
 
@@ -80,14 +98,12 @@
                 SearchResponse response = await Api.SearchAsync(_query);
                 _results = response.Results;
 
-                if (_results.Count == 0 && response.HasResultsOnOtherServices)
-                    _emptyMessage = "Found on other services, but not on yours";
-                else if (_results.Count == 0)
-                    _emptyMessage = "No results found — try different spelling or keywords";
-                else
-                    _emptyMessage = "";
+                _emptyMessage = _results.Count == 0
+                    ? "No results found — try different spelling or keywords"
+                    : "";
 
                 _loading = false;
+                UpdateUrl(_query);
                 StateHasChanged();
             });
         }
@@ -105,6 +121,15 @@
         _query = "";
         _results = [];
         _emptyMessage = "Start typing to search";
+        UpdateUrl("");
+    }
+
+    private void UpdateUrl(string query)
+    {
+        string url = string.IsNullOrWhiteSpace(query)
+            ? "/search"
+            : $"/search?q={Uri.EscapeDataString(query)}";
+        Nav.NavigateTo(url, replace: true);
     }
 
     public void Dispose()

@@ -20,7 +20,29 @@ public static class DetailsEndpoints
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             HashSet<int> userProviders = [.. providerIds];
-            details.AvailableOn = [.. details.AvailableOn.Where(s => (s.Type is ProviderType.Flatrate or ProviderType.Ads) && userProviders.Contains(s.ProviderId))];
+
+            // always fetch fresh provider data (cached details may have stale provider list)
+            List<AvailableService> allProviders = await tmdb.GetWatchProvidersAsync(tmdbId, mediaType);
+            if (allProviders.Count == 0) allProviders = details.AvailableOn;
+
+            List<AvailableService> streaming = [.. allProviders.Where(s => s.Type is ProviderType.Flatrate or ProviderType.Ads)];
+            List<AvailableService> userMatches = [.. streaming.Where(s => userProviders.Contains(s.ProviderId))];
+
+            if (userMatches.Count > 0)
+            {
+                // show only user's matching services
+                details.AvailableOn = userMatches;
+            }
+            else if (streaming.Count > 0)
+            {
+                // not on user's services but streaming somewhere — show all streaming options
+                details.AvailableOn = streaming;
+            }
+            else
+            {
+                // not streaming anywhere — show buy/rent so user can still find it
+                details.AvailableOn = allProviders;
+            }
 
             return Results.Ok(details);
         }).RequireAuthorization();

@@ -10,8 +10,13 @@
     }
     else
     {
-        <div class="w-full aspect-[2/3] bg-surface-100 flex items-center justify-center">
-            <span class="text-gray-500 text-xs text-center px-2">@Result.Title</span>
+        <div class="w-full aspect-[2/3] bg-gradient-to-b from-surface-200 to-surface-100 flex flex-col items-center justify-center p-3">
+            <span class="icon-[heroicons--film] w-8 h-8 text-gray-600 mb-2"></span>
+            <span class="text-gray-400 text-xs text-center font-medium leading-tight">@Result.Title</span>
+            @if (!string.IsNullOrEmpty(Result.Year))
+            {
+                <span class="text-gray-600 text-[10px] mt-0.5">@Result.Year</span>
+            }
         </div>
     }
 
@@ -38,6 +43,18 @@
                     }
                 }
             </div>
+        </div>
+    }
+    else if (Result.NotOnYourServices)
+    {
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 pt-6">
+            <span class="text-[10px] text-yellow-500/80 font-medium bg-black/40 px-1.5 py-0.5 rounded">Not on your services</span>
+        </div>
+    }
+    else if (Result.NoStreamingInfo)
+    {
+        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 pt-6">
+            <span class="text-[10px] text-gray-500 font-medium bg-black/40 px-1.5 py-0.5 rounded">Not streaming</span>
         </div>
     }
 

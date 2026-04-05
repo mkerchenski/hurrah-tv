@@ -129,7 +129,14 @@ public static class CurationEndpoints
                 if (show == null) return Results.NotFound();
 
                 List<QueueItem> watchlist = await db.GetQueueAsync(userId);
-                ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist);
+                QueueItem? queueItem = watchlist.FirstOrDefault(i => i.TmdbId == tmdbId && i.MediaType == mediaType);
+
+                // include episode sentiments if the user has any for this show
+                ShowSentiments? showSentiments = mediaType == "tv"
+                    ? await db.GetShowSentimentsAsync(tmdbId, userId)
+                    : null;
+
+                ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist, showSentiments, queueItem);
 
                 if (result is not null)
                     cache.Set(cacheKey, result, TimeSpan.FromHours(12));
