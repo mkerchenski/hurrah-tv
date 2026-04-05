@@ -9,11 +9,11 @@ public class QueueItem
     public string PosterPath { get; set; } = "";
     public int Position { get; set; }
     public QueueStatus Status { get; set; } = QueueStatus.WantToWatch;
+    public int? Sentiment { get; set; } // null=no opinion, 1=down, 2=up, 3=favorite
     public string AvailableOnJson { get; set; } = "[]"; // service provider IDs
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
     // watchlist fields
-    public int? Rating { get; set; } // 1-5 stars
     public int? LastSeasonWatched { get; set; }
     public int? LastEpisodeWatched { get; set; }
     public DateTime? LatestEpisodeDate { get; set; } // last aired episode
@@ -41,9 +41,38 @@ public class QueueItem
 
 public enum QueueStatus
 {
-    WantToWatch = 0,  // was "Queued" — bookmarked for later
+    WantToWatch = 0,  // bookmarked for later
     Watching = 1,     // actively watching
     Finished = 2,     // "Watched" in UI — seen it, not necessarily completed
-    Liked = 3,        // finished and loved — feeds recommendations
-    NotForMe = 4      // negative signal (replaces dismissals over time)
+    NotForMe = 4      // negative signal
+}
+
+// sentiment is orthogonal to list status — tracked separately
+public static class SentimentLevel
+{
+    public const int Down = 1;      // thumbs down
+    public const int Up = 2;        // thumbs up
+    public const int Favorite = 3;  // double thumbs up / favorite
+}
+
+public class SeasonSentiment
+{
+    public int TmdbId { get; set; }
+    public int SeasonNumber { get; set; }
+    public int Sentiment { get; set; }
+}
+
+public class EpisodeSentiment
+{
+    public int TmdbId { get; set; }
+    public int SeasonNumber { get; set; }
+    public int EpisodeNumber { get; set; }
+    public int Sentiment { get; set; }
+}
+
+// all sentiments for a show (returned by GET /api/shows/{id}/sentiments)
+public class ShowSentiments
+{
+    public List<SeasonSentiment> Seasons { get; set; } = [];
+    public List<EpisodeSentiment> Episodes { get; set; } = [];
 }

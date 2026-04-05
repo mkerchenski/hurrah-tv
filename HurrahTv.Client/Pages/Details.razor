@@ -236,62 +236,39 @@ else
 
         <p class="text-gray-300 text-sm md:text-base leading-relaxed mb-4 md:mb-6">@_details.Overview</p>
 
-        <!-- actions -->
-        <div class="flex flex-wrap gap-2 md:gap-3">
-            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-4 md:px-5 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-                    @onclick="AddToWatchlist">
-                @if (_addState == "added")
+        <!-- my list (mutually exclusive) -->
+        <div class="mb-4">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">My List</div>
+            <div class="flex flex-wrap gap-2">
+                @foreach ((QueueStatus status, string label, string icon) in _listOptions)
                 {
-                    <span class="icon-[heroicons--check] w-5 h-5"></span>
-                    <span>Added!</span>
+                    bool active = _queueItem?.Status == status;
+                    <button class="@($"px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 border {(active ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:border-gray-500 hover:text-gray-300")}")"
+                            @onclick="() => SetListStatus(status)">
+                        <span class="@($"{icon} w-4 h-4 {(active ? "text-accent-light" : "")}")"></span>
+                        <span>@label</span>
+                    </button>
                 }
-                else
-                {
-                    <span class="icon-[heroicons--plus] w-5 h-5"></span>
-                    <span>Want to Watch</span>
-                }
-            </button>
-            <button class="bg-surface-50 hover:bg-pink-600/20 hover:border-pink-600 text-gray-400 hover:text-pink-400 border border-surface-200 px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-                    @onclick="MarkAsLiked">
-                @if (_addState == "liked")
-                {
-                    <span class="icon-[heroicons--heart] w-5 h-5 text-pink-400"></span>
-                    <span>Loved!</span>
-                }
-                else
-                {
-                    <span class="icon-[heroicons--heart] w-5 h-5"></span>
-                    <span>Loved It</span>
-                }
-            </button>
-            <button class="bg-surface-50 hover:bg-blue-600/20 hover:border-blue-600 text-gray-400 hover:text-blue-400 border border-surface-200 px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-                    @onclick="MarkAsSeen">
-                @if (_addState == "seen")
-                {
-                    <span class="icon-[heroicons--check] w-5 h-5"></span>
-                    <span>Marked!</span>
-                }
-                else
-                {
-                    <span class="icon-[heroicons--eye] w-5 h-5"></span>
-                    <span>Seen It</span>
-                }
-            </button>
-            @if (!_dismissed)
-            {
-                <button class="bg-surface-50 hover:bg-red-600/20 hover:border-red-600 text-gray-400 hover:text-red-400 border border-surface-200 px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-                        @onclick="DismissTitle">
-                    <span class="icon-[heroicons--x-mark] w-5 h-5"></span>
-                    <span class="hidden md:inline">Not For Me</span>
+            </div>
+        </div>
+
+        <!-- sentiment (independent toggle) -->
+        <div class="mb-4 md:mb-6">
+            <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">How Do You Feel?</div>
+            <div class="flex gap-2">
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Down ? "border-red-500 bg-red-600/20 text-red-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-red-500 hover:text-red-400")}")"
+                        @onclick="() => SetSentiment(SentimentLevel.Down)" title="Thumbs down">
+                    <span class="icon-[heroicons--hand-thumb-down] w-5 h-5"></span>
                 </button>
-            }
-            else
-            {
-                <div class="text-gray-500 text-sm flex items-center gap-2 px-4 py-2.5 fade-in">
-                    <span class="icon-[heroicons--check] w-4 h-4"></span>
-                    Hidden from home
-                </div>
-            }
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Up ? "border-green-500 bg-green-600/20 text-green-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-green-500 hover:text-green-400")}")"
+                        @onclick="() => SetSentiment(SentimentLevel.Up)" title="Thumbs up">
+                    <span class="icon-[heroicons--hand-thumb-up] w-5 h-5"></span>
+                </button>
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Favorite ? "border-pink-500 bg-pink-600/20 text-pink-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-pink-500 hover:text-pink-400")}")"
+                        @onclick="() => SetSentiment(SentimentLevel.Favorite)" title="Favorite">
+                    <span class="icon-[heroicons--heart] w-5 h-5"></span>
+                </button>
+            </div>
         </div>
 
         <!-- seasons -->
@@ -323,13 +300,21 @@ else
 
     private ShowDetails? _details;
     private bool _loading = true;
-    private string _addState = "";
-    private bool _dismissed;
+    private QueueItem? _queueItem;
+    private int? _activeSentiment;
     private int _lastTmdbId;
     private string _lastMediaType = "";
     private ShowMatchResult? _showMatch;
     private bool _matchLoading;
     private bool _disposed;
+
+    private static readonly (QueueStatus status, string label, string icon)[] _listOptions =
+    [
+        (QueueStatus.WantToWatch, "Want to Watch", "icon-[heroicons--bookmark]"),
+        (QueueStatus.Watching, "Watching", "icon-[heroicons--play]"),
+        (QueueStatus.Finished, "Watched", "icon-[heroicons--eye]"),
+        (QueueStatus.NotForMe, "Not For Me", "icon-[heroicons--x-mark]"),
+    ];
 
     public void Dispose() => _disposed = true;
 
@@ -338,13 +323,19 @@ else
         if (_lastTmdbId == TmdbId && _lastMediaType == MediaType) return;
         _lastTmdbId = TmdbId;
         _lastMediaType = MediaType;
-        _addState = "";
-        _dismissed = false;
+        _queueItem = null;
+        _activeSentiment = null;
         _showMatch = null;
         _matchLoading = false;
         _loading = true;
+
         _details = await Api.GetDetailsAsync(TmdbId, MediaType);
         _loading = false;
+
+        // check if this item is already in the queue
+        List<QueueItem> queue = await Api.GetQueueAsync();
+        _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
+        _activeSentiment = _queueItem?.Sentiment;
 
         // load AI match in background (non-blocking)
         _ = LoadShowMatch();
@@ -361,47 +352,44 @@ else
 
     private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
 
-    private async Task DismissTitle()
+    private async Task SetListStatus(QueueStatus status)
     {
         if (_details == null) return;
-        await Api.DismissAsync(_details.TmdbId);
-        _dismissed = true;
+
+        if (_queueItem != null)
+        {
+            if (_queueItem.Status == status)
+                return; // already set
+            await Api.UpdateStatusAsync(_queueItem.Id, status);
+            _queueItem.Status = status;
+        }
+        else
+        {
+            // add to queue with this status
+            QueueItem item = _details.ToQueueItem();
+            item.Status = status;
+            _queueItem = await Api.AddToQueueAsync(item);
+        }
+        StateHasChanged();
     }
 
-    private async Task AddToWatchlist()
+    private async Task SetSentiment(int sentiment)
     {
-        if (_details == null || _addState != "") return;
+        if (_details == null) return;
 
-        QueueItem? added = await Api.AddToQueueAsync(_details.ToQueueItem());
-        if (added != null)
+        // if not in queue yet, add as WantToWatch first
+        if (_queueItem == null)
         {
-            _addState = "added";
-            StateHasChanged();
+            _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
+            if (_queueItem == null) return;
         }
-    }
 
-    private async Task MarkAsLiked()
-    {
-        if (_details == null || _addState != "") return;
-
-        QueueItem? item = await Api.MarkAsLikedAsync(_details);
-        if (item != null)
-        {
-            _addState = "liked";
-            StateHasChanged();
-        }
-    }
-
-    private async Task MarkAsSeen()
-    {
-        if (_details == null || _addState != "") return;
-
-        QueueItem? item = await Api.MarkAsSeenAsync(_details);
-        if (item != null)
-        {
-            _addState = "seen";
-            StateHasChanged();
-        }
+        // toggle: tap active sentiment to clear
+        int? newSentiment = _activeSentiment == sentiment ? null : sentiment;
+        await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
+        _activeSentiment = newSentiment;
+        _queueItem.Sentiment = newSentiment;
+        StateHasChanged();
     }
 
     private static bool IsRecent(string? dateStr)

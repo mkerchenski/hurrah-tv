@@ -139,7 +139,7 @@ else
     private List<int> _userServices = [];
     private List<int> _pendingServices = [];
     private List<int> _pendingGenres = [];
-    private Dictionary<int, (SearchResult Result, QueueStatus Status)> _pendingShows = [];
+    private Dictionary<int, (SearchResult Result, QueueStatus Status, int? Sentiment)> _pendingShows = [];
     private int _onboardingStep = 1;
     private bool _servicesLoaded;
     private bool _onboardingComplete;
@@ -183,19 +183,22 @@ else
 
     private void OnboardingBack() => _onboardingStep--;
 
-    private void OnShowSelectionsChanged(Dictionary<int, (SearchResult Result, QueueStatus Status)> selections)
+    private void OnShowSelectionsChanged(Dictionary<int, (SearchResult Result, QueueStatus Status, int? Sentiment)> selections)
     {
         _pendingShows = selections;
     }
 
     private async Task FinishOnboarding()
     {
-        // add all selected shows to queue with their chosen statuses
-        foreach ((SearchResult result, QueueStatus status) in _pendingShows.Values)
+        // add all selected shows to queue with their chosen statuses and sentiments
+        foreach ((SearchResult result, QueueStatus status, int? sentiment) in _pendingShows.Values)
         {
             QueueItem item = result.ToQueueItem();
             item.Status = status;
-            await Api.AddToQueueAsync(item);
+            item.Sentiment = sentiment;
+            QueueItem? added = await Api.AddToQueueAsync(item);
+            if (added != null && sentiment.HasValue)
+                await Api.UpdateSentimentAsync(added.Id, sentiment);
         }
 
         _onboardingComplete = true;
@@ -289,8 +292,9 @@ else
 
     private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count)
     {
+        // prefer items with positive sentiment, fallback to Finished
         List<QueueItem> candidates = allItems
-            .Where(i => i.Status is QueueStatus.Liked or QueueStatus.Finished)
+            .Where(i => i.Sentiment >= SentimentLevel.Up || i.Status == QueueStatus.Finished)
             .ToList();
 
         if (candidates.Count <= count) return candidates;

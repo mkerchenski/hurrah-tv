@@ -225,30 +225,37 @@ public class CurationService
     {
         StringBuilder sb = new();
 
-        List<QueueItem> liked = [.. signalItems.Where(i => i.Status == QueueStatus.Liked)];
-        List<QueueItem> watched = [.. signalItems.Where(i => i.Status == QueueStatus.Finished)];
-        List<QueueItem> watching = [.. signalItems.Where(i => i.Status == QueueStatus.Watching)];
-        List<QueueItem> wantToWatch = [.. allItems.Where(i => i.Status == QueueStatus.WantToWatch)];
-        List<QueueItem> disliked = [.. allItems.Where(i => i.Status == QueueStatus.NotForMe)];
+        // sentiment-based grouping (strongest signal)
+        List<QueueItem> favorites = [.. signalItems.Where(i => i.Sentiment == SentimentLevel.Favorite)];
+        List<QueueItem> thumbsUp = [.. signalItems.Where(i => i.Sentiment == SentimentLevel.Up)];
+        List<QueueItem> thumbsDown = [.. allItems.Where(i => i.Sentiment == SentimentLevel.Down)];
 
-        // strongest signal first
-        if (liked.Count > 0)
-            sb.AppendLine($"LOVED (strongest signal): {string.Join(", ", liked.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        // list-based grouping (weaker signal when no sentiment)
+        List<QueueItem> watched = [.. signalItems.Where(i => i.Status == QueueStatus.Finished && i.Sentiment == null)];
+        List<QueueItem> watching = [.. signalItems.Where(i => i.Status == QueueStatus.Watching && i.Sentiment == null)];
+        List<QueueItem> wantToWatch = [.. allItems.Where(i => i.Status == QueueStatus.WantToWatch && i.Sentiment == null)];
+        List<QueueItem> notForMe = [.. allItems.Where(i => i.Status == QueueStatus.NotForMe && i.Sentiment == null)];
+
+        // sentiment signals first (strongest)
+        if (favorites.Count > 0)
+            sb.AppendLine($"FAVORITES (strongest signal): {string.Join(", ", favorites.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (thumbsUp.Count > 0)
+            sb.AppendLine($"LIKED (strong signal): {string.Join(", ", thumbsUp.Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (thumbsDown.Count > 0)
+            sb.AppendLine($"DISLIKED (avoid similar): {string.Join(", ", thumbsDown.Take(10).Select(i => i.Title))}");
+
+        // list-only signals (no sentiment set)
         if (watched.Count > 0)
-            sb.AppendLine($"WATCHED (strong signal): {string.Join(", ", watched.Select(i => $"{i.Title} ({i.MediaType})"))}");
+            sb.AppendLine($"WATCHED (no sentiment — moderate signal): {string.Join(", ", watched.Select(i => $"{i.Title} ({i.MediaType})"))}");
         if (watching.Count > 0)
-            sb.AppendLine($"CURRENTLY WATCHING (strong signal): {string.Join(", ", watching.Select(i => $"{i.Title} ({i.MediaType})"))}");
+            sb.AppendLine($"CURRENTLY WATCHING (interest signal): {string.Join(", ", watching.Select(i => $"{i.Title} ({i.MediaType})"))}");
         if (wantToWatch.Count > 0)
-            sb.AppendLine($"WANT TO WATCH (weaker signal — interest but not proven taste): {string.Join(", ", wantToWatch.Take(10).Select(i => $"{i.Title} ({i.MediaType})"))}");
-        if (disliked.Count > 0)
-            sb.AppendLine($"DISLIKED (avoid similar): {string.Join(", ", disliked.Take(10).Select(i => i.Title))}");
-
-        List<QueueItem> rated = [.. signalItems.Where(i => i.Rating.HasValue)];
-        if (rated.Count > 0)
-            sb.AppendLine($"RATINGS: {string.Join(", ", rated.Select(i => $"{i.Title}={i.Rating}/5"))}");
+            sb.AppendLine($"WANT TO WATCH (weaker signal): {string.Join(", ", wantToWatch.Take(10).Select(i => $"{i.Title} ({i.MediaType})"))}");
+        if (notForMe.Count > 0)
+            sb.AppendLine($"NOT FOR ME (avoid): {string.Join(", ", notForMe.Take(10).Select(i => i.Title))}");
 
         sb.AppendLine();
-        sb.AppendLine("Weight recommendations heavily toward LOVED and WATCHED shows. Want to Watch items indicate interest direction but are weaker signals.");
+        sb.AppendLine("Weight recommendations heavily toward FAVORITES and LIKED shows. Items with no sentiment use their list status as a weaker signal.");
 
         return sb.ToString();
     }
@@ -345,7 +352,7 @@ public class CurationService
     {
         string input = string.Join("|", items
             .OrderBy(i => i.TmdbId)
-            .Select(i => $"{i.TmdbId}:{(int)i.Status}:{i.Rating}"));
+            .Select(i => $"{i.TmdbId}:{(int)i.Status}:{i.Sentiment}"));
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(input));
         return Convert.ToHexString(hash)[..16];
     }

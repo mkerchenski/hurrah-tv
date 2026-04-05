@@ -1,0 +1,11 @@
+{
+  "name": "hurrah.tv",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cd HurrahTv.Client && npm run build:css && cd .. && dotnet build",
+    "build:min": "cd HurrahTv.Client && npm run build:css:min && cd .. && dotnet build",
+    "css": "cd HurrahTv.Client && npm run build:css",
+    "css:watch": "cd HurrahTv.Client && npm run dev:css"
+  }
+}

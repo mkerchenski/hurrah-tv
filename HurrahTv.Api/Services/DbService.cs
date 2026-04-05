@@ -90,7 +90,6 @@ public class DbService(IConfiguration config)
             );
 
             -- watchlist evolution: add new columns to QueueItems
-            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS Rating INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastSeasonWatched INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastEpisodeWatched INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeDate TIMESTAMPTZ NULL;
@@ -100,6 +99,32 @@ public class DbService(IConfiguration config)
             CREATE TABLE IF NOT EXISTS UserSettings (
                 UserId VARCHAR(50) PRIMARY KEY,
                 EnglishOnly BOOLEAN NOT NULL DEFAULT FALSE
+            );
+
+            -- sentiment system: add sentiment column, migrate Liked→Finished+favorite, drop rating
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS Sentiment INT NULL;
+            UPDATE QueueItems SET Sentiment = 3, Status = 2 WHERE Status = 3;
+            ALTER TABLE QueueItems DROP COLUMN IF EXISTS Rating;
+
+            CREATE TABLE IF NOT EXISTS SeasonSentiments (
+                Id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                UserId VARCHAR(50) NOT NULL,
+                TmdbId INT NOT NULL,
+                SeasonNumber INT NOT NULL,
+                Sentiment INT NOT NULL,
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(UserId, TmdbId, SeasonNumber)
+            );
+
+            CREATE TABLE IF NOT EXISTS EpisodeSentiments (
+                Id INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                UserId VARCHAR(50) NOT NULL,
+                TmdbId INT NOT NULL,
+                SeasonNumber INT NOT NULL,
+                EpisodeNumber INT NOT NULL,
+                Sentiment INT NOT NULL,
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UNIQUE(UserId, TmdbId, SeasonNumber, EpisodeNumber)
             );
             """, transaction: tx);
 
@@ -116,9 +141,8 @@ public class DbService(IConfiguration config)
                 CASE Status
                     WHEN 1 THEN 0  -- Watching first
                     WHEN 0 THEN 1  -- WantToWatch second
-                    WHEN 3 THEN 2  -- Liked third
-                    WHEN 2 THEN 3  -- Finished fourth
-                    WHEN 4 THEN 4  -- NotForMe last
+                    WHEN 2 THEN 2  -- Finished third
+                    WHEN 4 THEN 3  -- NotForMe last
                 END,
                 CASE WHEN LatestEpisodeDate >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END,
                 LatestEpisodeDate DESC,
@@ -146,8 +170,8 @@ public class DbService(IConfiguration config)
         item.Position = maxPos + 1;
 
         int id = await db.QuerySingleAsync<int>("""
-            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
-            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, Sentiment, AvailableOnJson, AddedAt)
+            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @Sentiment, @AvailableOnJson, @AddedAt)
             RETURNING Id
             """, new
         {
@@ -158,6 +182,7 @@ public class DbService(IConfiguration config)
             item.PosterPath,
             item.Position,
             Status = (int)item.Status,
+            item.Sentiment,
             item.AvailableOnJson,
             AddedAt = DateTime.UtcNow
         });
@@ -219,12 +244,12 @@ public class DbService(IConfiguration config)
         return true;
     }
 
-    public async Task<bool> UpdateRatingAsync(int id, int? rating, string userId)
+    public async Task<bool> UpdateSentimentAsync(int id, int? sentiment, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
         int affected = await db.ExecuteAsync(
-            "UPDATE QueueItems SET Rating = @Rating WHERE Id = @Id AND UserId = @UserId",
-            new { Rating = rating, Id = id, UserId = userId });
+            "UPDATE QueueItems SET Sentiment = @Sentiment WHERE Id = @Id AND UserId = @UserId",
+            new { Sentiment = sentiment, Id = id, UserId = userId });
         return affected > 0;
     }
 
@@ -240,9 +265,6 @@ public class DbService(IConfiguration config)
     public Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
         UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Finished,
             existing => existing is QueueStatus.WantToWatch or QueueStatus.Watching);
-
-    public Task<QueueItem?> MarkAsLikedAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
-        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Liked);
 
     private async Task<QueueItem?> UpsertWithStatusAsync(int tmdbId, string mediaType, string title, string posterPath,
         string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
@@ -366,6 +388,57 @@ public class DbService(IConfiguration config)
         }
 
         await tx.CommitAsync();
+    }
+
+    // season & episode sentiments
+    public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId, string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        IEnumerable<SeasonSentiment> seasons = await db.QueryAsync<SeasonSentiment>(
+            "SELECT TmdbId, SeasonNumber, Sentiment FROM SeasonSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId",
+            new { UserId = userId, TmdbId = tmdbId });
+        IEnumerable<EpisodeSentiment> episodes = await db.QueryAsync<EpisodeSentiment>(
+            "SELECT TmdbId, SeasonNumber, EpisodeNumber, Sentiment FROM EpisodeSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId",
+            new { UserId = userId, TmdbId = tmdbId });
+        return new ShowSentiments { Seasons = [.. seasons], Episodes = [.. episodes] };
+    }
+
+    public async Task SetSeasonSentimentAsync(int tmdbId, int seasonNumber, int? sentiment, string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        if (sentiment == null)
+        {
+            await db.ExecuteAsync(
+                "DELETE FROM SeasonSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId AND SeasonNumber = @Season",
+                new { UserId = userId, TmdbId = tmdbId, Season = seasonNumber });
+        }
+        else
+        {
+            await db.ExecuteAsync("""
+                INSERT INTO SeasonSentiments (UserId, TmdbId, SeasonNumber, Sentiment)
+                VALUES (@UserId, @TmdbId, @Season, @Sentiment)
+                ON CONFLICT (UserId, TmdbId, SeasonNumber) DO UPDATE SET Sentiment = @Sentiment
+                """, new { UserId = userId, TmdbId = tmdbId, Season = seasonNumber, Sentiment = sentiment });
+        }
+    }
+
+    public async Task SetEpisodeSentimentAsync(int tmdbId, int seasonNumber, int episodeNumber, int? sentiment, string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        if (sentiment == null)
+        {
+            await db.ExecuteAsync(
+                "DELETE FROM EpisodeSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId AND SeasonNumber = @Season AND EpisodeNumber = @Episode",
+                new { UserId = userId, TmdbId = tmdbId, Season = seasonNumber, Episode = episodeNumber });
+        }
+        else
+        {
+            await db.ExecuteAsync("""
+                INSERT INTO EpisodeSentiments (UserId, TmdbId, SeasonNumber, EpisodeNumber, Sentiment)
+                VALUES (@UserId, @TmdbId, @Season, @Episode, @Sentiment)
+                ON CONFLICT (UserId, TmdbId, SeasonNumber, EpisodeNumber) DO UPDATE SET Sentiment = @Sentiment
+                """, new { UserId = userId, TmdbId = tmdbId, Season = seasonNumber, Episode = episodeNumber, Sentiment = sentiment });
+        }
     }
 
     // dismissals

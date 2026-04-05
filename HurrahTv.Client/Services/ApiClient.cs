@@ -58,14 +58,23 @@ public class ApiClient(HttpClient http)
     public async Task UpdateStatusAsync(int id, QueueStatus status) =>
         await _http.PutAsJsonAsync($"api/queue/{id}/status", new { Status = status });
 
-    public async Task UpdateRatingAsync(int id, int? rating) =>
-        await _http.PutAsJsonAsync($"api/queue/{id}/rating", new { Rating = rating });
+    public async Task UpdateSentimentAsync(int id, int? sentiment) =>
+        await _http.PutAsJsonAsync($"api/queue/{id}/sentiment", new { Sentiment = sentiment });
 
     public async Task UpdateProgressAsync(int id, int? season, int? episode) =>
         await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
 
-    public Task<QueueItem?> MarkAsLikedAsync(SearchResult result) => PostStatusAsync("api/queue/liked", result);
     public Task<QueueItem?> MarkAsSeenAsync(SearchResult result) => PostStatusAsync("api/queue/seen", result);
+
+    // season & episode sentiments
+    public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId) =>
+        await _http.GetFromJsonAsync<ShowSentiments>($"api/shows/{tmdbId}/sentiments") ?? new();
+
+    public async Task SetSeasonSentimentAsync(int tmdbId, int seasonNumber, int? sentiment) =>
+        await _http.PutAsJsonAsync($"api/shows/{tmdbId}/seasons/{seasonNumber}/sentiment", new { Sentiment = sentiment });
+
+    public async Task SetEpisodeSentimentAsync(int tmdbId, int seasonNumber, int episodeNumber, int? sentiment) =>
+        await _http.PutAsJsonAsync($"api/shows/{tmdbId}/seasons/{seasonNumber}/episodes/{episodeNumber}/sentiment", new { Sentiment = sentiment });
 
     private async Task<QueueItem?> PostStatusAsync(string endpoint, SearchResult result)
     {

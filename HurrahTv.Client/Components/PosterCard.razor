@@ -84,11 +84,11 @@
                     title="Want to watch">
                 <span class="icon-[heroicons--plus] w-4 h-4"></span>
             </button>
-            <button class="bg-black/60 hover:bg-pink-600 text-white rounded-full w-8 h-8
+            <button class="bg-black/60 hover:bg-green-600 text-white rounded-full w-8 h-8
                            flex items-center justify-center transition-colors"
-                    @onclick="MarkLiked" @onclick:stopPropagation="true"
-                    title="Loved it">
-                <span class="icon-[heroicons--heart] w-4 h-4"></span>
+                    @onclick="MarkThumbsUp" @onclick:stopPropagation="true"
+                    title="Thumbs up">
+                <span class="icon-[heroicons--hand-thumb-up] w-4 h-4"></span>
             </button>
             <button class="bg-black/60 hover:bg-blue-600 text-white rounded-full w-8 h-8
                            flex items-center justify-center transition-colors"
@@ -112,11 +112,11 @@
             <span class="icon-[heroicons--eye] w-4 h-4"></span>
         </div>
     }
-    else if (_actionState == ActionState.Liked)
+    else if (_actionState == ActionState.ThumbsUp)
     {
-        <div class="absolute top-2 right-2 bg-pink-600 text-white rounded-full w-8 h-8
+        <div class="absolute top-2 right-2 bg-green-600 text-white rounded-full w-8 h-8
                     flex items-center justify-center transition-all">
-            <span class="icon-[heroicons--heart] w-4 h-4"></span>
+            <span class="icon-[heroicons--hand-thumb-up] w-4 h-4"></span>
         </div>
     }
 </div>
@@ -129,7 +129,7 @@
     private ActionState _actionState = ActionState.None;
     private bool _disposed;
 
-    private enum ActionState { None, Added, Seen, Liked }
+    private enum ActionState { None, Added, Seen, ThumbsUp }
 
     private void NavigateToDetails()
     {
@@ -145,11 +145,15 @@
             await ShowTemporaryState(ActionState.Added);
     }
 
-    private async Task MarkLiked()
+    private async Task MarkThumbsUp()
     {
-        QueueItem? item = await Api.MarkAsLikedAsync(Result);
+        // add as Watched + thumbs up sentiment in one action
+        QueueItem? item = await Api.MarkAsSeenAsync(Result);
         if (item != null)
-            await ShowTemporaryState(ActionState.Liked);
+        {
+            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+            await ShowTemporaryState(ActionState.ThumbsUp);
+        }
     }
 
     private async Task MarkSeen()

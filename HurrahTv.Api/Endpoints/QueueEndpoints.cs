@@ -70,13 +70,13 @@ public static class QueueEndpoints
             return updated ? Results.Ok() : Results.NotFound();
         });
 
-        group.MapPut("/{id:int}/rating", async (int id, RatingUpdate update, ClaimsPrincipal user, DbService db) =>
+        group.MapPut("/{id:int}/sentiment", async (int id, SentimentUpdate update, ClaimsPrincipal user, DbService db) =>
         {
-            if (update.Rating is < 1 or > 5)
-                return Results.BadRequest("Rating must be 1-5");
+            if (update.Sentiment is not null and (< 1 or > 3))
+                return Results.BadRequest("Sentiment must be 1 (down), 2 (up), or 3 (favorite)");
 
             string userId = user.GetUserId();
-            bool updated = await db.UpdateRatingAsync(id, update.Rating, userId);
+            bool updated = await db.UpdateSentimentAsync(id, update.Sentiment, userId);
             return updated ? Results.Ok() : Results.NotFound();
         });
 
@@ -100,23 +100,11 @@ public static class QueueEndpoints
             return Results.Ok(item);
         });
 
-        // "I loved this" — adds as Liked or updates existing to Liked
-        group.MapPost("/liked", async (SeenRequest request, ClaimsPrincipal user, DbService db) =>
-        {
-            if (string.IsNullOrWhiteSpace(request.Title) || !MediaTypes.IsValid(request.MediaType) || request.TmdbId <= 0)
-                return Results.BadRequest("Invalid request");
-
-            string userId = user.GetUserId();
-            QueueItem? item = await db.MarkAsLikedAsync(
-                request.TmdbId, request.MediaType, request.Title,
-                request.PosterPath, request.AvailableOnJson, userId);
-            return Results.Ok(item);
-        });
     }
 
     public record QueueStatusUpdate(QueueStatus Status);
     public record PositionUpdate(int Position);
-    public record RatingUpdate(int? Rating);
+    public record SentimentUpdate(int? Sentiment);
     public record ProgressUpdate(int? Season, int? Episode);
     public record SeenRequest(int TmdbId, string MediaType, string Title, string PosterPath, string AvailableOnJson);
 }

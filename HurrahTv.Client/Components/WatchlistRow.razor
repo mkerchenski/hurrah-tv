@@ -61,6 +61,13 @@
                             </div>
                         }
 
+                        @if (item.Sentiment.HasValue)
+                        {
+                            <div class="absolute bottom-8 right-1.5 @SentimentColor(item.Sentiment.Value)">
+                                <span class="@SentimentIcon(item.Sentiment.Value) w-3.5 h-3.5 drop-shadow-md"></span>
+                            </div>
+                        }
+
                         <!-- title overlay at bottom -->
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 rounded-b-lg">
                             <div class="text-white text-xs font-medium leading-tight truncate">@item.Title</div>
@@ -132,8 +139,23 @@
     private static string FormatStatusLabel(QueueStatus status) => status switch
     {
         QueueStatus.Finished => "Watched",
-        QueueStatus.Liked => "Loved",
         QueueStatus.WantToWatch => "Want to Watch",
         _ => "Returning"
+    };
+
+    private static string SentimentIcon(int sentiment) => sentiment switch
+    {
+        SentimentLevel.Down => "icon-[heroicons--hand-thumb-down-20-solid]",
+        SentimentLevel.Up => "icon-[heroicons--hand-thumb-up-20-solid]",
+        SentimentLevel.Favorite => "icon-[heroicons--heart-20-solid]",
+        _ => ""
+    };
+
+    private static string SentimentColor(int sentiment) => sentiment switch
+    {
+        SentimentLevel.Down => "text-red-400",
+        SentimentLevel.Up => "text-green-400",
+        SentimentLevel.Favorite => "text-pink-400",
+        _ => ""
     };
 }

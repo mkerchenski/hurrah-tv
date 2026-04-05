@@ -102,18 +102,45 @@
                     <div class="text-gray-500 text-xs">@_pendingResult.Year</div>
                 </div>
             </div>
-            <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30"
-                    @onclick="() => ConfirmPick(QueueStatus.Watching)">
-                Watching
-            </button>
-            <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-blue-600/20 border border-blue-600/40 text-blue-400 hover:bg-blue-600/30"
-                    @onclick="() => ConfirmPick(QueueStatus.Finished)">
-                Watched
-            </button>
-            <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-accent/20 border border-accent/40 text-accent-light hover:bg-accent/30"
-                    @onclick="() => ConfirmPick(QueueStatus.WantToWatch)">
-                Want to Watch
-            </button>
+            @if (_pendingStatus == null)
+            {
+                <!-- step 1: pick list status -->
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-green-600/20 border border-green-600/40 text-green-400 hover:bg-green-600/30"
+                        @onclick="() => PickStatus(QueueStatus.Watching)">
+                    Watching
+                </button>
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-blue-600/20 border border-blue-600/40 text-blue-400 hover:bg-blue-600/30"
+                        @onclick="() => PickStatus(QueueStatus.Finished)">
+                    Watched
+                </button>
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium transition-colors bg-accent/20 border border-accent/40 text-accent-light hover:bg-accent/30"
+                        @onclick="() => PickStatus(QueueStatus.WantToWatch)">
+                    Want to Watch
+                </button>
+            }
+            else
+            {
+                <!-- step 2: optional sentiment -->
+                <div class="text-xs text-gray-500 text-center mb-1">How do you feel about it?</div>
+                <div class="flex gap-2 justify-center">
+                    <button class="w-12 h-12 rounded-lg flex items-center justify-center border border-red-500/40 text-gray-500 hover:bg-red-600/20 hover:text-red-400 transition-colors"
+                            @onclick="() => ConfirmPick(SentimentLevel.Down)" title="Thumbs down">
+                        <span class="icon-[heroicons--hand-thumb-down] w-6 h-6"></span>
+                    </button>
+                    <button class="w-12 h-12 rounded-lg flex items-center justify-center border border-green-500/40 text-gray-500 hover:bg-green-600/20 hover:text-green-400 transition-colors"
+                            @onclick="() => ConfirmPick(SentimentLevel.Up)" title="Thumbs up">
+                        <span class="icon-[heroicons--hand-thumb-up] w-6 h-6"></span>
+                    </button>
+                    <button class="w-12 h-12 rounded-lg flex items-center justify-center border border-pink-500/40 text-gray-500 hover:bg-pink-600/20 hover:text-pink-400 transition-colors"
+                            @onclick="() => ConfirmPick(SentimentLevel.Favorite)" title="Favorite">
+                        <span class="icon-[heroicons--heart] w-6 h-6"></span>
+                    </button>
+                </div>
+                <button class="w-full py-1.5 text-gray-500 text-xs hover:text-gray-300 transition-colors"
+                        @onclick="() => ConfirmPick(null)">
+                    Skip
+                </button>
+            }
             <button class="w-full py-2 text-gray-500 text-xs hover:text-gray-300 transition-colors"
                     @onclick="CancelPick">
                 Cancel
@@ -124,9 +151,10 @@
 
 @code {
     [Parameter] public int MinimumShows { get; set; } = 3;
-    [Parameter] public EventCallback<Dictionary<int, (SearchResult Result, QueueStatus Status)>> SelectionsChanged { get; set; }
+    [Parameter] public EventCallback<Dictionary<int, (SearchResult Result, QueueStatus Status, int? Sentiment)>> SelectionsChanged { get; set; }
 
     private string _searchQuery = "";
+    private QueueStatus? _pendingStatus;
     private bool _loading = true;
     private bool _searching;
     private System.Timers.Timer? _debounceTimer;
@@ -134,7 +162,7 @@
     private List<SearchResult> _searchResults = [];
     private List<SearchResult> _displayResults => _searchResults.Count > 0 || !string.IsNullOrWhiteSpace(_searchQuery)
         ? _searchResults : _popularResults;
-    private Dictionary<int, (SearchResult Result, QueueStatus Status)> _selections = [];
+    private Dictionary<int, (SearchResult Result, QueueStatus Status, int? Sentiment)> _selections = [];
     private SearchResult? _pendingResult;
 
     protected override async Task OnInitializedAsync()
@@ -203,15 +231,25 @@
         }
     }
 
-    private async Task ConfirmPick(QueueStatus status)
+    private void PickStatus(QueueStatus status)
     {
-        if (_pendingResult == null) return;
-        _selections[_pendingResult.TmdbId] = (_pendingResult, status);
+        _pendingStatus = status;
+    }
+
+    private async Task ConfirmPick(int? sentiment)
+    {
+        if (_pendingResult == null || _pendingStatus == null) return;
+        _selections[_pendingResult.TmdbId] = (_pendingResult, _pendingStatus.Value, sentiment);
         _pendingResult = null;
+        _pendingStatus = null;
         await SelectionsChanged.InvokeAsync(_selections);
     }
 
-    private void CancelPick() => _pendingResult = null;
+    private void CancelPick()
+    {
+        _pendingResult = null;
+        _pendingStatus = null;
+    }
 
     private static string StatusLabel(QueueStatus status) => status switch
     {

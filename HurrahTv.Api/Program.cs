@@ -69,6 +69,7 @@ app.MapAuthEndpoints();
 app.MapSearchEndpoints();
 app.MapDetailsEndpoints();
 app.MapQueueEndpoints();
+app.MapSentimentEndpoints();
 app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
 

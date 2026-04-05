@@ -83,14 +83,10 @@ else
                     </a>
                     <div class="flex items-center gap-2 text-xs text-gray-500 mt-0.5">
                         <span>@item.MediaType.ToUpper()</span>
-                        @if (item.Rating.HasValue)
+                        @if (item.Sentiment.HasValue)
                         {
-                            <span class="flex items-center gap-0.5">
-                                @for (int i = 1; i <= 5; i++)
-                                {
-                                    int star = i;
-                                    <span class="@(star <= item.Rating.Value ? "icon-[heroicons--star-20-solid] text-yellow-400" : "icon-[heroicons--star-20-solid] text-gray-700") w-3 h-3"></span>
-                                }
+                            <span class="@SentimentColor(item.Sentiment.Value)">
+                                <span class="@SentimentIcon(item.Sentiment.Value) w-3.5 h-3.5"></span>
                             </span>
                         }
                         @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
@@ -107,7 +103,6 @@ else
                     <option value="0">Want to Watch</option>
                     <option value="1">Watching</option>
                     <option value="2">Watched</option>
-                    <option value="3">Liked</option>
                     <option value="4">Not For Me</option>
                 </select>
 
@@ -131,7 +126,6 @@ else
         ("all", "All"),
         ("watching", "Watching"),
         ("wanttowatch", "Want to Watch"),
-        ("liked", "Liked"),
         ("finished", "Watched"),
         ("notforme", "Not For Me")
     ];
@@ -141,9 +135,24 @@ else
         QueueStatus.WantToWatch => "wanttowatch",
         QueueStatus.Watching => "watching",
         QueueStatus.Finished => "finished",
-        QueueStatus.Liked => "liked",
         QueueStatus.NotForMe => "notforme",
         _ => "unknown"
+    };
+
+    private static string SentimentIcon(int sentiment) => sentiment switch
+    {
+        SentimentLevel.Down => "icon-[heroicons--hand-thumb-down-20-solid]",
+        SentimentLevel.Up => "icon-[heroicons--hand-thumb-up-20-solid]",
+        SentimentLevel.Favorite => "icon-[heroicons--heart-20-solid]",
+        _ => ""
+    };
+
+    private static string SentimentColor(int sentiment) => sentiment switch
+    {
+        SentimentLevel.Down => "text-red-400",
+        SentimentLevel.Up => "text-green-400",
+        SentimentLevel.Favorite => "text-pink-400",
+        _ => "text-gray-500"
     };
 
     private IEnumerable<QueueItem> FilteredItems => _activeTab == "all"
