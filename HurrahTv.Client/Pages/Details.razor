@@ -271,25 +271,10 @@ else
             </div>
         </div>
 
-        <!-- seasons -->
+        <!-- seasons & episodes -->
         @if (_details.Seasons.Count > 0)
         {
-            <div class="mt-6 md:mt-8">
-                <h3 class="text-lg font-semibold mb-3">Seasons</h3>
-                <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
-                    @foreach (SeasonInfo season in _details.Seasons.Where(s => s.SeasonNumber > 0))
-                    {
-                        <div class="bg-surface-50 rounded-lg p-3">
-                            <div class="font-medium text-sm">@season.Name</div>
-                            <div class="text-xs text-gray-500">@season.EpisodeCount episodes</div>
-                            @if (!string.IsNullOrEmpty(season.AirDate))
-                            {
-                                <div class="text-xs text-gray-600">@(season.AirDate!.Length >= 4 ? season.AirDate[..4] : season.AirDate)</div>
-                            }
-                        </div>
-                    }
-                </div>
-            </div>
+            <EpisodeBrowser TmdbId="TmdbId" Seasons="_details.Seasons" />
         }
     }
 }

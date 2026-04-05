@@ -375,6 +375,43 @@ public class TmdbService
         return result;
     }
 
+    public async Task<SeasonDetail?> GetSeasonAsync(int tmdbId, int seasonNumber)
+    {
+        string cacheKey = $"season:{tmdbId}:{seasonNumber}";
+        if (_cache.TryGetValue(cacheKey, out SeasonDetail? cached))
+            return cached;
+
+        string url = $"tv/{tmdbId}/season/{seasonNumber}?api_key={_apiKey}&language=en-US";
+        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        if (raw == null) return null;
+
+        JsonElement json = raw.Value;
+        SeasonDetail detail = new()
+        {
+            SeasonNumber = seasonNumber,
+            Name = json.TryGetProperty("name", out JsonElement name) ? name.GetString() ?? "" : ""
+        };
+
+        if (json.TryGetProperty("episodes", out JsonElement episodes))
+        {
+            foreach (JsonElement ep in episodes.EnumerateArray())
+            {
+                detail.Episodes.Add(new EpisodeInfo
+                {
+                    EpisodeNumber = ep.GetProperty("episode_number").GetInt32(),
+                    Name = ep.TryGetProperty("name", out JsonElement epName) ? epName.GetString() ?? "" : "",
+                    AirDate = ep.TryGetProperty("air_date", out JsonElement airDate) && airDate.ValueKind == JsonValueKind.String ? airDate.GetString() : null,
+                    Overview = ep.TryGetProperty("overview", out JsonElement overview) ? overview.GetString() ?? "" : "",
+                    Runtime = ep.TryGetProperty("runtime", out JsonElement runtime) && runtime.ValueKind == JsonValueKind.Number ? runtime.GetInt32() : null,
+                    StillPath = ep.TryGetProperty("still_path", out JsonElement still) && still.ValueKind == JsonValueKind.String ? still.GetString() ?? "" : ""
+                });
+            }
+        }
+
+        _cache.Set(cacheKey, detail, TimeSpan.FromHours(6));
+        return detail;
+    }
+
     private static SearchResult MapToSearchResult(TmdbMultiResult r) => new()
     {
         TmdbId = r.Id,

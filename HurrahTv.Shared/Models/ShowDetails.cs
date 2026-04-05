@@ -29,3 +29,20 @@ public class SeasonInfo
     public string? AirDate { get; set; }
     public string PosterPath { get; set; } = "";
 }
+
+public class EpisodeInfo
+{
+    public int EpisodeNumber { get; set; }
+    public string Name { get; set; } = "";
+    public string? AirDate { get; set; }
+    public string Overview { get; set; } = "";
+    public int? Runtime { get; set; }
+    public string StillPath { get; set; } = "";
+}
+
+public class SeasonDetail
+{
+    public int SeasonNumber { get; set; }
+    public string Name { get; set; } = "";
+    public List<EpisodeInfo> Episodes { get; set; } = [];
+}

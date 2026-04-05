@@ -40,6 +40,10 @@ public class ApiClient(HttpClient http)
     public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType) =>
         await _http.GetFromJsonAsync<ShowDetails>($"api/details/{mediaType}/{tmdbId}");
 
+    // season episodes
+    public async Task<SeasonDetail?> GetSeasonAsync(int tmdbId, int seasonNumber) =>
+        await _http.GetFromJsonAsync<SeasonDetail>($"api/details/tv/{tmdbId}/season/{seasonNumber}");
+
     // queue
     public async Task<List<QueueItem>> GetQueueAsync() =>
         await _http.GetFromJsonAsync<List<QueueItem>>("api/queue") ?? [];

@@ -1,0 +1,171 @@
+@inject ApiClient Api
+
+<div class="mt-6 md:mt-8">
+    <h3 class="text-lg font-semibold mb-3">Seasons & Episodes</h3>
+    <div class="space-y-2">
+        @foreach (SeasonInfo season in Seasons.Where(s => s.SeasonNumber > 0 && s.EpisodeCount > 0).OrderByDescending(s => s.SeasonNumber))
+        {
+            int sn = season.SeasonNumber;
+            bool expanded = _expandedSeason == sn;
+            SeasonSentiment? seasonSent = _sentiments.Seasons.FirstOrDefault(s => s.SeasonNumber == sn);
+            List<EpisodeSentiment> epSents = [.. _sentiments.Episodes.Where(e => e.SeasonNumber == sn)];
+
+            <div class="bg-surface-50 rounded-lg overflow-hidden">
+                <!-- season header -->
+                <button class="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-100 transition-colors"
+                        @onclick="() => ToggleSeason(sn)">
+                    <div class="flex items-center gap-3">
+                        <span class="@(expanded ? "icon-[heroicons--chevron-down]" : "icon-[heroicons--chevron-right]") w-4 h-4 text-gray-500"></span>
+                        <div class="text-left">
+                            <span class="text-sm font-medium text-white">@season.Name</span>
+                            <span class="text-xs text-gray-500 ml-2">@season.EpisodeCount episodes</span>
+                            @if (!string.IsNullOrEmpty(season.AirDate) && season.AirDate.Length >= 4)
+                            {
+                                <span class="text-xs text-gray-600 ml-1">(@season.AirDate[..4])</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <!-- episode sentiment summary -->
+                        @if (epSents.Count > 0)
+                        {
+                            <div class="flex items-center gap-1.5 text-[10px]">
+                                @{ int ups = epSents.Count(e => e.Sentiment == SentimentLevel.Up); }
+                                @{ int favs = epSents.Count(e => e.Sentiment == SentimentLevel.Favorite); }
+                                @{ int downs = epSents.Count(e => e.Sentiment == SentimentLevel.Down); }
+                                @if (favs > 0) { <span class="text-pink-400">@favs<span class="icon-[heroicons--heart-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
+                                @if (ups > 0) { <span class="text-green-400">@ups<span class="icon-[heroicons--hand-thumb-up-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
+                                @if (downs > 0) { <span class="text-red-400">@downs<span class="icon-[heroicons--hand-thumb-down-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
+                            </div>
+                        }
+                        <!-- season sentiment buttons -->
+                        <div class="flex gap-1" @onclick:stopPropagation="true">
+                            <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(seasonSent?.Sentiment == SentimentLevel.Down ? "bg-red-600/20 text-red-400" : "text-gray-600 hover:text-red-400")}")"
+                                    @onclick="() => SetSeasonSentiment(sn, SentimentLevel.Down)">
+                                <span class="icon-[heroicons--hand-thumb-down] w-3.5 h-3.5"></span>
+                            </button>
+                            <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(seasonSent?.Sentiment == SentimentLevel.Up ? "bg-green-600/20 text-green-400" : "text-gray-600 hover:text-green-400")}")"
+                                    @onclick="() => SetSeasonSentiment(sn, SentimentLevel.Up)">
+                                <span class="icon-[heroicons--hand-thumb-up] w-3.5 h-3.5"></span>
+                            </button>
+                            <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(seasonSent?.Sentiment == SentimentLevel.Favorite ? "bg-pink-600/20 text-pink-400" : "text-gray-600 hover:text-pink-400")}")"
+                                    @onclick="() => SetSeasonSentiment(sn, SentimentLevel.Favorite)">
+                                <span class="icon-[heroicons--heart] w-3.5 h-3.5"></span>
+                            </button>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- expanded episode list -->
+                @if (expanded)
+                {
+                    @if (_loadingEpisodes)
+                    {
+                        <div class="px-4 py-3 border-t border-surface-200">
+                            <div class="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+                    }
+                    else if (_seasonDetail != null)
+                    {
+                        <div class="border-t border-surface-200">
+                            @foreach (EpisodeInfo ep in _seasonDetail.Episodes)
+                            {
+                                int en = ep.EpisodeNumber;
+                                EpisodeSentiment? epSent = epSents.FirstOrDefault(e => e.EpisodeNumber == en);
+
+                                <div class="flex items-center justify-between px-4 py-2.5 hover:bg-surface-100 transition-colors border-b border-surface-200 last:border-b-0">
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-xs text-gray-500 w-6 flex-shrink-0">E@(en)</span>
+                                            <span class="text-sm text-white truncate">@ep.Name</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(ep.AirDate))
+                                        {
+                                            <div class="text-[10px] text-gray-600 ml-8">@FormatDate(ep.AirDate)</div>
+                                        }
+                                    </div>
+                                    <div class="flex gap-1 flex-shrink-0 ml-2">
+                                        <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(epSent?.Sentiment == SentimentLevel.Down ? "bg-red-600/20 text-red-400" : "text-gray-600 hover:text-red-400")}")"
+                                                @onclick="() => SetEpisodeSentiment(sn, en, SentimentLevel.Down)">
+                                            <span class="icon-[heroicons--hand-thumb-down] w-3.5 h-3.5"></span>
+                                        </button>
+                                        <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(epSent?.Sentiment == SentimentLevel.Up ? "bg-green-600/20 text-green-400" : "text-gray-600 hover:text-green-400")}")"
+                                                @onclick="() => SetEpisodeSentiment(sn, en, SentimentLevel.Up)">
+                                            <span class="icon-[heroicons--hand-thumb-up] w-3.5 h-3.5"></span>
+                                        </button>
+                                        <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(epSent?.Sentiment == SentimentLevel.Favorite ? "bg-pink-600/20 text-pink-400" : "text-gray-600 hover:text-pink-400")}")"
+                                                @onclick="() => SetEpisodeSentiment(sn, en, SentimentLevel.Favorite)">
+                                            <span class="icon-[heroicons--heart] w-3.5 h-3.5"></span>
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int TmdbId { get; set; }
+    [Parameter, EditorRequired] public List<SeasonInfo> Seasons { get; set; } = [];
+
+    private ShowSentiments _sentiments = new();
+    private int? _expandedSeason;
+    private SeasonDetail? _seasonDetail;
+    private bool _loadingEpisodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _sentiments = await Api.GetShowSentimentsAsync(TmdbId);
+    }
+
+    private async Task ToggleSeason(int seasonNumber)
+    {
+        if (_expandedSeason == seasonNumber)
+        {
+            _expandedSeason = null;
+            _seasonDetail = null;
+            return;
+        }
+
+        _expandedSeason = seasonNumber;
+        _loadingEpisodes = true;
+        StateHasChanged();
+
+        _seasonDetail = await Api.GetSeasonAsync(TmdbId, seasonNumber);
+        _loadingEpisodes = false;
+    }
+
+    private async Task SetSeasonSentiment(int seasonNumber, int sentiment)
+    {
+        SeasonSentiment? existing = _sentiments.Seasons.FirstOrDefault(s => s.SeasonNumber == seasonNumber);
+        int? newSentiment = existing?.Sentiment == sentiment ? null : sentiment;
+        await Api.SetSeasonSentimentAsync(TmdbId, seasonNumber, newSentiment);
+
+        // update local state
+        _sentiments.Seasons.RemoveAll(s => s.SeasonNumber == seasonNumber);
+        if (newSentiment.HasValue)
+            _sentiments.Seasons.Add(new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value });
+    }
+
+    private static string FormatDate(string? dateStr)
+    {
+        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return dateStr ?? "";
+        return date.ToString("MMM d, yyyy");
+    }
+
+    private async Task SetEpisodeSentiment(int seasonNumber, int episodeNumber, int sentiment)
+    {
+        EpisodeSentiment? existing = _sentiments.Episodes.FirstOrDefault(e => e.SeasonNumber == seasonNumber && e.EpisodeNumber == episodeNumber);
+        int? newSentiment = existing?.Sentiment == sentiment ? null : sentiment;
+        await Api.SetEpisodeSentimentAsync(TmdbId, seasonNumber, episodeNumber, newSentiment);
+
+        // update local state
+        _sentiments.Episodes.RemoveAll(e => e.SeasonNumber == seasonNumber && e.EpisodeNumber == episodeNumber);
+        if (newSentiment.HasValue)
+            _sentiments.Episodes.Add(new EpisodeSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, EpisodeNumber = episodeNumber, Sentiment = newSentiment.Value });
+    }
+}

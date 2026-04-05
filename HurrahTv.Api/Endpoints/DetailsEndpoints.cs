@@ -25,6 +25,12 @@ public static class DetailsEndpoints
             return Results.Ok(details);
         }).RequireAuthorization();
 
+        app.MapGet("/api/details/tv/{tmdbId:int}/season/{seasonNumber:int}", async (int tmdbId, int seasonNumber, TmdbService tmdb) =>
+        {
+            SeasonDetail? season = await tmdb.GetSeasonAsync(tmdbId, seasonNumber);
+            return season != null ? Results.Ok(season) : Results.NotFound();
+        }).RequireAuthorization();
+
         app.MapGet("/api/providers/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId, TmdbService tmdb) =>
         {
             if (!MediaTypes.IsValid(mediaType))
