@@ -29,16 +29,16 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- new episodes row -->
-        @if (_newEpisodeItems.Count > 0)
-        {
-            <WatchlistRow Title="New Episodes" Subtitle="This week" Items="_newEpisodeItems" ShowAirDates="true" />
-        }
-
         <!-- continue watching row -->
         @if (_watchingItems.Count > 0)
         {
-            <WatchlistRow Title="Continue Watching" Subtitle="Your queue" Items="_watchingItems" />
+            <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching" />
+        }
+
+        <!-- upcoming episodes row -->
+        @if (_upcomingItems.Count > 0)
+        {
+            <WatchlistRow Title="Upcoming Episodes" Subtitle="This week" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming" />
         }
 
         <!-- AI-curated section -->
@@ -82,9 +82,9 @@ else
     private bool _servicesLoaded;
     private bool _onboardingComplete;
 
-    // watchlist items by status
+    // watchlist rows
     private List<QueueItem> _watchingItems = [];
-    private List<QueueItem> _newEpisodeItems = [];
+    private List<QueueItem> _upcomingItems = [];
     private HashSet<int> _newEpisodeTmdbIds = [];
     private List<QueueItem> _recSeeds = [];
 
@@ -117,22 +117,23 @@ else
 
         _recSeeds = PickRecSeeds(allItems, 3);
 
-        // new episodes: aired this week or upcoming within 3 days, sorted by air date
-        _newEpisodeItems = allItems
-            .Where(i => i.MediaType == "tv"
-                && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
-                && (i.HasEpisodeThisWeek || i.HasUpcomingSoon))
-            .OrderByDescending(i => i.HasUpcomingSoon ? 1 : 0)
-            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
-            .ToList();
-
-        _newEpisodeTmdbIds = [.. _newEpisodeItems.Select(i => i.TmdbId)];
-
-        // continue watching: queue order, exclude items already in new episodes
+        // continue watching: all Watching items, recently aired first then by position
         _watchingItems = allItems
-            .Where(i => i.Status == QueueStatus.Watching && !_newEpisodeTmdbIds.Contains(i.TmdbId))
-            .OrderBy(i => i.Position)
+            .Where(i => i.Status == QueueStatus.Watching)
+            .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
+            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
+            .ThenBy(i => i.Position)
             .ToList();
+
+        // upcoming episodes: TV from any status except NotForMe, next 7 days
+        _upcomingItems = allItems
+            .Where(i => i.MediaType == "tv"
+                && i.Status != QueueStatus.NotForMe
+                && i.HasUpcomingThisWeek)
+            .OrderBy(i => i.NextEpisodeDate)
+            .ToList();
+
+        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
 
         StateHasChanged();
 

@@ -18,6 +18,10 @@ appsettings.Development.json
 # local-only directories
 Plans/
 
+# database backups
+*.bacpac
+*.dump
+
 # OS
 Thumbs.db
 .DS_Store
