@@ -12,18 +12,77 @@
 }
 else if (!_onboardingComplete)
 {
-    <!-- onboarding: pick your services -->
-    <div class="max-w-lg mx-auto text-center py-8 md:py-12 fade-in">
-        <h1 class="text-3xl md:text-4xl font-bold mb-2">Welcome to <span class="text-accent">hurrah.tv</span></h1>
-        <p class="text-gray-400 mb-6 md:mb-8 text-base md:text-lg">All your streaming services, one smart watchlist. Pick your services to get started.</p>
+    <div class="max-w-2xl mx-auto py-8 md:py-12 fade-in">
+        <h1 class="text-3xl md:text-4xl font-bold mb-2 text-center">Welcome to <span class="text-accent">hurrah.tv</span></h1>
 
-        <ServicePicker @bind-SelectedIds="_pendingServices" />
+        <!-- step indicator -->
+        <div class="flex items-center justify-center gap-2 mb-6 md:mb-8">
+            @for (int i = 1; i <= 3; i++)
+            {
+                int step = i;
+                <div class="flex items-center gap-2">
+                    <div class="@($"w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors {(step <= _onboardingStep ? "bg-accent text-white" : "bg-surface-200 text-gray-500")}")">
+                        @step
+                    </div>
+                    @if (step < 3)
+                    {
+                        <div class="w-8 h-0.5 @(step < _onboardingStep ? "bg-accent" : "bg-surface-200")"></div>
+                    }
+                </div>
+            }
+        </div>
 
-        <button class="mt-6 md:mt-8 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40 w-full md:w-auto"
-                disabled="@(_pendingServices.Count == 0)"
-                @onclick="SaveServices">
-            Get Started
-        </button>
+        @if (_onboardingStep == 1)
+        {
+            <!-- step 1: streaming services -->
+            <div class="text-center">
+                <p class="text-gray-400 mb-6 text-base md:text-lg">Which streaming services do you have?</p>
+                <ServicePicker @bind-SelectedIds="_pendingServices" />
+                <button class="mt-6 bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40 w-full md:w-auto"
+                        disabled="@(_pendingServices.Count == 0)"
+                        @onclick="OnboardingNext">
+                    Next
+                </button>
+            </div>
+        }
+        else if (_onboardingStep == 2)
+        {
+            <!-- step 2: genres -->
+            <div class="text-center">
+                <p class="text-gray-400 mb-6 text-base md:text-lg">What genres do you enjoy?</p>
+                <GenrePicker @bind-SelectedIds="_pendingGenres" />
+                <div class="flex gap-3 justify-center mt-6">
+                    <button class="border border-surface-200 text-gray-400 hover:text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+                            @onclick="OnboardingBack">
+                        Back
+                    </button>
+                    <button class="bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40"
+                            disabled="@(_pendingGenres.Count == 0)"
+                            @onclick="OnboardingNext">
+                        Next
+                    </button>
+                </div>
+            </div>
+        }
+        else if (_onboardingStep == 3)
+        {
+            <!-- step 3: pick shows -->
+            <div>
+                <p class="text-gray-400 mb-6 text-base md:text-lg text-center">Pick a few shows you watch or have watched — this powers your recommendations.</p>
+                <ShowPicker SelectionsChanged="OnShowSelectionsChanged" />
+                <div class="flex gap-3 justify-center mt-6">
+                    <button class="border border-surface-200 text-gray-400 hover:text-white font-semibold px-6 py-3 rounded-lg transition-colors"
+                            @onclick="OnboardingBack">
+                        Back
+                    </button>
+                    <button class="bg-accent hover:bg-accent-light text-white font-semibold px-8 py-3 rounded-lg transition-colors disabled:opacity-40"
+                            disabled="@(_pendingShows.Count < 3)"
+                            @onclick="FinishOnboarding">
+                        Get Started
+                    </button>
+                </div>
+            </div>
+        }
     </div>
 }
 else
@@ -79,6 +138,9 @@ else
 @code {
     private List<int> _userServices = [];
     private List<int> _pendingServices = [];
+    private List<int> _pendingGenres = [];
+    private Dictionary<int, (SearchResult Result, QueueStatus Status)> _pendingShows = [];
+    private int _onboardingStep = 1;
     private bool _servicesLoaded;
     private bool _onboardingComplete;
 
@@ -103,10 +165,39 @@ else
             await LoadWatchlistData();
     }
 
-    private async Task SaveServices()
+    private async Task OnboardingNext()
     {
-        _userServices = _pendingServices;
-        await Api.SetUserServicesAsync(_userServices);
+        if (_onboardingStep == 1)
+        {
+            // save services immediately so step 3 can use existing discovery endpoints
+            await Api.SetUserServicesAsync(_pendingServices);
+            _userServices = _pendingServices;
+        }
+        else if (_onboardingStep == 2)
+        {
+            // save genres immediately so step 3 show picker gets genre-filtered results
+            await Api.SetUserGenresAsync(_pendingGenres);
+        }
+        _onboardingStep++;
+    }
+
+    private void OnboardingBack() => _onboardingStep--;
+
+    private void OnShowSelectionsChanged(Dictionary<int, (SearchResult Result, QueueStatus Status)> selections)
+    {
+        _pendingShows = selections;
+    }
+
+    private async Task FinishOnboarding()
+    {
+        // add all selected shows to queue with their chosen statuses
+        foreach ((SearchResult result, QueueStatus status) in _pendingShows.Values)
+        {
+            QueueItem item = result.ToQueueItem();
+            item.Status = status;
+            await Api.AddToQueueAsync(item);
+        }
+
         _onboardingComplete = true;
         await LoadWatchlistData();
     }
