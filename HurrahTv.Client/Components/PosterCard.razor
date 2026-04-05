@@ -164,12 +164,13 @@
 
     private async Task MarkThumbsUp()
     {
-        QueueItem item = Result.ToQueueItem();
-        item.Status = QueueStatus.Finished;
-        item.Sentiment = SentimentLevel.Up;
-        QueueItem? added = await Api.AddToQueueAsync(item);
-        if (added != null)
+        // use MarkAsSeen (upserts) so it works for both new and existing queue items
+        QueueItem? item = await Api.MarkAsSeenAsync(Result);
+        if (item != null)
+        {
+            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
             await ShowTemporaryState(ActionState.ThumbsUp);
+        }
     }
 
     private async Task MarkSeen()

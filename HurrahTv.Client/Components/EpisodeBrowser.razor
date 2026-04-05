@@ -70,7 +70,7 @@
                         <div class="border-t border-surface-200">
                             @{
                                 DateTime today = DateTime.Now.Date;
-                                List<EpisodeInfo> aired = [.. _seasonDetail.Episodes.Where(e => !IsFuture(e.AirDate, today))];
+                                List<EpisodeInfo> aired = [.. _seasonDetail.Episodes.Where(e => HasAired(e.AirDate, today))];
                                 EpisodeInfo? nextUp = _seasonDetail.Episodes
                                     .Where(e => IsFuture(e.AirDate, today))
                                     .OrderBy(e => e.EpisodeNumber)
@@ -170,6 +170,13 @@
             _sentiments.Seasons.Add(new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value });
     }
 
+    private static bool HasAired(string? dateStr, DateTime today)
+    {
+        // null or unparseable = unknown = not aired (don't show sentiment buttons)
+        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return false;
+        return date.Date <= today;
+    }
+
     private static bool IsFuture(string? dateStr, DateTime today)
     {
         if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return false;
@@ -178,7 +185,8 @@
 
     private static string FormatDate(string? dateStr)
     {
-        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return dateStr ?? "";
+        if (string.IsNullOrEmpty(dateStr) || dateStr == "0000-00-00") return "";
+        if (!DateTime.TryParse(dateStr, out DateTime date)) return "";
         return date.ToString("MMM d, yyyy");
     }
 

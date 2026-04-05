@@ -103,7 +103,7 @@ public class DbService(IConfiguration config)
 
             -- sentiment system: add sentiment column, migrate Liked→Finished+favorite, drop rating
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS Sentiment INT NULL;
-            UPDATE QueueItems SET Sentiment = 3, Status = 2 WHERE Status = 3;
+            UPDATE QueueItems SET Sentiment = 3, Status = 2 WHERE Status = 3 AND Sentiment IS NULL;
             ALTER TABLE QueueItems DROP COLUMN IF EXISTS Rating;
 
             CREATE TABLE IF NOT EXISTS SeasonSentiments (

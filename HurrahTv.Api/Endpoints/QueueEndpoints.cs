@@ -12,12 +12,12 @@ public static class QueueEndpoints
     {
         RouteGroupBuilder group = app.MapGroup("/api/queue").RequireAuthorization();
 
-        group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
+        group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<QueueEndpoints> logger) =>
         {
             string userId = user.GetUserId();
             List<QueueItem> items = await db.GetQueueAsync(userId);
 
-            // refresh stale episode dates for TV items in background (fire-and-forget for this request)
+            // refresh stale episode dates in background
             List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
                     && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
@@ -32,7 +32,10 @@ public static class QueueEndpoints
                         (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
                         await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
+                    }
                 }));
             }
 

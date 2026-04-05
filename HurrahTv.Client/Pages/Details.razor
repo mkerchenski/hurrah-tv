@@ -295,6 +295,7 @@ else
     private ShowMatchResult? _showMatch;
     private bool _matchLoading;
     private bool _disposed;
+    private CancellationTokenSource? _matchCts;
 
     private static readonly (QueueStatus status, string label, string icon)[] _listOptions =
     [
@@ -304,7 +305,12 @@ else
         (QueueStatus.NotForMe, "Not For Me", "icon-[heroicons--x-mark]"),
     ];
 
-    public void Dispose() => _disposed = true;
+    public void Dispose()
+    {
+        _disposed = true;
+        _matchCts?.Cancel();
+        _matchCts?.Dispose();
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -315,6 +321,7 @@ else
         _showMatch = null;
         _matchLoading = false;
         _loading = true;
+        StateHasChanged();
 
         _details = await Api.GetDetailsAsync(TmdbId, MediaType);
         _loading = false;
@@ -323,15 +330,19 @@ else
         List<QueueItem> queue = await Api.GetQueueAsync();
         _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
 
-        // load AI match in background (non-blocking)
-        _ = LoadShowMatch();
+        // cancel any previous match load and start new one
+        _matchCts?.Cancel();
+        _matchCts?.Dispose();
+        _matchCts = new CancellationTokenSource();
+        _ = LoadShowMatch(_matchCts.Token);
     }
 
-    private async Task LoadShowMatch()
+    private async Task LoadShowMatch(CancellationToken ct)
     {
         _matchLoading = true;
         if (!_disposed) StateHasChanged();
         _showMatch = await Api.GetShowMatchAsync(TmdbId, MediaType);
+        if (ct.IsCancellationRequested) return;
         _matchLoading = false;
         if (!_disposed) StateHasChanged();
     }
@@ -345,16 +356,17 @@ else
         if (_queueItem != null)
         {
             if (_queueItem.Status == status)
-                return; // already set
+                return;
             await Api.UpdateStatusAsync(_queueItem.Id, status);
             _queueItem.Status = status;
         }
         else
         {
-            // add to queue with this status
             QueueItem item = _details.ToQueueItem();
             item.Status = status;
             _queueItem = await Api.AddToQueueAsync(item);
+            if (_queueItem == null)
+                _queueItem = await FindQueueItemAsync();
         }
         StateHasChanged();
     }
@@ -363,18 +375,25 @@ else
     {
         if (_details == null) return;
 
-        // if not in queue yet, add as WantToWatch first
         if (_queueItem == null)
         {
             _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
+            if (_queueItem == null)
+                _queueItem = await FindQueueItemAsync();
             if (_queueItem == null) return;
         }
 
-        // toggle: tap active sentiment to clear
         int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
         await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
         _queueItem.Sentiment = newSentiment;
         StateHasChanged();
+    }
+
+    private async Task<QueueItem?> FindQueueItemAsync()
+    {
+        // item already exists in queue (409 conflict) — fetch it
+        List<QueueItem> queue = await Api.GetQueueAsync();
+        return queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
     }
 
     private static bool IsRecent(string? dateStr)

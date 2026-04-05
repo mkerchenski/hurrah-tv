@@ -303,8 +303,8 @@ public class CurationService
                 sentSb.AppendLine($"  Season {ss.SeasonNumber}: {SentimentLabel(ss.Sentiment)}");
             if (showSentiments.Episodes.Count > 0)
             {
-                var bySeason = showSentiments.Episodes.GroupBy(e => e.SeasonNumber).OrderBy(g => g.Key);
-                foreach (var group in bySeason)
+                IOrderedEnumerable<IGrouping<int, EpisodeSentiment>> bySeason = showSentiments.Episodes.GroupBy(e => e.SeasonNumber).OrderBy(g => g.Key);
+                foreach (IGrouping<int, EpisodeSentiment> group in bySeason)
                 {
                     int ups = group.Count(e => e.Sentiment == SentimentLevel.Up);
                     int favs = group.Count(e => e.Sentiment == SentimentLevel.Favorite);

@@ -117,6 +117,8 @@ public static class CurationEndpoints
         {
             try
             {
+                if (!MediaTypes.IsValid(mediaType))
+                    return Results.BadRequest("mediaType must be 'movie' or 'tv'");
                 if (!curation.IsEnabled) return Results.Ok<ShowMatchResult?>(null);
 
                 string userId = user.GetUserId();

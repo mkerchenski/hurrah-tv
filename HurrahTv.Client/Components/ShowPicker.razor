@@ -1,3 +1,4 @@
+@implements IDisposable
 @inject ApiClient Api
 
 <div class="space-y-4">
@@ -269,4 +270,10 @@
         QueueStatus.WantToWatch => "bg-accent/80",
         _ => "bg-gray-600/80"
     };
+
+    public void Dispose()
+    {
+        _debounceTimer?.Stop();
+        _debounceTimer?.Dispose();
+    }
 }
