@@ -164,13 +164,12 @@
 
     private async Task MarkThumbsUp()
     {
-        // add as Watched + thumbs up sentiment in one action
-        QueueItem? item = await Api.MarkAsSeenAsync(Result);
-        if (item != null)
-        {
-            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+        QueueItem item = Result.ToQueueItem();
+        item.Status = QueueStatus.Finished;
+        item.Sentiment = SentimentLevel.Up;
+        QueueItem? added = await Api.AddToQueueAsync(item);
+        if (added != null)
             await ShowTemporaryState(ActionState.ThumbsUp);
-        }
     }
 
     private async Task MarkSeen()

@@ -72,7 +72,7 @@ public static class QueueEndpoints
 
         group.MapPut("/{id:int}/sentiment", async (int id, SentimentUpdate update, ClaimsPrincipal user, DbService db) =>
         {
-            if (update.Sentiment is not null and (< 1 or > 3))
+            if (!SentimentLevel.IsValid(update.Sentiment))
                 return Results.BadRequest("Sentiment must be 1 (down), 2 (up), or 3 (favorite)");
 
             string userId = user.GetUserId();

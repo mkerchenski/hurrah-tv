@@ -85,8 +85,8 @@ else
                         <span>@item.MediaType.ToUpper()</span>
                         @if (item.Sentiment.HasValue)
                         {
-                            <span class="@SentimentColor(item.Sentiment.Value)">
-                                <span class="@SentimentIcon(item.Sentiment.Value) w-3.5 h-3.5"></span>
+                            <span class="@SentimentHelpers.Color(item.Sentiment.Value)">
+                                <span class="@SentimentHelpers.Icon(item.Sentiment.Value) w-3.5 h-3.5"></span>
                             </span>
                         }
                         @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
@@ -139,21 +139,6 @@ else
         _ => "unknown"
     };
 
-    private static string SentimentIcon(int sentiment) => sentiment switch
-    {
-        SentimentLevel.Down => "icon-[heroicons--hand-thumb-down-20-solid]",
-        SentimentLevel.Up => "icon-[heroicons--hand-thumb-up-20-solid]",
-        SentimentLevel.Favorite => "icon-[heroicons--heart-20-solid]",
-        _ => ""
-    };
-
-    private static string SentimentColor(int sentiment) => sentiment switch
-    {
-        SentimentLevel.Down => "text-red-400",
-        SentimentLevel.Up => "text-green-400",
-        SentimentLevel.Favorite => "text-pink-400",
-        _ => "text-gray-500"
-    };
 
     private IEnumerable<QueueItem> FilteredItems => _activeTab == "all"
         ? _items

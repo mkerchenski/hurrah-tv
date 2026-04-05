@@ -53,6 +53,8 @@ public static class SentimentLevel
     public const int Down = 1;      // thumbs down
     public const int Up = 2;        // thumbs up
     public const int Favorite = 3;  // double thumbs up / favorite
+
+    public static bool IsValid(int? sentiment) => sentiment is null or (>= Down and <= Favorite);
 }
 
 public class SeasonSentiment

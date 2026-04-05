@@ -63,8 +63,8 @@
 
                         @if (item.Sentiment.HasValue)
                         {
-                            <div class="absolute bottom-8 right-1.5 @SentimentColor(item.Sentiment.Value)">
-                                <span class="@SentimentIcon(item.Sentiment.Value) w-3.5 h-3.5 drop-shadow-md"></span>
+                            <div class="absolute bottom-8 right-1.5 @SentimentHelpers.Color(item.Sentiment.Value)">
+                                <span class="@SentimentHelpers.Icon(item.Sentiment.Value) w-3.5 h-3.5 drop-shadow-md"></span>
                             </div>
                         }
 
@@ -136,26 +136,6 @@
         };
     }
 
-    private static string FormatStatusLabel(QueueStatus status) => status switch
-    {
-        QueueStatus.Finished => "Watched",
-        QueueStatus.WantToWatch => "Want to Watch",
-        _ => "Returning"
-    };
-
-    private static string SentimentIcon(int sentiment) => sentiment switch
-    {
-        SentimentLevel.Down => "icon-[heroicons--hand-thumb-down-20-solid]",
-        SentimentLevel.Up => "icon-[heroicons--hand-thumb-up-20-solid]",
-        SentimentLevel.Favorite => "icon-[heroicons--heart-20-solid]",
-        _ => ""
-    };
-
-    private static string SentimentColor(int sentiment) => sentiment switch
-    {
-        SentimentLevel.Down => "text-red-400",
-        SentimentLevel.Up => "text-green-400",
-        SentimentLevel.Favorite => "text-pink-400",
-        _ => ""
-    };
+    private static string FormatStatusLabel(QueueStatus status) =>
+        SentimentHelpers.StatusLabel(status) is "" ? "Returning" : SentimentHelpers.StatusLabel(status);
 }

@@ -188,32 +188,6 @@ public class TmdbService
         return [.. enriched.Select(e => e.result)];
     }
 
-    // enrich all results with provider info — shows on user's services get only those, others get all flatrate/ads providers
-    public async Task<List<SearchResult>> EnrichWithProvidersAsync(List<SearchResult> results, List<int> providerIds)
-    {
-        if (results.Count == 0) return [];
-
-        HashSet<int> userProviders = [.. providerIds];
-
-        Task<(SearchResult result, List<AvailableService> providers)>[] tasks = [.. results
-            .Select(async r =>
-            {
-                List<AvailableService> providers = await GetWatchProvidersAsync(r.TmdbId, r.MediaType);
-                return (r, providers);
-            })];
-
-        (SearchResult result, List<AvailableService> providers)[] enriched = await Task.WhenAll(tasks);
-
-        foreach ((SearchResult result, List<AvailableService> providers) in enriched)
-        {
-            List<AvailableService> allFlatrate = [.. providers.Where(p => p.Type is ProviderType.Flatrate or ProviderType.Ads)];
-            List<AvailableService> userMatches = [.. allFlatrate.Where(p => userProviders.Contains(p.ProviderId))];
-            result.AvailableOn = userMatches.Count > 0 ? userMatches : allFlatrate;
-        }
-
-        return [.. enriched.Select(e => e.result)];
-    }
-
     public async Task<List<SearchResult>> FilterToUserServicesAsync(List<SearchResult> results, List<int> providerIds)
     {
         if (providerIds.Count == 0) return [];

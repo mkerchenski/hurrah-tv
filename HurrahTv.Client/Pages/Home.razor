@@ -190,16 +190,14 @@ else
 
     private async Task FinishOnboarding()
     {
-        // add all selected shows to queue with their chosen statuses and sentiments
-        foreach ((SearchResult result, QueueStatus status, int? sentiment) in _pendingShows.Values)
+        // add all selected shows to queue in parallel
+        await Task.WhenAll(_pendingShows.Values.Select(async entry =>
         {
-            QueueItem item = result.ToQueueItem();
-            item.Status = status;
-            item.Sentiment = sentiment;
-            QueueItem? added = await Api.AddToQueueAsync(item);
-            if (added != null && sentiment.HasValue)
-                await Api.UpdateSentimentAsync(added.Id, sentiment);
-        }
+            QueueItem item = entry.Result.ToQueueItem();
+            item.Status = entry.Status;
+            item.Sentiment = entry.Sentiment;
+            await Api.AddToQueueAsync(item);
+        }));
 
         _onboardingComplete = true;
         await LoadWatchlistData();

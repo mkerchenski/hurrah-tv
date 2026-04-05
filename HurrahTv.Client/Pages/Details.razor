@@ -260,15 +260,15 @@ else
         <div class="mb-4 md:mb-6">
             <div class="text-xs text-gray-500 uppercase tracking-wider mb-2">My Take</div>
             <div class="flex gap-2">
-                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Down ? "border-red-500 bg-red-600/20 text-red-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-red-500 hover:text-red-400")}")"
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_queueItem?.Sentiment == SentimentLevel.Down ? "border-red-500 bg-red-600/20 text-red-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-red-500 hover:text-red-400")}")"
                         @onclick="() => SetSentiment(SentimentLevel.Down)" title="Thumbs down">
                     <span class="icon-[heroicons--hand-thumb-down] w-5 h-5"></span>
                 </button>
-                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Up ? "border-green-500 bg-green-600/20 text-green-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-green-500 hover:text-green-400")}")"
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_queueItem?.Sentiment == SentimentLevel.Up ? "border-green-500 bg-green-600/20 text-green-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-green-500 hover:text-green-400")}")"
                         @onclick="() => SetSentiment(SentimentLevel.Up)" title="Thumbs up">
                     <span class="icon-[heroicons--hand-thumb-up] w-5 h-5"></span>
                 </button>
-                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_activeSentiment == SentimentLevel.Favorite ? "border-pink-500 bg-pink-600/20 text-pink-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-pink-500 hover:text-pink-400")}")"
+                <button class="@($"w-10 h-10 rounded-lg flex items-center justify-center transition-colors border {(_queueItem?.Sentiment == SentimentLevel.Favorite ? "border-pink-500 bg-pink-600/20 text-pink-400" : "border-surface-200 bg-surface-50 text-gray-500 hover:border-pink-500 hover:text-pink-400")}")"
                         @onclick="() => SetSentiment(SentimentLevel.Favorite)" title="Favorite">
                     <span class="icon-[heroicons--heart] w-5 h-5"></span>
                 </button>
@@ -290,7 +290,6 @@ else
     private ShowDetails? _details;
     private bool _loading = true;
     private QueueItem? _queueItem;
-    private int? _activeSentiment;
     private int _lastTmdbId;
     private string _lastMediaType = "";
     private ShowMatchResult? _showMatch;
@@ -313,7 +312,6 @@ else
         _lastTmdbId = TmdbId;
         _lastMediaType = MediaType;
         _queueItem = null;
-        _activeSentiment = null;
         _showMatch = null;
         _matchLoading = false;
         _loading = true;
@@ -324,7 +322,6 @@ else
         // check if this item is already in the queue
         List<QueueItem> queue = await Api.GetQueueAsync();
         _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
-        _activeSentiment = _queueItem?.Sentiment;
 
         // load AI match in background (non-blocking)
         _ = LoadShowMatch();
@@ -374,9 +371,8 @@ else
         }
 
         // toggle: tap active sentiment to clear
-        int? newSentiment = _activeSentiment == sentiment ? null : sentiment;
+        int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
         await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
-        _activeSentiment = newSentiment;
         _queueItem.Sentiment = newSentiment;
         StateHasChanged();
     }

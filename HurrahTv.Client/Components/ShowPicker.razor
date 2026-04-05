@@ -67,7 +67,7 @@
                         {
                             <!-- status pill -->
                             <div class="absolute top-1.5 right-1.5 @StatusBgColor(selectedStatus!.Value) text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
-                                @StatusLabel(selectedStatus!.Value)
+                                @SentimentHelpers.StatusLabel(selectedStatus!.Value)
                             </div>
                             <!-- checkmark -->
                             <div class="absolute top-1.5 left-1.5 bg-black/60 rounded-full w-5 h-5 flex items-center justify-center">
@@ -168,8 +168,11 @@
     protected override async Task OnInitializedAsync()
     {
         // load popular shows from user's selected services + genres
-        List<SearchResult> tv = await Api.ForYouAsync("tv");
-        List<SearchResult> movies = await Api.ForYouAsync("movie");
+        Task<List<SearchResult>> tvTask = Api.ForYouAsync("tv");
+        Task<List<SearchResult>> movieTask = Api.ForYouAsync("movie");
+        await Task.WhenAll(tvTask, movieTask);
+        List<SearchResult> tv = tvTask.Result;
+        List<SearchResult> movies = movieTask.Result;
 
         // interleave TV and movies, TV-heavy
         _popularResults = [];
@@ -250,14 +253,6 @@
         _pendingResult = null;
         _pendingStatus = null;
     }
-
-    private static string StatusLabel(QueueStatus status) => status switch
-    {
-        QueueStatus.Watching => "Watching",
-        QueueStatus.Finished => "Watched",
-        QueueStatus.WantToWatch => "Want to Watch",
-        _ => ""
-    };
 
     private static string StatusRingColor(QueueStatus status) => status switch
     {

@@ -22,7 +22,7 @@ public static class SentimentEndpoints
         group.MapPut("/{tmdbId:int}/seasons/{seasonNumber:int}/sentiment",
             async (int tmdbId, int seasonNumber, SentimentBody body, ClaimsPrincipal user, DbService db) =>
         {
-            if (body.Sentiment is not null and (< 1 or > 3))
+            if (!SentimentLevel.IsValid(body.Sentiment))
                 return Results.BadRequest("Sentiment must be 1 (down), 2 (up), or 3 (favorite)");
 
             string userId = user.GetUserId();
@@ -34,7 +34,7 @@ public static class SentimentEndpoints
         group.MapPut("/{tmdbId:int}/seasons/{seasonNumber:int}/episodes/{episodeNumber:int}/sentiment",
             async (int tmdbId, int seasonNumber, int episodeNumber, SentimentBody body, ClaimsPrincipal user, DbService db) =>
         {
-            if (body.Sentiment is not null and (< 1 or > 3))
+            if (!SentimentLevel.IsValid(body.Sentiment))
                 return Results.BadRequest("Sentiment must be 1 (down), 2 (up), or 3 (favorite)");
 
             string userId = user.GetUserId();

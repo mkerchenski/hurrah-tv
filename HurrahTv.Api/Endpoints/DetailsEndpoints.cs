@@ -21,9 +21,8 @@ public static class DetailsEndpoints
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             HashSet<int> userProviders = [.. providerIds];
 
-            // always fetch fresh provider data (cached details may have stale provider list)
-            List<AvailableService> allProviders = await tmdb.GetWatchProvidersAsync(tmdbId, mediaType);
-            if (allProviders.Count == 0) allProviders = details.AvailableOn;
+            // use providers already fetched by GetDetailsAsync (via append_to_response)
+            List<AvailableService> allProviders = details.AvailableOn;
 
             List<AvailableService> streaming = [.. allProviders.Where(s => s.Type is ProviderType.Flatrate or ProviderType.Ads)];
             List<AvailableService> userMatches = [.. streaming.Where(s => userProviders.Contains(s.ProviderId))];
