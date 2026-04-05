@@ -12,7 +12,7 @@ public static class QueueEndpoints
     {
         RouteGroupBuilder group = app.MapGroup("/api/queue").RequireAuthorization();
 
-        group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<QueueEndpoints> logger) =>
+        group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<DbService> logger) =>
         {
             string userId = user.GetUserId();
             List<QueueItem> items = await db.GetQueueAsync(userId);
