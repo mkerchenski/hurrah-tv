@@ -37,3 +37,9 @@ private async Task LoadData()
 ```
 
 Also affects `Task.Delay` patterns (e.g., showing a checkmark for 1.5s then reverting) — if the user navigates away during the delay, `StateHasChanged()` fires on a disposed component.
+
+## Additional: Lifecycle StateHasChanged Timing
+In `OnParametersSetAsync`, setting `_loading = true` before the first `await` does NOT render the spinner — Blazor renders after the entire method completes, not at each statement. You must call `StateHasChanged()` explicitly before the first `await` to trigger an intermediate render.
+
+## Additional: System.Timers.Timer in WASM
+`System.Timers.Timer` fires on a threadpool thread and captures `this`. If the component is destroyed while the timer is pending, the `Elapsed` callback fires on a dead component. Always `@implements IDisposable` and stop/dispose the timer in `Dispose()`. Prefer `CancellationTokenSource` + `Task.Delay` (as in Search.razor) over `System.Timers.Timer` when possible.
