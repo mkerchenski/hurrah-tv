@@ -42,24 +42,16 @@
 
                 <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">Sentiment</div>
                 <div class="flex gap-2 mb-4">
-                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
-                                   @(_currentSentiment == SentimentLevel.Down ? "bg-red-600/30 text-red-400 ring-1 ring-red-500/50" : "bg-surface-200 text-gray-400 hover:text-red-400")"
-                            @onclick="() => SetSentiment(SentimentLevel.Down)" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--hand-thumb-down-20-solid] w-3.5 h-3.5"></span>
-                        Nah
-                    </button>
-                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
-                                   @(_currentSentiment == SentimentLevel.Up ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-400 hover:text-green-400")"
-                            @onclick="() => SetSentiment(SentimentLevel.Up)" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--hand-thumb-up-20-solid] w-3.5 h-3.5"></span>
-                        Good
-                    </button>
-                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
-                                   @(_currentSentiment == SentimentLevel.Favorite ? "bg-pink-600/30 text-pink-400 ring-1 ring-pink-500/50" : "bg-surface-200 text-gray-400 hover:text-pink-400")"
-                            @onclick="() => SetSentiment(SentimentLevel.Favorite)" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--heart-20-solid] w-3.5 h-3.5"></span>
-                        Love
-                    </button>
+                    @foreach ((int level, string activeCss, string inactiveCss, string icon, string label) in _sentimentOptions)
+                    {
+                        bool active = _currentSentiment == level;
+                        <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                       @(active ? activeCss : inactiveCss)"
+                                @onclick="() => SetSentiment(level)" @onclick:stopPropagation="true">
+                            <span class="@icon w-3.5 h-3.5"></span>
+                            @label
+                        </button>
+                    }
                 </div>
             }
             else
@@ -100,6 +92,12 @@
     private SearchResult? _searchResult;
 
     private static readonly QueueStatus[] _allStatuses = [QueueStatus.WantToWatch, QueueStatus.Watching, QueueStatus.Finished, QueueStatus.NotForMe];
+    private static readonly (int Level, string ActiveCss, string InactiveCss, string Icon, string Label)[] _sentimentOptions =
+    [
+        (SentimentLevel.Down, "bg-red-600/30 text-red-400 ring-1 ring-red-500/50", "bg-surface-200 text-gray-400 hover:text-red-400", "icon-[heroicons--hand-thumb-down-20-solid]", "Nah"),
+        (SentimentLevel.Up, "bg-green-600/30 text-green-400 ring-1 ring-green-500/50", "bg-surface-200 text-gray-400 hover:text-green-400", "icon-[heroicons--hand-thumb-up-20-solid]", "Good"),
+        (SentimentLevel.Favorite, "bg-pink-600/30 text-pink-400 ring-1 ring-pink-500/50", "bg-surface-200 text-gray-400 hover:text-pink-400", "icon-[heroicons--heart-20-solid]", "Love"),
+    ];
 
     protected override void OnInitialized()
     {

@@ -149,6 +149,7 @@
     private bool _disposed;
     private ElementReference _cardRef;
     private DotNetObjectReference<PosterCard>? _dotNetRef;
+    private IJSObjectReference? _longPressHandle;
 
     private enum ActionState { None, Added, Seen, ThumbsUp }
 
@@ -163,7 +164,8 @@
         _dotNetRef = DotNetObjectReference.Create(this);
         try
         {
-            await JS.InvokeVoidAsync("hurrahLongPress", _cardRef, _dotNetRef, nameof(OnLongPress), 0);
+            _longPressHandle = await JS.InvokeAsync<IJSObjectReference>(
+                "hurrahLongPress", _cardRef, _dotNetRef, nameof(OnLongPress), 0);
         }
         catch (JSException) { }
     }
@@ -177,6 +179,11 @@
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        if (_longPressHandle != null)
+        {
+            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", _longPressHandle); }
+            catch { }
+        }
         _dotNetRef?.Dispose();
     }
 

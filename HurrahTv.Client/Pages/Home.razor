@@ -331,7 +331,7 @@ else
         StateHasChanged();
     }
 
-    private void OnQuickActionChanged() => InvokeAsync(ReloadWatchlist);
+    private void OnQuickActionChanged() => _ = InvokeAsync(ReloadWatchlist);
 
     public void Dispose() => QuickActionSvc.OnChanged -= OnQuickActionChanged;
 }

@@ -111,7 +111,8 @@
     private ElementReference _scrollContainer;
     private Dictionary<int, ElementReference> _cardRefs = new();
     private DotNetObjectReference<WatchlistRow>? _dotNetRef;
-    private bool _longPressInitialized;
+    private HashSet<int> _registeredIds = [];
+    private List<IJSObjectReference> _longPressHandles = [];
 
     protected override void OnParametersSet()
     {
@@ -129,15 +130,16 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_longPressInitialized) return;
-        _longPressInitialized = true;
-
-        _dotNetRef = DotNetObjectReference.Create(this);
+        _dotNetRef ??= DotNetObjectReference.Create(this);
         foreach (KeyValuePair<int, ElementReference> kvp in _cardRefs)
         {
+            if (_registeredIds.Contains(kvp.Key)) continue;
+            _registeredIds.Add(kvp.Key);
             try
             {
-                await JS.InvokeVoidAsync("hurrahLongPress", kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
+                IJSObjectReference handle = await JS.InvokeAsync<IJSObjectReference>(
+                    "hurrahLongPress", kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
+                _longPressHandles.Add(handle);
             }
             catch (JSException) { }
         }
@@ -153,6 +155,11 @@
 
     public async ValueTask DisposeAsync()
     {
+        foreach (IJSObjectReference handle in _longPressHandles)
+        {
+            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", handle); }
+            catch { }
+        }
         _dotNetRef?.Dispose();
     }
 

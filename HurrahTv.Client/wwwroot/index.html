@@ -51,6 +51,7 @@
             if (!el) return null;
             let timer = null, startX = 0, startY = 0, fired = false;
             const onStart = (e) => {
+                if (!e.touches.length) return;
                 const t = e.touches[0];
                 startX = t.clientX; startY = t.clientY; fired = false;
                 timer = setTimeout(() => {
