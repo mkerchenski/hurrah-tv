@@ -70,7 +70,8 @@ jobs:
           SHORT_SHA=${GITHUB_SHA::8}
           # merge BuildVersion into existing appsettings.json
           jq --arg v "$SHORT_SHA" '. + {BuildVersion: $v}' api-output/appsettings.json > api-output/appsettings.tmp \
-            && mv api-output/appsettings.tmp api-output/appsettings.json
+            && mv api-output/appsettings.tmp api-output/appsettings.json \
+            || { rm -f api-output/appsettings.tmp; echo "Failed to stamp build version"; exit 1; }
 
       - name: Remove dev config from client output
         run: rm -f api-output/wwwroot/appsettings.Development.json

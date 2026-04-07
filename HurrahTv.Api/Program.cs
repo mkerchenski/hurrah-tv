@@ -91,7 +91,7 @@ app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
 
 // health check + version
-string buildVersion = builder.Configuration["BuildVersion"] ?? DateTime.UtcNow.ToString("yyyyMMddHHmmss");
+string buildVersion = builder.Configuration["BuildVersion"] ?? "dev";
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
 app.MapGet("/api/version", () => Results.Ok(new { version = buildVersion })).AllowAnonymous();
 
