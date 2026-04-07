@@ -12,38 +12,38 @@
 
 @code {
     private bool _updateAvailable;
+    private bool _disposed;
     private System.Timers.Timer? _timer;
 
     protected override void OnInitialized()
     {
         Nav.LocationChanged += OnNavigated;
 
-        // also check every 5 minutes for long-running sessions
         _timer = new System.Timers.Timer(300_000);
-        _timer.Elapsed += async (_, _) => await CheckVersion();
+        _timer.Elapsed += (_, _) => _ = InvokeAsync(CheckVersion);
         _timer.Start();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        // seed the initial version on first load (won't show banner)
         try { await JS.InvokeAsync<bool>("hurrahCheckVersion"); }
         catch (JSException) { }
     }
 
     private async void OnNavigated(object? sender, LocationChangedEventArgs e)
     {
+        if (_disposed) return;
         await CheckVersion();
     }
 
     private async Task CheckVersion()
     {
-        if (_updateAvailable) return;
+        if (_updateAvailable || _disposed) return;
         try
         {
             bool hasUpdate = await JS.InvokeAsync<bool>("hurrahCheckVersion");
-            if (hasUpdate)
+            if (hasUpdate && !_disposed)
             {
                 _updateAvailable = true;
                 await InvokeAsync(StateHasChanged);
@@ -59,6 +59,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         Nav.LocationChanged -= OnNavigated;
         _timer?.Stop();
         _timer?.Dispose();
