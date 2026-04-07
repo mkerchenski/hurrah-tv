@@ -1,3 +1,4 @@
+@implements IAsyncDisposable
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -31,7 +32,8 @@
                  class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
                 @foreach (QueueItem item in Items)
                 {
-                    <div class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer relative group"
+                    <div @ref="_cardRefs[item.Id]"
+                         class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer relative group"
                          @onclick="() => GoToDetails(item)">
                         @if (!string.IsNullOrEmpty(item.PosterUrl()))
                         {
@@ -104,13 +106,54 @@
     [Parameter] public bool ShowAirDates { get; set; }
     [Parameter] public string RowMode { get; set; } = "watching"; // "watching" or "upcoming"
 
+    [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
+
     private ElementReference _scrollContainer;
+    private Dictionary<int, ElementReference> _cardRefs = new();
+    private DotNetObjectReference<WatchlistRow>? _dotNetRef;
+    private bool _longPressInitialized;
+
+    protected override void OnParametersSet()
+    {
+        _cardRefs = new();
+        foreach (QueueItem item in Items)
+            _cardRefs[item.Id] = default;
+    }
 
     private void GoToDetails(QueueItem item) => Nav.NavigateTo($"/details/{item.MediaType}/{item.TmdbId}");
 
     private async Task Scroll(int direction)
     {
         await JS.InvokeVoidAsync("hurrahScrollRow", _scrollContainer, direction * 480);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_longPressInitialized) return;
+        _longPressInitialized = true;
+
+        _dotNetRef = DotNetObjectReference.Create(this);
+        foreach (KeyValuePair<int, ElementReference> kvp in _cardRefs)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("hurrahLongPress", kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
+            }
+            catch (JSException) { }
+        }
+    }
+
+    [JSInvokable]
+    public void OnLongPress(int itemId)
+    {
+        QueueItem? item = Items.FirstOrDefault(i => i.Id == itemId);
+        if (item != null)
+            QuickActionSvc.ShowForQueueItem(item);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
     }
 
     private string FormatAirBadge(QueueItem item)
@@ -140,5 +183,4 @@
             _ => $"{daysAgo}d ago"
         };
     }
-
 }

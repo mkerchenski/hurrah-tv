@@ -47,6 +47,40 @@
         window.hurrahDismissInstallBanner = () => {
             try { localStorage.setItem('hurrah-install-dismissed', '1'); } catch {}
         };
+        window.hurrahLongPress = (el, dotNetRef, callbackName, itemId) => {
+            if (!el) return null;
+            let timer = null, startX = 0, startY = 0, fired = false;
+            const onStart = (e) => {
+                const t = e.touches[0];
+                startX = t.clientX; startY = t.clientY; fired = false;
+                timer = setTimeout(() => {
+                    fired = true;
+                    try { navigator.vibrate?.(50); } catch {}
+                    dotNetRef.invokeMethodAsync(callbackName, itemId);
+                }, 500);
+            };
+            const onMove = (e) => {
+                if (!timer) return;
+                const t = e.touches[0];
+                if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
+                    clearTimeout(timer); timer = null;
+                }
+            };
+            const onEnd = () => { clearTimeout(timer); timer = null; };
+            const onClick = (e) => { if (fired) { e.stopPropagation(); e.preventDefault(); fired = false; } };
+            el.addEventListener('touchstart', onStart, { passive: true });
+            el.addEventListener('touchmove', onMove, { passive: true });
+            el.addEventListener('touchend', onEnd);
+            el.addEventListener('click', onClick, true);
+            return { el, onStart, onMove, onEnd, onClick };
+        };
+        window.hurrahLongPressCleanup = (handle) => {
+            if (!handle?.el) return;
+            handle.el.removeEventListener('touchstart', handle.onStart);
+            handle.el.removeEventListener('touchmove', handle.onMove);
+            handle.el.removeEventListener('touchend', handle.onEnd);
+            handle.el.removeEventListener('click', handle.onClick, true);
+        };
     </script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
 </body>

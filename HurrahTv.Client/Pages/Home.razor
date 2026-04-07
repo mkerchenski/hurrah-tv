@@ -1,6 +1,8 @@
 @page "/"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
+@inject QuickActionService QuickActionSvc
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
@@ -157,6 +159,7 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        QuickActionSvc.OnChanged += OnQuickActionChanged;
         _userServices = await Api.GetUserServicesAsync();
         _servicesLoaded = true;
         _onboardingComplete = _userServices.Count > 0;
@@ -306,4 +309,29 @@ else
 
         return weighted.Take(count).Select(x => x.item).ToList();
     }
+
+    private async Task ReloadWatchlist()
+    {
+        List<QueueItem> allItems = await Api.GetQueueAsync();
+
+        _watchingItems = allItems
+            .Where(i => i.Status == QueueStatus.Watching)
+            .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
+            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
+            .ThenBy(i => i.Position)
+            .ToList();
+
+        _upcomingItems = allItems
+            .Where(i => i.MediaType == "tv"
+                && i.Status != QueueStatus.NotForMe
+                && i.HasUpcomingThisWeek)
+            .OrderBy(i => i.NextEpisodeDate)
+            .ToList();
+
+        StateHasChanged();
+    }
+
+    private void OnQuickActionChanged() => InvokeAsync(ReloadWatchlist);
+
+    public void Dispose() => QuickActionSvc.OnChanged -= OnQuickActionChanged;
 }

@@ -1,7 +1,8 @@
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ApiClient Api
+@inject IJSRuntime JS
 
-<div class="poster-card relative rounded-lg overflow-hidden bg-surface-50 cursor-pointer group"
+<div @ref="_cardRef" class="poster-card relative rounded-lg overflow-hidden bg-surface-50 cursor-pointer group"
      @onclick="NavigateToDetails">
     @if (!string.IsNullOrEmpty(Result.PosterUrl()))
     {
@@ -23,7 +24,7 @@
     <!-- new episode indicator -->
     @if (HasNewEpisode)
     {
-        <div class="absolute top-1.5 left-1.5 z-10 bg-black/60 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center"
+        <div class="absolute top-1.5 left-1.5 bg-black/60 backdrop-blur-sm rounded-full w-6 h-6 flex items-center justify-center"
              title="New episode available">
             <span class="icon-[heroicons--sparkles] w-3.5 h-3.5 text-amber-300"></span>
         </div>
@@ -94,7 +95,7 @@
     <!-- action buttons (desktop hover) -->
     @if (_actionState == ActionState.None)
     {
-        <div class="absolute top-2 right-2 z-10 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all hidden md:flex">
+        <div class="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-all hidden md:flex">
             <button class="bg-black/60 hover:bg-accent text-white rounded-full w-8 h-8
                            flex items-center justify-center transition-colors"
                     @onclick="AddToQueue" @onclick:stopPropagation="true"
@@ -142,9 +143,12 @@
     [Parameter, EditorRequired] public SearchResult Result { get; set; } = null!;
     [Parameter] public bool HasNewEpisode { get; set; }
     [Inject] NavigationManager Nav { get; set; } = null!;
+    [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
 
     private ActionState _actionState = ActionState.None;
     private bool _disposed;
+    private ElementReference _cardRef;
+    private DotNetObjectReference<PosterCard>? _dotNetRef;
 
     private enum ActionState { None, Added, Seen, ThumbsUp }
 
@@ -153,7 +157,28 @@
         Nav.NavigateTo($"/details/{Result.MediaType}/{Result.TmdbId}");
     }
 
-    public void Dispose() => _disposed = true;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _dotNetRef = DotNetObjectReference.Create(this);
+        try
+        {
+            await JS.InvokeVoidAsync("hurrahLongPress", _cardRef, _dotNetRef, nameof(OnLongPress), 0);
+        }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public void OnLongPress(int _)
+    {
+        QuickActionSvc.ShowForSearchResult(Result);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _dotNetRef?.Dispose();
+    }
 
     private async Task AddToQueue()
     {

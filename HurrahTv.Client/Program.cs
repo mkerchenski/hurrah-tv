@@ -25,5 +25,6 @@ builder.Services.AddScoped(sp =>
     return new HttpClient(handler) { BaseAddress = new Uri(apiBaseUrl) };
 });
 builder.Services.AddScoped<ApiClient>();
+builder.Services.AddSingleton<QuickActionService>();
 
 await builder.Build().RunAsync();

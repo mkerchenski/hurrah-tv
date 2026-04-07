@@ -50,6 +50,15 @@
     100% { background-position: -200% 0; }
 }
 
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(100%); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+    animation: slideUp 0.2s ease-out;
+}
+
 /* base styles */
 body {
     background-color: #0f0f0f;

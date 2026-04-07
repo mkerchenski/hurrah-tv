@@ -1,0 +1,192 @@
+@implements IDisposable
+@inject ApiClient Api
+@inject QuickActionService QuickActionSvc
+
+@if (_visible)
+{
+    <div class="fixed inset-0 bg-black/80 z-[60] flex items-end justify-center isolate" @onclick="Close">
+        <div class="bg-surface-50 rounded-t-2xl w-full max-w-sm p-5 pb-24 md:pb-8 animate-slide-up"
+             @onclick:stopPropagation="true">
+
+            <!-- header with poster + title -->
+            <div class="flex items-center gap-3 mb-4">
+                @if (!string.IsNullOrEmpty(_posterUrl))
+                {
+                    <img src="@_posterUrl" alt="" class="w-10 h-14 object-cover rounded" />
+                }
+                <div class="flex-1 min-w-0">
+                    <div class="text-white font-semibold text-sm truncate">@_title</div>
+                    <div class="text-gray-500 text-xs">@_mediaType.ToUpper()</div>
+                </div>
+            </div>
+
+            <!-- list status -->
+            @if (_queueId > 0)
+            {
+                <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">List Status</div>
+                <div class="grid grid-cols-4 gap-2 mb-4">
+                    @foreach (QueueStatus status in _allStatuses)
+                    {
+                        bool active = _currentStatus == status;
+                        bool isNfm = status == QueueStatus.NotForMe;
+                        string activeCss = isNfm ? "bg-gray-600/80 text-white" : BadgeHelpers.StatusBg(status) + " text-white";
+                        string inactiveCss = isNfm ? "bg-surface-200 text-gray-600 hover:text-gray-400" : "bg-surface-200 text-gray-400 hover:text-white";
+                        <button class="py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                       @(active ? activeCss : inactiveCss)"
+                                @onclick="() => SetStatus(status)" @onclick:stopPropagation="true">
+                            <span class="@BadgeHelpers.StatusIcon(status) w-3.5 h-3.5"></span>
+                            <span>@BadgeHelpers.StatusShortLabel(status)</span>
+                        </button>
+                    }
+                </div>
+
+                <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">Sentiment</div>
+                <div class="flex gap-2 mb-4">
+                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                   @(_currentSentiment == SentimentLevel.Down ? "bg-red-600/30 text-red-400 ring-1 ring-red-500/50" : "bg-surface-200 text-gray-400 hover:text-red-400")"
+                            @onclick="() => SetSentiment(SentimentLevel.Down)" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--hand-thumb-down-20-solid] w-3.5 h-3.5"></span>
+                        Nah
+                    </button>
+                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                   @(_currentSentiment == SentimentLevel.Up ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-400 hover:text-green-400")"
+                            @onclick="() => SetSentiment(SentimentLevel.Up)" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--hand-thumb-up-20-solid] w-3.5 h-3.5"></span>
+                        Good
+                    </button>
+                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                   @(_currentSentiment == SentimentLevel.Favorite ? "bg-pink-600/30 text-pink-400 ring-1 ring-pink-500/50" : "bg-surface-200 text-gray-400 hover:text-pink-400")"
+                            @onclick="() => SetSentiment(SentimentLevel.Favorite)" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--heart-20-solid] w-3.5 h-3.5"></span>
+                        Love
+                    </button>
+                </div>
+            }
+            else
+            {
+                <!-- browse card: not yet in queue -->
+                <div class="flex flex-col gap-2 mb-4">
+                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-accent/80 text-white transition-colors flex items-center justify-center gap-1.5"
+                            @onclick="AddToQueue" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--plus] w-4 h-4"></span>
+                        Want to Watch
+                    </button>
+                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-green-600/80 text-white transition-colors flex items-center justify-center gap-1.5"
+                            @onclick="MarkThumbsUp" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--hand-thumb-up] w-4 h-4"></span>
+                        Thumbs Up
+                    </button>
+                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-blue-600/80 text-white transition-colors flex items-center justify-center gap-1.5"
+                            @onclick="MarkSeen" @onclick:stopPropagation="true">
+                        <span class="icon-[heroicons--eye] w-4 h-4"></span>
+                        I've Seen This
+                    </button>
+                </div>
+            }
+
+            <button class="w-full py-2 text-gray-500 text-sm" @onclick="Close" @onclick:stopPropagation="true">Cancel</button>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private string _title = "";
+    private string _posterUrl = "";
+    private string _mediaType = "";
+    private int _queueId;
+    private QueueStatus _currentStatus;
+    private int? _currentSentiment;
+    private SearchResult? _searchResult;
+
+    private static readonly QueueStatus[] _allStatuses = [QueueStatus.WantToWatch, QueueStatus.Watching, QueueStatus.Finished, QueueStatus.NotForMe];
+
+    protected override void OnInitialized()
+    {
+        QuickActionSvc.OnShowForQueueItem += ShowForQueueItem;
+        QuickActionSvc.OnShowForSearchResult += ShowForSearchResult;
+    }
+
+    private void ShowForQueueItem(QueueItem item)
+    {
+        _queueId = item.Id;
+        _title = item.Title;
+        _posterUrl = item.PosterUrl();
+        _mediaType = item.MediaType;
+        _currentStatus = item.Status;
+        _currentSentiment = item.Sentiment;
+        _searchResult = null;
+        _visible = true;
+        StateHasChanged();
+    }
+
+    private void ShowForSearchResult(SearchResult result)
+    {
+        _queueId = 0;
+        _title = result.Title;
+        _posterUrl = result.PosterUrl();
+        _mediaType = result.MediaType;
+        _currentStatus = default;
+        _currentSentiment = null;
+        _searchResult = result;
+        _visible = true;
+        StateHasChanged();
+    }
+
+    private async Task SetStatus(QueueStatus status)
+    {
+        if (status == _currentStatus) return;
+        await Api.UpdateStatusAsync(_queueId, status);
+        _currentStatus = status;
+        Close();
+        QuickActionSvc.NotifyChanged();
+    }
+
+    private async Task SetSentiment(int sentiment)
+    {
+        int? newValue = _currentSentiment == sentiment ? null : sentiment;
+        await Api.UpdateSentimentAsync(_queueId, newValue);
+        _currentSentiment = newValue;
+        Close();
+        QuickActionSvc.NotifyChanged();
+    }
+
+    private async Task AddToQueue()
+    {
+        if (_searchResult == null) return;
+        QueueItem? added = await Api.AddToQueueAsync(_searchResult.ToQueueItem());
+        if (added != null) { _queueId = added.Id; _currentStatus = added.Status; }
+        Close();
+        QuickActionSvc.NotifyChanged();
+    }
+
+    private async Task MarkThumbsUp()
+    {
+        if (_searchResult == null) return;
+        QueueItem? item = await Api.MarkAsSeenAsync(_searchResult);
+        if (item != null)
+            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+        Close();
+        QuickActionSvc.NotifyChanged();
+    }
+
+    private async Task MarkSeen()
+    {
+        if (_searchResult == null) return;
+        await Api.MarkAsSeenAsync(_searchResult);
+        Close();
+        QuickActionSvc.NotifyChanged();
+    }
+
+    private void Close()
+    {
+        _visible = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        QuickActionSvc.OnShowForQueueItem -= ShowForQueueItem;
+        QuickActionSvc.OnShowForSearchResult -= ShowForSearchResult;
+    }
+}
