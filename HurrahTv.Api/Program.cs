@@ -61,10 +61,12 @@ app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = ctx =>
     {
-        // CSS/JS with ?v= query string: cache for 1 year (hash changes on deploy)
-        if (ctx.Context.Request.QueryString.HasValue)
+        string path = ctx.Context.Request.Path.Value ?? "";
+
+        if (ctx.Context.Request.Query.ContainsKey("v"))
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-        // other static files: cache briefly, revalidate
+        else if (path.EndsWith("index.html") || path == "/")
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
         else
             ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
     }

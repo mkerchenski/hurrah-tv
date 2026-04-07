@@ -22,19 +22,7 @@
     {
         if (!firstRender) return;
 
-        // show only on iOS Safari when not already installed (standalone)
-        bool shouldShow = await JS.InvokeAsync<bool>("eval", """
-            (() => {
-                if (window.matchMedia('(display-mode: standalone)').matches) return false;
-                if (navigator.standalone) return false;
-                if (localStorage.getItem('hurrah-install-dismissed')) return false;
-                const ua = navigator.userAgent;
-                const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-                const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
-                return isIos && isSafari;
-            })()
-            """);
-
+        bool shouldShow = await JS.InvokeAsync<bool>("hurrahShouldShowInstallBanner");
         if (shouldShow)
         {
             _show = true;
@@ -45,6 +33,6 @@
     private async Task Dismiss()
     {
         _show = false;
-        await JS.InvokeVoidAsync("eval", "localStorage.setItem('hurrah-install-dismissed', '1')");
+        await JS.InvokeVoidAsync("localStorage.setItem", "hurrah-install-dismissed", "1");
     }
 }

@@ -7,6 +7,7 @@ namespace HurrahTv.Api.Endpoints;
 public static class QueueEndpoints
 {
     private static readonly TimeSpan EpisodeCheckStaleAfter = TimeSpan.FromHours(12);
+    private static readonly TimeSpan EpisodeRefreshTimeout = TimeSpan.FromSeconds(3);
 
     public static void MapQueueEndpoints(this WebApplication app)
     {
@@ -25,22 +26,28 @@ public static class QueueEndpoints
 
             if (stale.Count > 0)
             {
-                Task refreshTask = Task.WhenAll(stale.Take(10).Select(async item =>
+                using CancellationTokenSource cts = new(EpisodeRefreshTimeout);
+                try
                 {
-                    try
+                    await Task.WhenAll(stale.Take(10).Select(async item =>
                     {
-                        (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
-                        await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
-                    }
-                }));
+                        try
+                        {
+                            (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
+                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
+                        }
+                    })).WaitAsync(cts.Token);
 
-                // wait up to 3s for fresh data; if it finishes, re-read the queue
-                if (await Task.WhenAny(refreshTask, Task.Delay(3000)) == refreshTask)
                     items = await db.GetQueueAsync(userId);
+                }
+                catch (OperationCanceledException)
+                {
+                    // timeout — return stale data
+                }
             }
 
             return Results.Ok(items);
