@@ -65,6 +65,13 @@ jobs:
           cp -r client-output/wwwroot/* api-output/wwwroot/ 2>/dev/null || true
           cp -r client-output/wwwroot/. api-output/wwwroot/
 
+      - name: Stamp build version into appsettings
+        run: |
+          SHORT_SHA=${GITHUB_SHA::8}
+          # merge BuildVersion into existing appsettings.json
+          jq --arg v "$SHORT_SHA" '. + {BuildVersion: $v}' api-output/appsettings.json > api-output/appsettings.tmp \
+            && mv api-output/appsettings.tmp api-output/appsettings.json
+
       - name: Remove dev config from client output
         run: rm -f api-output/wwwroot/appsettings.Development.json
 

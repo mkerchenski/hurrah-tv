@@ -71,7 +71,11 @@ app.UseStaticFiles(new StaticFileOptions
             ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
     }
 });
-app.MapFallbackToFile("index.html");
+// MapFallbackToFile bypasses StaticFileOptions, so set no-cache via its own options
+app.MapFallbackToFile("index.html", new StaticFileOptions
+{
+    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-cache"
+});
 
 // initialize database
 DbService db = app.Services.GetRequiredService<DbService>();
@@ -86,7 +90,9 @@ app.MapSentimentEndpoints();
 app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
 
-// health check
+// health check + version
+string buildVersion = builder.Configuration["BuildVersion"] ?? DateTime.UtcNow.ToString("yyyyMMddHHmmss");
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
+app.MapGet("/api/version", () => Results.Ok(new { version = buildVersion })).AllowAnonymous();
 
 app.Run();

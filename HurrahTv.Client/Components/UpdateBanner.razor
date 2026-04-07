@@ -1,0 +1,66 @@
+@implements IDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@if (_updateAvailable)
+{
+    <div class="fixed top-0 left-0 right-0 z-[70] bg-accent text-white text-sm text-center py-2 px-4 flex items-center justify-center gap-2 safe-area-top">
+        <span>A new version is available</span>
+        <button class="underline font-medium" @onclick="Reload">Refresh</button>
+    </div>
+}
+
+@code {
+    private bool _updateAvailable;
+    private System.Timers.Timer? _timer;
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnNavigated;
+
+        // also check every 5 minutes for long-running sessions
+        _timer = new System.Timers.Timer(300_000);
+        _timer.Elapsed += async (_, _) => await CheckVersion();
+        _timer.Start();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // seed the initial version on first load (won't show banner)
+        try { await JS.InvokeAsync<bool>("hurrahCheckVersion"); }
+        catch (JSException) { }
+    }
+
+    private async void OnNavigated(object? sender, LocationChangedEventArgs e)
+    {
+        await CheckVersion();
+    }
+
+    private async Task CheckVersion()
+    {
+        if (_updateAvailable) return;
+        try
+        {
+            bool hasUpdate = await JS.InvokeAsync<bool>("hurrahCheckVersion");
+            if (hasUpdate)
+            {
+                _updateAvailable = true;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch { }
+    }
+
+    private void Reload()
+    {
+        Nav.NavigateTo(Nav.Uri, forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnNavigated;
+        _timer?.Stop();
+        _timer?.Dispose();
+    }
+}

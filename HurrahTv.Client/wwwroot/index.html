@@ -47,6 +47,16 @@
         window.hurrahDismissInstallBanner = () => {
             try { localStorage.setItem('hurrah-install-dismissed', '1'); } catch {}
         };
+        window._hurrahVersion = null;
+        window.hurrahCheckVersion = async () => {
+            try {
+                const res = await fetch('/api/version', { cache: 'no-store' });
+                if (!res.ok) return false;
+                const data = await res.json();
+                if (!window._hurrahVersion) { window._hurrahVersion = data.version; return false; }
+                return data.version !== window._hurrahVersion;
+            } catch { return false; }
+        };
         window.hurrahLongPress = (el, dotNetRef, callbackName, itemId) => {
             if (!el) return null;
             let timer = null, startX = 0, startY = 0, fired = false;
