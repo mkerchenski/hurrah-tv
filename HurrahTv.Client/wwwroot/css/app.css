@@ -11,6 +11,8 @@
     --color-red-500: oklch(63.7% 0.237 25.331);
     --color-red-600: oklch(57.7% 0.245 27.325);
     --color-red-900: oklch(39.6% 0.141 25.723);
+    --color-amber-300: oklch(87.9% 0.169 91.605);
+    --color-amber-600: oklch(66.6% 0.179 58.318);
     --color-yellow-400: oklch(85.2% 0.199 91.936);
     --color-yellow-500: oklch(79.5% 0.184 86.047);
     --color-yellow-600: oklch(68.1% 0.162 75.834);
@@ -845,6 +847,12 @@
       background-color: color-mix(in oklab, var(--color-accent) 80%, transparent);
     }
   }
+  .bg-amber-600\/80 {
+    background-color: color-mix(in srgb, oklch(66.6% 0.179 58.318) 80%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-amber-600) 80%, transparent);
+    }
+  }
   .bg-black\/40 {
     background-color: color-mix(in srgb, #000 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1200,6 +1208,9 @@
   }
   .text-accent-light {
     color: var(--color-accent-light);
+  }
+  .text-amber-300 {
+    color: var(--color-amber-300);
   }
   .text-blue-300 {
     color: var(--color-blue-300);
@@ -1718,6 +1729,11 @@
       display: none;
     }
   }
+  .md\:inline {
+    @media (width >= 48rem) {
+      display: inline;
+    }
+  }
   .md\:h-6 {
     @media (width >= 48rem) {
       height: calc(var(--spacing) * 6);
@@ -1736,6 +1752,11 @@
   .md\:h-80 {
     @media (width >= 48rem) {
       height: calc(var(--spacing) * 80);
+    }
+  }
+  .md\:h-auto {
+    @media (width >= 48rem) {
+      height: auto;
     }
   }
   .md\:w-6 {
@@ -1778,6 +1799,11 @@
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
   }
+  .md\:gap-0\.5 {
+    @media (width >= 48rem) {
+      gap: calc(var(--spacing) * 0.5);
+    }
+  }
   .md\:gap-3 {
     @media (width >= 48rem) {
       gap: calc(var(--spacing) * 3);
@@ -1797,6 +1823,11 @@
       }
     }
   }
+  .md\:rounded {
+    @media (width >= 48rem) {
+      border-radius: 0.25rem;
+    }
+  }
   .md\:p-3 {
     @media (width >= 48rem) {
       padding: calc(var(--spacing) * 3);
@@ -1805,6 +1836,11 @@
   .md\:p-6 {
     @media (width >= 48rem) {
       padding: calc(var(--spacing) * 6);
+    }
+  }
+  .md\:px-1\.5 {
+    @media (width >= 48rem) {
+      padding-inline: calc(var(--spacing) * 1.5);
     }
   }
   .md\:px-3 {
@@ -1820,6 +1856,11 @@
   .md\:px-6 {
     @media (width >= 48rem) {
       padding-inline: calc(var(--spacing) * 6);
+    }
+  }
+  .md\:py-0\.5 {
+    @media (width >= 48rem) {
+      padding-block: calc(var(--spacing) * 0.5);
     }
   }
   .md\:py-6 {

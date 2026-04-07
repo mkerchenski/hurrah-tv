@@ -1,6 +1,6 @@
 {
   "name": "Hurrah.tv",
-  "short_name": "Hurrah",
+  "short_name": "Hurrah.tv",
   "description": "All your streaming services, one smart watchlist.",
   "start_url": "/",
   "display": "standalone",

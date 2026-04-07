@@ -54,12 +54,12 @@
                         @if (!string.IsNullOrEmpty(result.PosterUrl()))
                         {
                             <img src="@result.PosterUrl()" alt="@result.Title"
-                                 class="w-full aspect-[2/3] object-cover rounded-lg transition-all @(isSelected ? "ring-2 " + StatusRingColor(selectedStatus!.Value) : "hover:ring-1 ring-gray-600")"
+                                 class="w-full aspect-[2/3] object-cover rounded-lg transition-all @(isSelected ? "ring-2 " + BadgeHelpers.StatusRing(selectedStatus!.Value) : "hover:ring-1 ring-gray-600")"
                                  loading="lazy" />
                         }
                         else
                         {
-                            <div class="w-full aspect-[2/3] bg-surface-100 rounded-lg flex items-center justify-center @(isSelected ? "ring-2 " + StatusRingColor(selectedStatus!.Value) : "")">
+                            <div class="w-full aspect-[2/3] bg-surface-100 rounded-lg flex items-center justify-center @(isSelected ? "ring-2 " + BadgeHelpers.StatusRing(selectedStatus!.Value) : "")">
                                 <span class="text-gray-500 text-xs text-center px-2">@result.Title</span>
                             </div>
                         }
@@ -67,7 +67,7 @@
                         @if (isSelected)
                         {
                             <!-- status pill -->
-                            <div class="absolute top-1.5 right-1.5 @StatusBgColor(selectedStatus!.Value) text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
+                            <div class="absolute top-1.5 right-1.5 @BadgeHelpers.StatusBg(selectedStatus!.Value) text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
                                 @SentimentHelpers.StatusLabel(selectedStatus!.Value)
                             </div>
                             <!-- checkmark -->
@@ -255,21 +255,6 @@
         _pendingStatus = null;
     }
 
-    private static string StatusRingColor(QueueStatus status) => status switch
-    {
-        QueueStatus.Watching => "ring-green-500",
-        QueueStatus.Finished => "ring-blue-500",
-        QueueStatus.WantToWatch => "ring-accent",
-        _ => "ring-gray-500"
-    };
-
-    private static string StatusBgColor(QueueStatus status) => status switch
-    {
-        QueueStatus.Watching => "bg-green-600/80",
-        QueueStatus.Finished => "bg-blue-600/80",
-        QueueStatus.WantToWatch => "bg-accent/80",
-        _ => "bg-gray-600/80"
-    };
 
     public void Dispose()
     {
