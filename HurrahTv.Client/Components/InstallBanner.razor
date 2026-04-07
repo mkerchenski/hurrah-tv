@@ -1,0 +1,50 @@
+@inject IJSRuntime JS
+
+@if (_show)
+{
+    <div class="bg-surface-100 border border-surface-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-3">
+        <span class="icon-[heroicons--arrow-up-on-square] w-5 h-5 text-accent mt-0.5 shrink-0"></span>
+        <div class="flex-1 text-sm text-gray-300">
+            <span class="text-white font-medium">Add Hurrah.tv to your Home Screen</span><br />
+            Tap <span class="icon-[heroicons--arrow-up-on-square] w-4 h-4 inline-block align-text-bottom text-blue-400"></span>
+            then <span class="font-medium text-white">"Add to Home Screen"</span>
+        </div>
+        <button @onclick="Dismiss" class="text-gray-500 hover:text-white p-1 shrink-0" title="Dismiss">
+            <span class="icon-[heroicons--x-mark] w-5 h-5"></span>
+        </button>
+    </div>
+}
+
+@code {
+    private bool _show;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        // show only on iOS Safari when not already installed (standalone)
+        bool shouldShow = await JS.InvokeAsync<bool>("eval", """
+            (() => {
+                if (window.matchMedia('(display-mode: standalone)').matches) return false;
+                if (navigator.standalone) return false;
+                if (localStorage.getItem('hurrah-install-dismissed')) return false;
+                const ua = navigator.userAgent;
+                const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+                return isIos && isSafari;
+            })()
+            """);
+
+        if (shouldShow)
+        {
+            _show = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task Dismiss()
+    {
+        _show = false;
+        await JS.InvokeVoidAsync("eval", "localStorage.setItem('hurrah-install-dismissed', '1')");
+    }
+}

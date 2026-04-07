@@ -17,7 +17,7 @@ public static class QueueEndpoints
             string userId = user.GetUserId();
             List<QueueItem> items = await db.GetQueueAsync(userId);
 
-            // refresh stale episode dates in background
+            // refresh stale episode dates — await with timeout so first load of the day gets fresh data
             List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
                     && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
@@ -25,7 +25,7 @@ public static class QueueEndpoints
 
             if (stale.Count > 0)
             {
-                _ = Task.WhenAll(stale.Take(10).Select(async item =>
+                Task refreshTask = Task.WhenAll(stale.Take(10).Select(async item =>
                 {
                     try
                     {
@@ -37,6 +37,10 @@ public static class QueueEndpoints
                         logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
                     }
                 }));
+
+                // wait up to 3s for fresh data; if it finishes, re-read the queue
+                if (await Task.WhenAny(refreshTask, Task.Delay(3000)) == refreshTask)
+                    items = await db.GetQueueAsync(userId);
             }
 
             return Results.Ok(items);

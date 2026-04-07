@@ -38,6 +38,13 @@ jobs:
           npm ci
           npm run build:css:min
 
+      - name: Cache-bust CSS references
+        working-directory: HurrahTv.Client
+        run: |
+          SHORT_SHA=${GITHUB_SHA::8}
+          sed -i "s|href=\"css/app.css\"|href=\"css/app.css?v=$SHORT_SHA\"|" wwwroot/index.html
+          sed -i "s|href=\"css/icons.css\"|href=\"css/icons.css?v=$SHORT_SHA\"|" wwwroot/index.html
+
       - name: Cache NuGet packages
         uses: actions/cache@v4
         with:

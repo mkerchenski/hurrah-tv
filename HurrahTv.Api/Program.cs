@@ -57,7 +57,18 @@ app.UseAuthorization();
 
 // serve Blazor WASM client from wwwroot (handles all MIME types, compression, _framework)
 app.UseBlazorFrameworkFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        // CSS/JS with ?v= query string: cache for 1 year (hash changes on deploy)
+        if (ctx.Context.Request.QueryString.HasValue)
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        // other static files: cache briefly, revalidate
+        else
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
+    }
+});
 app.MapFallbackToFile("index.html");
 
 // initialize database
