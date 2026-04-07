@@ -22,17 +22,22 @@
     {
         if (!firstRender) return;
 
-        bool shouldShow = await JS.InvokeAsync<bool>("hurrahShouldShowInstallBanner");
-        if (shouldShow)
+        try
         {
-            _show = true;
-            StateHasChanged();
+            bool shouldShow = await JS.InvokeAsync<bool>("hurrahShouldShowInstallBanner");
+            if (shouldShow)
+            {
+                _show = true;
+                StateHasChanged();
+            }
         }
+        catch (JSException) { }
     }
 
     private async Task Dismiss()
     {
         _show = false;
-        await JS.InvokeVoidAsync("localStorage.setItem", "hurrah-install-dismissed", "1");
+        try { await JS.InvokeVoidAsync("hurrahDismissInstallBanner"); }
+        catch (JSException) { }
     }
 }

@@ -34,13 +34,18 @@
     <script>
         window.hurrahScrollRow = (el, delta) => { if (el) el.scrollBy({ left: delta, behavior: 'smooth' }); };
         window.hurrahShouldShowInstallBanner = () => {
-            if (window.matchMedia('(display-mode: standalone)').matches) return false;
-            if (navigator.standalone) return false;
-            if (localStorage.getItem('hurrah-install-dismissed')) return false;
-            const ua = navigator.userAgent;
-            const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-            const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
-            return isIos && isSafari;
+            try {
+                if (window.matchMedia('(display-mode: standalone)').matches) return false;
+                if (navigator.standalone) return false;
+                if (localStorage.getItem('hurrah-install-dismissed')) return false;
+                const ua = navigator.userAgent;
+                const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+                return isIos && isSafari;
+            } catch { return false; }
+        };
+        window.hurrahDismissInstallBanner = () => {
+            try { localStorage.setItem('hurrah-install-dismissed', '1'); } catch {}
         };
     </script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>

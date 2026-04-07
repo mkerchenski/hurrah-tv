@@ -65,7 +65,7 @@ app.UseStaticFiles(new StaticFileOptions
 
         if (ctx.Context.Request.Query.ContainsKey("v"))
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
-        else if (path.EndsWith("index.html") || path == "/")
+        else if (path.EndsWith("index.html"))
             ctx.Context.Response.Headers.CacheControl = "no-cache";
         else
             ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
