@@ -83,6 +83,8 @@
 
 @code {
     private bool _visible;
+    private bool _busy;
+    private bool _disposed;
     private string _title = "";
     private string _posterUrl = "";
     private string _mediaType = "";
@@ -114,6 +116,7 @@
         _currentStatus = item.Status;
         _currentSentiment = item.Sentiment;
         _searchResult = null;
+        _busy = false;
         _visible = true;
         StateHasChanged();
     }
@@ -127,63 +130,98 @@
         _currentStatus = default;
         _currentSentiment = null;
         _searchResult = result;
+        _busy = false;
         _visible = true;
         StateHasChanged();
     }
 
     private async Task SetStatus(QueueStatus status)
     {
-        if (status == _currentStatus) return;
-        await Api.UpdateStatusAsync(_queueId, status);
-        _currentStatus = status;
-        Close();
-        QuickActionSvc.NotifyChanged();
+        if (_busy || status == _currentStatus) return;
+        _busy = true;
+        try
+        {
+            await Api.UpdateStatusAsync(_queueId, status);
+            _currentStatus = status;
+            Close();
+            QuickActionSvc.NotifyChanged();
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private async Task SetSentiment(int sentiment)
     {
-        int? newValue = _currentSentiment == sentiment ? null : sentiment;
-        await Api.UpdateSentimentAsync(_queueId, newValue);
-        _currentSentiment = newValue;
-        Close();
-        QuickActionSvc.NotifyChanged();
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            int? newValue = _currentSentiment == sentiment ? null : sentiment;
+            await Api.UpdateSentimentAsync(_queueId, newValue);
+            _currentSentiment = newValue;
+            Close();
+            QuickActionSvc.NotifyChanged();
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private async Task AddToQueue()
     {
-        if (_searchResult == null) return;
-        QueueItem? added = await Api.AddToQueueAsync(_searchResult.ToQueueItem());
-        if (added != null) { _queueId = added.Id; _currentStatus = added.Status; }
-        Close();
-        QuickActionSvc.NotifyChanged();
+        if (_busy || _searchResult == null) return;
+        _busy = true;
+        try
+        {
+            QueueItem? added = await Api.AddToQueueAsync(_searchResult.ToQueueItem());
+            if (added != null)
+            {
+                Close();
+                QuickActionSvc.NotifyChanged();
+            }
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private async Task MarkThumbsUp()
     {
-        if (_searchResult == null) return;
-        QueueItem? item = await Api.MarkAsSeenAsync(_searchResult);
-        if (item != null)
-            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
-        Close();
-        QuickActionSvc.NotifyChanged();
+        if (_busy || _searchResult == null) return;
+        _busy = true;
+        try
+        {
+            QueueItem? item = await Api.MarkAsSeenAsync(_searchResult);
+            if (item != null)
+                await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+            Close();
+            QuickActionSvc.NotifyChanged();
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private async Task MarkSeen()
     {
-        if (_searchResult == null) return;
-        await Api.MarkAsSeenAsync(_searchResult);
-        Close();
-        QuickActionSvc.NotifyChanged();
+        if (_busy || _searchResult == null) return;
+        _busy = true;
+        try
+        {
+            await Api.MarkAsSeenAsync(_searchResult);
+            Close();
+            QuickActionSvc.NotifyChanged();
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private void Close()
     {
         _visible = false;
-        StateHasChanged();
+        if (!_disposed) StateHasChanged();
     }
 
     public void Dispose()
     {
+        _disposed = true;
         QuickActionSvc.OnShowForQueueItem -= ShowForQueueItem;
         QuickActionSvc.OnShowForSearchResult -= ShowForSearchResult;
     }

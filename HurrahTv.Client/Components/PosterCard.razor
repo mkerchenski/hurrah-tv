@@ -160,8 +160,8 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
-        _dotNetRef = DotNetObjectReference.Create(this);
+        if (_longPressHandle != null) return;
+        _dotNetRef ??= DotNetObjectReference.Create(this);
         try
         {
             _longPressHandle = await JS.InvokeAsync<IJSObjectReference>(

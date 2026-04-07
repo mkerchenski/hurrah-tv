@@ -111,8 +111,7 @@
     private ElementReference _scrollContainer;
     private Dictionary<int, ElementReference> _cardRefs = new();
     private DotNetObjectReference<WatchlistRow>? _dotNetRef;
-    private HashSet<int> _registeredIds = [];
-    private List<IJSObjectReference> _longPressHandles = [];
+    private Dictionary<int, IJSObjectReference> _longPressHandles = new();
 
     protected override void OnParametersSet()
     {
@@ -131,15 +130,25 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         _dotNetRef ??= DotNetObjectReference.Create(this);
+
+        // clean up handles for items no longer in the list
+        List<int> staleIds = [.. _longPressHandles.Keys.Where(id => !_cardRefs.ContainsKey(id))];
+        foreach (int id in staleIds)
+        {
+            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", _longPressHandles[id]); }
+            catch { }
+            _longPressHandles.Remove(id);
+        }
+
+        // register new items
         foreach (KeyValuePair<int, ElementReference> kvp in _cardRefs)
         {
-            if (_registeredIds.Contains(kvp.Key)) continue;
-            _registeredIds.Add(kvp.Key);
+            if (_longPressHandles.ContainsKey(kvp.Key)) continue;
             try
             {
                 IJSObjectReference handle = await JS.InvokeAsync<IJSObjectReference>(
                     "hurrahLongPress", kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
-                _longPressHandles.Add(handle);
+                _longPressHandles[kvp.Key] = handle;
             }
             catch (JSException) { }
         }
@@ -155,11 +164,12 @@
 
     public async ValueTask DisposeAsync()
     {
-        foreach (IJSObjectReference handle in _longPressHandles)
+        foreach (IJSObjectReference handle in _longPressHandles.Values)
         {
             try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", handle); }
             catch { }
         }
+        _longPressHandles.Clear();
         _dotNetRef?.Dispose();
     }
 

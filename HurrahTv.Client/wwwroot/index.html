@@ -61,7 +61,7 @@
                 }, 500);
             };
             const onMove = (e) => {
-                if (!timer) return;
+                if (!timer || !e.touches.length) return;
                 const t = e.touches[0];
                 if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) {
                     clearTimeout(timer); timer = null;
