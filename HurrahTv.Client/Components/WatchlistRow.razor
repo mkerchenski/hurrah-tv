@@ -58,7 +58,7 @@
                         @if (RowMode == "upcoming" && item.Status != QueueStatus.Watching)
                         {
                             bool isReturning = item.Status == QueueStatus.Finished;
-                            string bg = isReturning ? "bg-amber-600/80" : BadgeHelpers.StatusBg(item.Status);
+                            string bg = isReturning ? "bg-amber-600/80" : item.Status == QueueStatus.WantToWatch ? "bg-black/60 backdrop-blur-sm" : BadgeHelpers.StatusBg(item.Status);
                             string icon = isReturning ? "icon-[heroicons--arrow-path]" : BadgeHelpers.StatusIcon(item.Status);
                             string label = isReturning ? "Returning" : BadgeHelpers.StatusShortLabel(item.Status);
                             <div class="absolute top-1.5 right-1.5 @bg text-white backdrop-blur-sm flex items-center justify-center

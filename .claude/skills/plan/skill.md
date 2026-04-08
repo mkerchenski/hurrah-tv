@@ -11,8 +11,8 @@ Spend 80% on planning, 20% on execution. Every non-trivial feature gets a plan b
 ## Process
 
 ### Step 1: Understand Context
-- Read `Plans/` for related plans
-- Read `Learnings/` for relevant discoveries
+- List `Plans/` for related plans and read any that overlap with this feature
+- List `Learnings/` then read any files that relate to the feature area (Blazor, TMDb, auth, deployment, etc.)
 - Check CLAUDE.md for architectural constraints
 - Check Memory for user preferences and project context
 
