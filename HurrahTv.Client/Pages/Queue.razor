@@ -14,7 +14,7 @@
     <div class="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
         @foreach ((string key, string label) in _tabs)
         {
-            int count = key == "all" ? _items.Count : _items.Count(i => StatusKey(i.Status) == key);
+            int count = key == "all" ? _items.Count : _statusCounts.GetValueOrDefault(key, 0);
             bool active = _activeTab == key;
             <button class="@($"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(active ? "bg-surface-100 text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
                     @onclick="() => { _activeTab = key; _expandedStatusId = null; }">
@@ -73,7 +73,7 @@ else
             @foreach (QueueItem item in visible)
             {
                 <div class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
-                    <!-- poster -->
+
                     <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0 relative">
                         @if (!string.IsNullOrEmpty(item.PosterUrl("w92")))
                         {
@@ -102,7 +102,7 @@ else
                         }
                     </a>
 
-                    <!-- title & meta -->
+
                     <div class="flex-1 min-w-0">
                         <a href="/details/@item.MediaType/@item.TmdbId"
                            class="font-semibold text-sm md:text-base text-white hover:text-accent transition-colors truncate block leading-tight">
@@ -125,13 +125,12 @@ else
                         </div>
                     </div>
 
-                    <!-- status control -->
+
                     <div class="flex-shrink-0">
                         @if (_expandedStatusId == item.Id)
                         {
-                            <!-- inline status picker -->
                             <div class="flex items-center gap-1">
-                                @foreach (QueueStatus s in _statusOptions)
+                                @foreach (QueueStatus s in BadgeHelpers.AllStatuses)
                                 {
                                     <button class="@($"w-8 h-8 rounded-full flex items-center justify-center transition-all {(item.Status == s ? BadgeHelpers.StatusColor(s) + " bg-surface-200 scale-110" : "text-gray-500 hover:text-white hover:bg-surface-100")}")"
                                             @onclick="() => SelectStatus(item, s)"
@@ -147,7 +146,6 @@ else
                         }
                         else
                         {
-                            <!-- status badge — icon + label, no background -->
                             <button class="@($"flex items-center gap-1.5 text-xs font-medium transition-opacity hover:opacity-70 {BadgeHelpers.StatusColor(item.Status)}")"
                                     @onclick="() => _expandedStatusId = item.Id">
                                 <span class="@BadgeHelpers.StatusIcon(item.Status) w-3.5 h-3.5"></span>
@@ -156,7 +154,7 @@ else
                         }
                     </div>
 
-                    <!-- remove -->
+
                     <button class="text-gray-700 hover:text-red-400 transition-colors p-1.5 flex-shrink-0 md:opacity-0 md:group-hover:opacity-100"
                             @onclick="() => Remove(item)" title="Remove from list">
                         <span class="icon-[heroicons--trash] w-4 h-4"></span>
@@ -169,6 +167,7 @@ else
 
 @code {
     private List<QueueItem> _items = [];
+    private Dictionary<string, int> _statusCounts = [];
     private bool _loading = true;
     private string _activeTab = "all";
     private int? _expandedStatusId;
@@ -182,20 +181,12 @@ else
         ("notforme", "Not For Me")
     ];
 
-    private static readonly QueueStatus[] _statusOptions =
-    [
-        QueueStatus.WantToWatch,
-        QueueStatus.Watching,
-        QueueStatus.Finished,
-        QueueStatus.NotForMe
-    ];
-
     private static string TabIcon(string key) => key switch
     {
-        "watching"    => "icon-[heroicons--play-20-solid]",
-        "wanttowatch" => "icon-[heroicons--bookmark-20-solid]",
-        "finished"    => "icon-[heroicons--check-20-solid]",
-        "notforme"    => "icon-[heroicons--no-symbol-20-solid]",
+        "watching"    => BadgeHelpers.StatusIcon(QueueStatus.Watching),
+        "wanttowatch" => BadgeHelpers.StatusIcon(QueueStatus.WantToWatch),
+        "finished"    => BadgeHelpers.StatusIcon(QueueStatus.Finished),
+        "notforme"    => BadgeHelpers.StatusIcon(QueueStatus.NotForMe),
         _             => "icon-[heroicons--bars-3]"
     };
 
@@ -222,19 +213,29 @@ else
         _loading = true;
         _items = await Api.GetQueueAsync();
         _loading = false;
+        UpdateCounts();
+    }
+
+    private void UpdateCounts()
+    {
+        _statusCounts = _items
+            .GroupBy(i => StatusKey(i.Status))
+            .ToDictionary(g => g.Key, g => g.Count());
     }
 
     private async Task SelectStatus(QueueItem item, QueueStatus status)
     {
+        if (item.Status == status) { _expandedStatusId = null; return; }
         _expandedStatusId = null;
-        if (item.Status == status) return;
         await Api.UpdateStatusAsync(item.Id, status);
         item.Status = status;
+        UpdateCounts();
     }
 
     private async Task Remove(QueueItem item)
     {
         await Api.RemoveFromQueueAsync(item.Id);
         _items.Remove(item);
+        UpdateCounts();
     }
 }

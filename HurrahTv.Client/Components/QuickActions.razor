@@ -25,7 +25,7 @@
             {
                 <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">List Status</div>
                 <div class="grid grid-cols-4 gap-2 mb-4">
-                    @foreach (QueueStatus status in _allStatuses)
+                    @foreach (QueueStatus status in BadgeHelpers.AllStatuses)
                     {
                         bool active = _currentStatus == status;
                         bool isNfm = status == QueueStatus.NotForMe;
@@ -93,7 +93,6 @@
     private int? _currentSentiment;
     private SearchResult? _searchResult;
 
-    private static readonly QueueStatus[] _allStatuses = [QueueStatus.WantToWatch, QueueStatus.Watching, QueueStatus.Finished, QueueStatus.NotForMe];
     private static readonly (int Level, string ActiveCss, string InactiveCss, string Icon, string Label)[] _sentimentOptions =
     [
         (SentimentLevel.Down, "bg-red-600/30 text-red-400 ring-1 ring-red-500/50", "bg-surface-200 text-gray-400 hover:text-red-400", "icon-[heroicons--hand-thumb-down-20-solid]", "Nah"),
