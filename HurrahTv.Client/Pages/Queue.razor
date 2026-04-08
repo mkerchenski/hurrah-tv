@@ -64,7 +64,7 @@ else
         <!-- filtered empty state -->
         <div class="text-center py-12 fade-in">
             <p class="text-gray-500 text-sm">Nothing here yet</p>
-            <p class="text-gray-600 text-xs mt-1">Items you mark as "@(_tabs.First(t => t.key == _activeTab).label)" will show up here.</p>
+            <p class="text-gray-600 text-xs mt-1">Items you mark as "@(_tabs.FirstOrDefault(t => t.key == _activeTab).label ?? _activeTab)" will show up here.</p>
         </div>
     }
     else
@@ -227,15 +227,23 @@ else
     {
         if (item.Status == status) { _expandedStatusId = null; return; }
         _expandedStatusId = null;
-        await Api.UpdateStatusAsync(item.Id, status);
-        item.Status = status;
-        UpdateCounts();
+        try
+        {
+            await Api.UpdateStatusAsync(item.Id, status);
+            item.Status = status;
+            UpdateCounts();
+        }
+        catch { }
     }
 
     private async Task Remove(QueueItem item)
     {
-        await Api.RemoveFromQueueAsync(item.Id);
-        _items.Remove(item);
-        UpdateCounts();
+        try
+        {
+            await Api.RemoveFromQueueAsync(item.Id);
+            _items.Remove(item);
+            UpdateCounts();
+        }
+        catch { }
     }
 }

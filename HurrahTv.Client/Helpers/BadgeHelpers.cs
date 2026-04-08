@@ -31,10 +31,10 @@ public static class BadgeHelpers
         _                       => ""
     };
 
-    public static readonly QueueStatus[] AllStatuses =
+    public static readonly IReadOnlyList<QueueStatus> AllStatuses =
     [
-        QueueStatus.WantToWatch,
         QueueStatus.Watching,
+        QueueStatus.WantToWatch,
         QueueStatus.Finished,
         QueueStatus.NotForMe
     ];

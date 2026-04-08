@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 A unified streaming queue app — one watchlist across all your streaming services. Search what's available on Netflix, Hulu, Disney+, etc., and manage a single queue.
 
-**Status:** Early prototype (Phase 1 complete — search, browse, queue)
+**Status:** Phases 1–2 complete. Auth, AI curation, sentiment, episode tracking, and Azure deployment are all live.
 
 ## Architecture
 
@@ -23,8 +23,10 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 - .NET 10, Blazor WebAssembly (standalone)
 - Minimal API (not controllers)
 - Dapper + PostgreSQL (migrated from SQL Server)
-- Tailwind CSS via CDN (v1 — will switch to CLI build for production)
+- Tailwind CSS v4 (CLI build — `npm run build:css` in `HurrahTv.Client/`, run after any class/icon changes)
 - TMDb API for catalog data (watch providers sourced from JustWatch)
+- Claude Haiku (claude-haiku-4-5-20251001) for AI-powered queue curation via Anthropic SDK
+- Twilio for phone OTP SMS delivery
 - No Hurrah.Core dependency — this is a standalone product
 
 ## Running Locally
@@ -49,10 +51,13 @@ wt new-tab --title "Hurrah.tv Client" -d "C:\Users\mkerc\Documents\Hurrah.tv\Hur
 
 ### API Endpoints
 All endpoints are Minimal API, organized by feature in `Endpoints/` directory:
+- `AuthEndpoints.cs` — phone OTP send/verify, JWT issuance (90-day tokens)
 - `SearchEndpoints.cs` — TMDb search proxy, trending, discover by provider
 - `DetailsEndpoints.cs` — Show/movie details with watch providers
-- `QueueEndpoints.cs` — CRUD for the user's watchlist
-- `UserServiceEndpoints.cs` — Which streaming services the user subscribes to
+- `QueueEndpoints.cs` — CRUD for the user's watchlist, position reorder, sentiment, progress
+- `UserServiceEndpoints.cs` — Streaming services, genre prefs, dismissals, settings
+- `SentimentEndpoints.cs` — Per-show, per-season, per-episode sentiment ratings
+- `CurationEndpoints.cs` — AI-curated home rows, match scores, usage tracking
 
 ### TMDb Integration
 - `TmdbService.cs` handles all TMDb API calls with `IMemoryCache`
@@ -61,15 +66,26 @@ All endpoints are Minimal API, organized by feature in `Endpoints/` directory:
 - Provider IDs: Netflix=8, Prime=9, Hulu=15, Disney+=337, Paramount+=2303, Peacock=386, Max=1899, Apple TV+=350
 
 ### Data Model
-PostgreSQL via Dapper (Npgsql). Tables:
-- `QueueItems` — UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson
+PostgreSQL via Dapper (Npgsql). All tables created on startup via `DbService.InitializeAsync()` — no migration files. Tables:
+- `Users` — Id, PhoneNumber (UNIQUE), CreatedAt
+- `OtpCodes` — PhoneNumber, Code, ExpiresAt, Used
+- `QueueItems` — UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, Sentiment, LastSeasonWatched, LastEpisodeWatched, episode date fields
 - `UserServices` — UserId, ProviderId (composite PK)
+- `UserGenres` — UserId, GenreId (composite PK)
+- `UserDismissals` — UserId, TmdbId (composite PK)
+- `UserSettings` — UserId (PK), EnglishOnly
+- `SeasonSentiments` / `EpisodeSentiments` — per-show granular ratings
+- `AIUsage` — token counts and cost tracking per request
+- `CurationCache` — cached AI rows keyed by UserId + watchlist hash
 
 ### Client Architecture
-- Pages call `ApiClient` service (typed HttpClient wrapper)
-- Components: `PosterCard`, `PosterGrid`, `ServicePicker`
-- Dark theme, poster-grid layout inspired by streaming apps
-- State lives on the server (queue, services) — client fetches on page load
+- Pages call `ApiClient` service (typed HttpClient wrapper — all methods match API endpoints)
+- Auth: `HurrahAuthStateProvider` + `TokenService` (JWT in localStorage) + `AuthMessageHandler` (auto-injects Bearer token)
+- Key components: `PosterCard`, `PosterGrid`, `ContentRow`, `WatchlistRow`, `QuickActions`, `EpisodeBrowser`, `InstallBanner`, `UpdateBanner`
+- UI helpers: `BadgeHelpers.cs` (status colors/icons/labels), `SentimentHelpers.cs` (sentiment colors/icons)
+- `BadgeHelpers.AllStatuses` (`IReadOnlyList<QueueStatus>`) is the shared source of truth for status ordering — used in Queue page and QuickActions
+- Dark theme, poster-grid layout inspired by Netflix. Mobile bottom tab bar, desktop top nav.
+- State lives on the server — client fetches on page load. No client-side state store.
 
 ## Code Style
 
@@ -79,6 +95,7 @@ PostgreSQL via Dapper (Npgsql). Tables:
 - No XML doc comments — only regular comments (`//`) when code isn't self-explanatory
 - Comments start lowercase
 - Prefer `Type variableName` over `var` when type isn't complex
+- Pre-compute per-status/per-tab counts with `GroupBy().ToDictionary()` after data mutations — never run `Count()` per tab inside a render loop (O(N×tabs) per render)
 
 ## Context Management
 
@@ -111,10 +128,12 @@ Engineering learnings stored in `Learnings/` at repo root. Tracked in git.
 
 ## Deployment
 
-- Frontend + API: Azure App Service (API serves WASM static files)
+- Azure App Service `HurrahTv-Api` with staging + production slots
+- Staging auto-deploys on push to `main` (`.github/workflows/main_hurrahtv.yml`)
+- Production swap via `/deploy` skill or `swap.yml` workflow (manual trigger)
 - Database: Azure Database for PostgreSQL Flexible Server
-- GitHub Actions workflow on push to `main`
-- Domain: hurrah.tv
+- CI stamps short SHA as build version into `appsettings.json` + cache-busts CSS with `?v=SHA`
+- Domains: hurrah.tv (prod), staging.hurrah.tv (staging)
 
 ## Attribution Requirements
 
