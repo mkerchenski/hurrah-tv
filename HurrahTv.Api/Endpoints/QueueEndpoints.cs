@@ -16,9 +16,10 @@ public static class QueueEndpoints
         group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<DbService> logger) =>
         {
             string userId = user.GetUserId();
+            // start watched episodes fetch in parallel with queue load
+            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId);
             List<QueueItem> items = await db.GetQueueAsync(userId);
 
-            // refresh stale episode dates — also force refresh if season/episode numbers not yet populated
             List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
                     && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
@@ -53,8 +54,7 @@ public static class QueueEndpoints
                 }
             }
 
-            List<WatchedEpisode> watchedEpisodes = await db.GetWatchedEpisodesAsync(userId);
-            return Results.Ok(new QueueResponse(items, watchedEpisodes));
+            return Results.Ok(new QueueResponse(items, await watchedTask));
         });
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>

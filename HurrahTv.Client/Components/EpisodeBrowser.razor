@@ -7,8 +7,8 @@
         {
             int sn = season.SeasonNumber;
             bool expanded = _expandedSeason == sn;
-            SeasonSentiment? seasonSent = _sentiments.Seasons.FirstOrDefault(s => s.SeasonNumber == sn);
-            List<EpisodeSentiment> epSents = [.. _sentiments.Episodes.Where(e => e.SeasonNumber == sn)];
+            SeasonSentiment? seasonSent = _seasonSentiments.GetValueOrDefault(sn);
+            Dictionary<int, EpisodeSentiment> epSents = _episodeSentiments.GetValueOrDefault(sn) ?? [];
 
             <div class="bg-surface-50 rounded-lg overflow-hidden">
                 <!-- season header -->
@@ -30,9 +30,9 @@
                         @if (epSents.Count > 0)
                         {
                             <div class="flex items-center gap-1.5 text-[10px]">
-                                @{ int ups = epSents.Count(e => e.Sentiment == SentimentLevel.Up); }
-                                @{ int favs = epSents.Count(e => e.Sentiment == SentimentLevel.Favorite); }
-                                @{ int downs = epSents.Count(e => e.Sentiment == SentimentLevel.Down); }
+                                @{ int ups = epSents.Values.Count(e => e.Sentiment == SentimentLevel.Up); }
+                                @{ int favs = epSents.Values.Count(e => e.Sentiment == SentimentLevel.Favorite); }
+                                @{ int downs = epSents.Values.Count(e => e.Sentiment == SentimentLevel.Down); }
                                 @if (favs > 0) { <span class="text-pink-400">@favs<span class="icon-[heroicons--heart-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
                                 @if (ups > 0) { <span class="text-green-400">@ups<span class="icon-[heroicons--hand-thumb-up-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
                                 @if (downs > 0) { <span class="text-red-400">@downs<span class="icon-[heroicons--hand-thumb-down-20-solid] w-3 h-3 inline ml-0.5"></span></span> }
@@ -82,7 +82,7 @@
                             {
                                 int en = ep.EpisodeNumber;
                                 bool upcoming = ep == nextUp;
-                                EpisodeSentiment? epSent = epSents.FirstOrDefault(e => e.EpisodeNumber == en);
+                                EpisodeSentiment? epSent = epSents.GetValueOrDefault(en);
 
                                 <div class="flex items-center justify-between px-4 py-2.5 hover:bg-surface-100 transition-colors border-b border-surface-200 last:border-b-0 @(upcoming ? "opacity-70" : "")">
                                     <div class="flex-1 min-w-0">
@@ -137,7 +137,8 @@
     [Parameter, EditorRequired] public int TmdbId { get; set; }
     [Parameter, EditorRequired] public List<SeasonInfo> Seasons { get; set; } = [];
 
-    private ShowSentiments _sentiments = new();
+    private Dictionary<int, SeasonSentiment> _seasonSentiments = [];
+    private Dictionary<int, Dictionary<int, EpisodeSentiment>> _episodeSentiments = [];
     private HashSet<(int Season, int Episode)> _watchedSet = [];
     private int? _expandedSeason;
     private SeasonDetail? _seasonDetail;
@@ -148,7 +149,11 @@
         Task<ShowSentiments> sentimentsTask = Api.GetShowSentimentsAsync(TmdbId);
         Task<List<WatchedEpisode>> watchedTask = Api.GetWatchedEpisodesAsync(TmdbId);
         await Task.WhenAll(sentimentsTask, watchedTask);
-        _sentiments = sentimentsTask.Result;
+        ShowSentiments s = sentimentsTask.Result;
+        _seasonSentiments = s.Seasons.ToDictionary(x => x.SeasonNumber);
+        _episodeSentiments = s.Episodes
+            .GroupBy(e => e.SeasonNumber)
+            .ToDictionary(g => g.Key, g => g.ToDictionary(e => e.EpisodeNumber));
         _watchedSet = [.. watchedTask.Result.Select(w => (w.Season, w.Episode))];
     }
 
@@ -187,14 +192,12 @@
 
     private async Task SetSeasonSentiment(int seasonNumber, int sentiment)
     {
-        SeasonSentiment? existing = _sentiments.Seasons.FirstOrDefault(s => s.SeasonNumber == seasonNumber);
-        int? newSentiment = existing?.Sentiment == sentiment ? null : sentiment;
+        int? newSentiment = _seasonSentiments.GetValueOrDefault(seasonNumber)?.Sentiment == sentiment ? null : sentiment;
         await Api.SetSeasonSentimentAsync(TmdbId, seasonNumber, newSentiment);
-
-        // update local state
-        _sentiments.Seasons.RemoveAll(s => s.SeasonNumber == seasonNumber);
         if (newSentiment.HasValue)
-            _sentiments.Seasons.Add(new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value });
+            _seasonSentiments[seasonNumber] = new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value };
+        else
+            _seasonSentiments.Remove(seasonNumber);
     }
 
     private static bool HasAired(string? dateStr, DateTime today)
@@ -219,13 +222,13 @@
 
     private async Task SetEpisodeSentiment(int seasonNumber, int episodeNumber, int sentiment)
     {
-        EpisodeSentiment? existing = _sentiments.Episodes.FirstOrDefault(e => e.SeasonNumber == seasonNumber && e.EpisodeNumber == episodeNumber);
-        int? newSentiment = existing?.Sentiment == sentiment ? null : sentiment;
+        int? newSentiment = _episodeSentiments.GetValueOrDefault(seasonNumber)?.GetValueOrDefault(episodeNumber)?.Sentiment == sentiment ? null : sentiment;
         await Api.SetEpisodeSentimentAsync(TmdbId, seasonNumber, episodeNumber, newSentiment);
-
-        // update local state
-        _sentiments.Episodes.RemoveAll(e => e.SeasonNumber == seasonNumber && e.EpisodeNumber == episodeNumber);
+        if (!_episodeSentiments.ContainsKey(seasonNumber))
+            _episodeSentiments[seasonNumber] = [];
         if (newSentiment.HasValue)
-            _sentiments.Episodes.Add(new EpisodeSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, EpisodeNumber = episodeNumber, Sentiment = newSentiment.Value });
+            _episodeSentiments[seasonNumber][episodeNumber] = new EpisodeSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, EpisodeNumber = episodeNumber, Sentiment = newSentiment.Value };
+        else
+            _episodeSentiments[seasonNumber].Remove(episodeNumber);
     }
 }

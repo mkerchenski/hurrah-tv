@@ -375,22 +375,8 @@ else
                     || (i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
                     || (i.Status != QueueStatus.Finished && i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead)));
 
-        _watchingItems = _watchlistSort switch
-        {
-            "sentiment" => [.. watching
-                .OrderByDescending(i => SentimentSortKey(i.Sentiment))
-                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            "queue" => [.. watching
-                .OrderBy(i => StatusSortKey(i.Status))
-                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            _ => [.. watching  // "date" — most recently aired first
-                .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
-                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
-                .ThenBy(i => i.Position)]
-        };
+        _watchingItems = SortWatching(watching);
 
-        // upcoming episodes: TV, respecting status filter chips, recently aired OR airing soon
-        // Finished shows only appear when there's a confirmed future episode (NextEpisodeDate)
         IEnumerable<QueueItem> upcoming = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status != QueueStatus.NotForMe
@@ -399,25 +385,9 @@ else
                     || (i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead))
                 && (i.Status != QueueStatus.Finished || i.NextEpisodeDate.HasValue));
 
-        _upcomingItems = _watchlistSort switch
-        {
-            "sentiment" => [.. upcoming
-                .OrderByDescending(i => SentimentSortKey(i.Sentiment))
-                .ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            "queue" => [.. upcoming
-                .OrderBy(i => StatusSortKey(i.Status))
-                .ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            _ => [.. upcoming.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)] // "date"
-        };
+        _upcomingItems = SortUpcoming(upcoming);
 
-        // want to watch movies — apply global sort (Liked sorts by sentiment, List/Date both fall back to newest added)
-        IEnumerable<QueueItem> wantMovies = allItems
-            .Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch);
-        _wantToWatchMovies = _watchlistSort switch
-        {
-            "sentiment" => [.. wantMovies.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.AddedAt)],
-            _ => [.. wantMovies.OrderByDescending(i => i.AddedAt)] // "date" and "list" both default to newest added
-        };
+        _wantToWatchMovies = SortMovies(allItems.Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch));
     }
 
     private async Task RefreshCuration()
@@ -588,26 +558,31 @@ else
         _watchlistSort = mode;
         _settings.WatchlistSort = mode;
         _ = Api.SetUserSettingsAsync(_settings);
-        // re-sort all rows in place without re-fetching
-        _watchingItems = _watchlistSort switch
-        {
-            "sentiment" => [.. _watchingItems.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            "queue" => [.. _watchingItems.OrderBy(i => StatusSortKey(i.Status)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            _ => [.. _watchingItems.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
-        };
-        _upcomingItems = _watchlistSort switch
-        {
-            "sentiment" => [.. _upcomingItems.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            "queue" => [.. _upcomingItems.OrderBy(i => StatusSortKey(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            _ => [.. _upcomingItems.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
-        };
-        _wantToWatchMovies = _watchlistSort switch
-        {
-            "sentiment" => [.. _wantToWatchMovies.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.AddedAt)],
-            _ => [.. _wantToWatchMovies.OrderByDescending(i => i.AddedAt)]
-        };
+        _watchingItems = SortWatching(_watchingItems);
+        _upcomingItems = SortUpcoming(_upcomingItems);
+        _wantToWatchMovies = SortMovies(_wantToWatchMovies);
         StateHasChanged();
     }
+
+    private List<QueueItem> SortWatching(IEnumerable<QueueItem> items) => _watchlistSort switch
+    {
+        "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+        "queue"     => [.. items.OrderBy(i => StatusSortKey(i.Status)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+        _           => [.. items.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
+    };
+
+    private List<QueueItem> SortUpcoming(IEnumerable<QueueItem> items) => _watchlistSort switch
+    {
+        "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+        "queue"     => [.. items.OrderBy(i => StatusSortKey(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+        _           => [.. items.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
+    };
+
+    private List<QueueItem> SortMovies(IEnumerable<QueueItem> items) => _watchlistSort switch
+    {
+        "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.AddedAt)],
+        _           => [.. items.OrderByDescending(i => i.AddedAt)]
+    };
 
     private void OnQuickActionChanged() => _ = InvokeAsync(ReloadWatchlist);
 
