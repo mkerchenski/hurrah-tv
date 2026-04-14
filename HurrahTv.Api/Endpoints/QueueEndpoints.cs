@@ -16,9 +16,10 @@ public static class QueueEndpoints
         group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<DbService> logger) =>
         {
             string userId = user.GetUserId();
-            // start watched episodes fetch in parallel with queue load
-            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId);
             List<QueueItem> items = await db.GetQueueAsync(userId);
+
+            // start watched episodes fetch — runs in parallel with any TMDb stale refresh below
+            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId);
 
             List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv

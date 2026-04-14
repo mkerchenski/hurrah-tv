@@ -112,6 +112,7 @@
     ];
 
     private bool _showEpisodeWatched;
+    private bool _hasEpisodeData; // false when LatestEpisodeSeason/Number not yet populated
     private int _episodeTmdbId;
     private int _episodeSeason;
     private int _episodeNumber;
@@ -133,8 +134,9 @@
         _currentSentiment = item.Sentiment;
         _searchResult = null;
         _showEpisodeWatched = showEpisodeWatched;
+        _hasEpisodeData = item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue;
         _episodeTmdbId = item.TmdbId;
-        _episodeSeason = item.LatestEpisodeSeason ?? 0;
+        _episodeSeason = item.LatestEpisodeSeason ?? 0; // 0 only when HasValue==false; Season 0 (specials) is HasValue==true
         _episodeNumber = item.LatestEpisodeNumber ?? 0;
         _episodeWatched = item.IsLatestEpisodeWatched;
         _busy = false;
@@ -162,9 +164,9 @@
         _busy = true;
         try
         {
-            if (_episodeSeason == 0 || _episodeNumber == 0)
+            if (!_hasEpisodeData)
             {
-                // episode data not yet refreshed — close and trigger reload; next open will have real data
+                // season/episode not yet populated — trigger reload so next open has real data
                 Close();
                 QuickActionSvc.NotifyChanged();
                 return;

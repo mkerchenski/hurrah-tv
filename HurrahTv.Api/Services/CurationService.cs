@@ -12,6 +12,8 @@ public class CurationService
     private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
     private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
 
+    private static readonly JsonSerializerOptions CaseInsensitive = new() { PropertyNameCaseInsensitive = true };
+
     private readonly DbService _db;
     private readonly TmdbService _tmdb;
     private readonly ILogger<CurationService> _logger;
@@ -181,10 +183,7 @@ public class CurationService
             if (jsonStart >= 0 && jsonEnd > jsonStart)
                 text = text[jsonStart..(jsonEnd + 1)];
 
-            List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            }) ?? [];
+            List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, CaseInsensitive) ?? [];
 
             // build a single flat curated list
             List<int> tmdbIds = [];
@@ -361,10 +360,7 @@ public class CurationService
             if (jsonStart >= 0 && jsonEnd > jsonStart)
                 text = text[jsonStart..(jsonEnd + 1)];
 
-            return JsonSerializer.Deserialize<ShowMatchResult>(text, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            return JsonSerializer.Deserialize<ShowMatchResult>(text, CaseInsensitive);
         }
         catch (Exception ex)
         {

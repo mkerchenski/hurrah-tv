@@ -149,6 +149,13 @@ else
                     </div>
                 </div>
 
+                @{
+                    bool hasVisibleRows =
+                        (MediaFilter.MediaType != "movie" && (_watchingItems.Count > 0 || _upcomingItems.Count > 0))
+                        || (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
+                            && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch));
+                }
+
                 @if (MediaFilter.MediaType != "movie")
                 {
                     @if (_watchingItems.Count > 0)
@@ -168,6 +175,11 @@ else
                 {
                     <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false"
                                   ShowMarkWatched="false" ShowStatusBadge="false" />
+                }
+
+                @if (!hasVisibleRows)
+                {
+                    <p class="text-gray-600 text-sm py-2">No shows match your current filters.</p>
                 }
             </div>
         }
@@ -584,12 +596,16 @@ else
         _           => [.. items.OrderByDescending(i => i.AddedAt)]
     };
 
-    private void OnQuickActionChanged() => _ = InvokeAsync(ReloadWatchlist);
+    private void OnQuickActionChanged() => _ = InvokeAsync(async () =>
+    {
+        try { await ReloadWatchlist(); }
+        catch { /* leave stale data in place on network failure */ }
+    });
 
     private void OnMediaFilterChanged() => _ = InvokeAsync(async () =>
     {
-        // re-seed rec rows for correct media type, re-apply watchlist filters, re-render
-        await ReloadWatchlist();
+        try { await ReloadWatchlist(); }
+        catch { }
     });
 
     public void Dispose()

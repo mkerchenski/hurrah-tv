@@ -13,6 +13,8 @@ public static class EpisodeEndpoints
         // mark an episode as watched (removes it from Continue Watching row)
         group.MapPost("/watched", async (WatchedEpisodeRequest req, ClaimsPrincipal user, DbService db) =>
         {
+            if (req.TmdbId <= 0 || req.Season < 0 || req.Episode <= 0)
+                return Results.BadRequest("Invalid episode reference");
             string userId = user.GetUserId();
             await db.MarkEpisodeWatchedAsync(userId, req.TmdbId, req.Season, req.Episode);
             return Results.NoContent();
@@ -21,6 +23,8 @@ public static class EpisodeEndpoints
         // unmark an episode as watched — route params avoid DELETE-with-body inference issues
         group.MapDelete("/watched/{tmdbId:int}/{season:int}/{episode:int}", async (int tmdbId, int season, int episode, ClaimsPrincipal user, DbService db) =>
         {
+            if (tmdbId <= 0 || season < 0 || episode <= 0)
+                return Results.BadRequest("Invalid episode reference");
             string userId = user.GetUserId();
             await db.UnmarkEpisodeWatchedAsync(userId, tmdbId, season, episode);
             return Results.NoContent();

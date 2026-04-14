@@ -391,7 +391,9 @@ public class TmdbService
         {
             if (lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
                 && DateTime.TryParse(lastDate.GetString(), out DateTime parsedLast))
+            {
                 lastAired = parsedLast;
+            }
 
             if (lastEp.TryGetProperty("season_number", out JsonElement lastSn) && lastSn.ValueKind == JsonValueKind.Number)
                 lastSeason = lastSn.GetInt32();
@@ -406,7 +408,9 @@ public class TmdbService
         {
             if (nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
                 && DateTime.TryParse(nextDate.GetString(), out DateTime parsedNext))
+            {
                 nextAir = parsedNext;
+            }
 
             if (nextEp.TryGetProperty("season_number", out JsonElement nextSn) && nextSn.ValueKind == JsonValueKind.Number)
                 nextSeason = nextSn.GetInt32();
@@ -415,7 +419,7 @@ public class TmdbService
                 nextEpisode = nextEn.GetInt32();
         }
 
-        var result = (lastAired, lastSeason, lastEpisode, nextAir, nextSeason, nextEpisode);
+        (DateTime? lastAired, int? lastSeason, int? lastEpisode, DateTime? nextAir, int? nextSeason, int? nextEpisode) result = (lastAired, lastSeason, lastEpisode, nextAir, nextSeason, nextEpisode);
         _cache.Set(cacheKey, result, TimeSpan.FromHours(6));
         return result;
     }
