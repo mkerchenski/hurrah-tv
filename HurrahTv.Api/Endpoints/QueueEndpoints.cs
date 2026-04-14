@@ -18,11 +18,13 @@ public static class QueueEndpoints
             string userId = user.GetUserId();
             List<QueueItem> items = await db.GetQueueAsync(userId);
 
-            // refresh stale episode dates — await with timeout so first load of the day gets fresh data
+            // refresh stale episode dates — also force refresh if season/episode numbers not yet populated
             List<QueueItem> stale = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
                     && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
-                    && (i.LastEpisodeCheckAt == null || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter))];
+                    && (i.LastEpisodeCheckAt == null
+                        || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter
+                        || i.LatestEpisodeSeason == null))];
 
             if (stale.Count > 0)
             {

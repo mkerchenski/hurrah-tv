@@ -91,51 +91,85 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- watchlist rows — hidden in Movies mode (episodes are TV-only) -->
-        @if (MediaFilter.MediaType != "movie")
-        {
-            <!-- status filter chips -->
-            @if (_watchingItems.Count > 0 || _upcomingItems.Count > 0)
-            {
-                <div class="flex gap-2 mb-4 flex-wrap">
-                    @foreach ((QueueStatus status, string label) in new[] {
-                        (QueueStatus.Watching, "Watching"),
-                        (QueueStatus.WantToWatch, "Want to Watch"),
-                        (QueueStatus.Finished, "Finished") })
-                    {
-                        bool active = IsStatusActive(status);
-                        <button class="@(active ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white border border-surface-200") px-3 py-1 rounded-full text-xs font-medium transition-all"
-                                @onclick="() => ToggleStatusFilter(status)">
-                            @label
-                        </button>
-                    }
-                </div>
-            }
-
-            <!-- continue watching row -->
-            @if (_watchingItems.Count > 0)
-            {
-                <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
-                              ShowMarkWatched="true" SortMode="_watchingSort"
-                              OnSortChanged="OnWatchingSortChanged" OnMarkWatched="HandleMarkWatched" />
-            }
-
-            <!-- upcoming episodes row -->
-            @if (_upcomingItems.Count > 0)
-            {
-                <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
-                              ShowMarkWatched="false" SortMode="_upcomingSort"
-                              OnSortChanged="OnUpcomingSortChanged" />
-            }
+        <!-- My Watchlist section — header with chips + all three rows grouped together -->
+        @{
+            // use pre-filter flags so the section (and its chips) stays visible
+            // even when the active status filter produces zero results
+            bool hasWatchlistContent =
+                (MediaFilter.MediaType != "movie" && _hasTvWatchlistContent)
+                || (MediaFilter.MediaType != "tv" && _hasMovieWatchlistContent);
         }
-
-        <!-- want to watch movies — always in Movies mode; respects Want to Watch chip in All mode -->
-        @if (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
-             && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch))
+        @if (hasWatchlistContent)
         {
-            <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false"
-                          RowMode="watching" ShowMarkWatched="false" SortMode="date"
-                          OnSortChanged="EventCallback<string>.Empty" />
+            <div class="mb-8">
+                <!-- section header — matches Curated for You pattern -->
+                <div class="mb-4">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
+                        <h2 class="text-lg md:text-xl font-bold text-white">My Watchlist</h2>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 gap-2">
+                        @if (MediaFilter.MediaType != "movie")
+                        {
+                            <div class="flex gap-0.5 bg-surface-100 rounded-lg p-0.5">
+                                @foreach (QueueStatus status in new[] { QueueStatus.Watching, QueueStatus.WantToWatch, QueueStatus.Finished })
+                                {
+                                    bool active = IsStatusActive(status);
+                                    string chipLabel = BadgeHelpers.StatusShortLabel(status);
+                                    string chipIcon = BadgeHelpers.StatusIcon(status);
+                                    <button class="@(active ? "bg-surface-200 text-white font-medium" : "text-gray-500 hover:text-white") flex items-center gap-1 px-2 md:px-3 py-1 rounded-md text-xs transition-all"
+                                            @onclick="() => ToggleStatusFilter(status)">
+                                        <span class="@chipIcon w-3 h-3"></span>
+                                        <span class="hidden md:inline">@chipLabel</span>
+                                    </button>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div></div>
+                        }
+                        <!-- sort control — same level as filter, saved to UserSettings -->
+                        <div class="flex gap-0.5 bg-surface-100 rounded-lg p-0.5">
+                            @foreach (string mode in new[] { "date", "sentiment", "queue" })
+                            {
+                                string modeLabel = mode switch { "date" => "Date", "sentiment" => "Liked", _ => "List" };
+                                @if (_watchlistSort == mode)
+                                {
+                                    <button class="bg-surface-200 text-white font-semibold text-xs px-3 py-1 rounded-md"
+                                            @onclick="() => OnWatchlistSortChanged(mode)">@modeLabel</button>
+                                }
+                                else
+                                {
+                                    <button class="text-gray-500 hover:text-white text-xs px-3 py-1 rounded-md transition-colors"
+                                            @onclick="() => OnWatchlistSortChanged(mode)">@modeLabel</button>
+                                }
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                @if (MediaFilter.MediaType != "movie")
+                {
+                    @if (_watchingItems.Count > 0)
+                    {
+                        <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
+                                      ShowMarkWatched="true" OnMarkWatched="HandleMarkWatched" />
+                    }
+                    @if (_upcomingItems.Count > 0)
+                    {
+                        <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
+                                      ShowMarkWatched="false" />
+                    }
+                }
+
+                @if (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
+                     && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch))
+                {
+                    <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false"
+                                  ShowMarkWatched="false" ShowStatusBadge="false" />
+                }
+            </div>
         }
 
         <!-- AI-curated section -->
@@ -194,12 +228,14 @@ else
     private List<QueueItem> _watchingItems = [];
     private List<QueueItem> _upcomingItems = [];
     private List<QueueItem> _wantToWatchMovies = [];
+    // pre-filter existence flags — keep section visible even when chips filter everything out
+    private bool _hasTvWatchlistContent;
+    private bool _hasMovieWatchlistContent;
     private HashSet<int> _newEpisodeTmdbIds = [];
     private List<QueueItem> _recSeeds = [];
     private int[] _queuedTmdbIds = [];
     private HashSet<(int TmdbId, int Season, int Episode)> _watchedSet = [];
-    private string _watchingSort = "date";
-    private string _upcomingSort = "date";
+    private string _watchlistSort = "date"; // single sort for all My Watchlist rows, synced with UserSettings
     private UserSettings _settings = new();
 
     // AI curation
@@ -218,6 +254,7 @@ else
         if (_onboardingComplete)
         {
             _settings = await Api.GetUserSettingsAsync();
+            _watchlistSort = _settings.WatchlistSort;
             await LoadWatchlistData();
         }
     }
@@ -269,7 +306,7 @@ else
         _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
         _queuedTmdbIds = [.. allItems.Select(i => i.TmdbId).Distinct()];
 
-        // stamp IsLatestEpisodeWatched on each item
+        // stamp IsLatestEpisodeWatched — exact match on season/episode (API forces refresh when these are null)
         foreach (QueueItem item in allItems)
         {
             if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
@@ -321,17 +358,31 @@ else
         DateTime sevenDaysAgo = now.AddDays(-7);
         DateTime fourteenDaysAhead = now.AddDays(14);
 
-        // continue watching: Watching status items, filtered by media type tab and ShowWatching chip
-        IEnumerable<QueueItem> watching = allItems
-            .Where(i => i.Status == QueueStatus.Watching && _settings.ShowWatching && !i.IsLatestEpisodeWatched
-                && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType));
+        // pre-filter existence: does the user have any TV/movie watchlist content at all?
+        // used by the section header so it stays visible even when chips filter everything out
+        _hasTvWatchlistContent = allItems.Any(i => i.MediaType == "tv" && i.Status != QueueStatus.NotForMe);
+        _hasMovieWatchlistContent = allItems.Any(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch);
 
-        _watchingItems = _watchingSort switch
+        // continue watching: Watching always shows; WantToWatch/Finished need date activity
+        // Finished: recently aired only (7d window) — upcoming Finished go to Upcoming row
+        // WantToWatch: recently aired OR upcoming (same ranges as Upcoming row)
+        IEnumerable<QueueItem> watching = allItems
+            .Where(i => IsStatusActive(i.Status)
+                && i.Status != QueueStatus.NotForMe
+                && !i.IsLatestEpisodeWatched
+                && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
+                && (i.Status == QueueStatus.Watching
+                    || (i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
+                    || (i.Status != QueueStatus.Finished && i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead)));
+
+        _watchingItems = _watchlistSort switch
         {
             "sentiment" => [.. watching
-                .OrderByDescending(i => i.Sentiment ?? 0)
+                .OrderByDescending(i => SentimentSortKey(i.Sentiment))
                 .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            "queue" => [.. watching.OrderBy(i => i.Position)],
+            "queue" => [.. watching
+                .OrderBy(i => StatusSortKey(i.Status))
+                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
             _ => [.. watching  // "date" — most recently aired first
                 .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
                 .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
@@ -339,26 +390,34 @@ else
         };
 
         // upcoming episodes: TV, respecting status filter chips, recently aired OR airing soon
+        // Finished shows only appear when there's a confirmed future episode (NextEpisodeDate)
         IEnumerable<QueueItem> upcoming = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status != QueueStatus.NotForMe
                 && IsStatusActive(i.Status)
                 && ((i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
-                    || (i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead)));
+                    || (i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead))
+                && (i.Status != QueueStatus.Finished || i.NextEpisodeDate.HasValue));
 
-        _upcomingItems = _upcomingSort switch
+        _upcomingItems = _watchlistSort switch
         {
             "sentiment" => [.. upcoming
-                .OrderByDescending(i => i.Sentiment ?? 0)
+                .OrderByDescending(i => SentimentSortKey(i.Sentiment))
                 .ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            "queue" => [.. upcoming.OrderBy(i => i.Position)],
+            "queue" => [.. upcoming
+                .OrderBy(i => StatusSortKey(i.Status))
+                .ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
             _ => [.. upcoming.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)] // "date"
         };
 
-        // want to watch movies — shown in Movies mode, newest added first
-        _wantToWatchMovies = [.. allItems
-            .Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch)
-            .OrderByDescending(i => i.AddedAt)];
+        // want to watch movies — apply global sort (Liked sorts by sentiment, List/Date both fall back to newest added)
+        IEnumerable<QueueItem> wantMovies = allItems
+            .Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch);
+        _wantToWatchMovies = _watchlistSort switch
+        {
+            "sentiment" => [.. wantMovies.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.AddedAt)],
+            _ => [.. wantMovies.OrderByDescending(i => i.AddedAt)] // "date" and "list" both default to newest added
+        };
     }
 
     private async Task RefreshCuration()
@@ -449,6 +508,24 @@ else
     private Task<List<SearchResult>> LoadTrendingMovies() => Api.ForYouAsync("movie", _queuedTmdbIds);
     private Task<List<SearchResult>> LoadNewMovies() => Api.NewOnServicesAsync("movie", _queuedTmdbIds);
 
+    // Favorite(3)→2, Liked(2)→1, null→0, Disliked(1)→-1 so null sorts between Liked and Disliked
+    private static int SentimentSortKey(int? sentiment) => sentiment switch
+    {
+        SentimentLevel.Favorite => 2,
+        SentimentLevel.Up       => 1,
+        null                    => 0,
+        _                       => -1
+    };
+
+    // Watching→0, WantToWatch→1, Finished→2 (status list order)
+    private static int StatusSortKey(QueueStatus status) => status switch
+    {
+        QueueStatus.Watching    => 0,
+        QueueStatus.WantToWatch => 1,
+        QueueStatus.Finished    => 2,
+        _                       => 3
+    };
+
     private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count, string mediaType = "all")
     {
         // prefer items with positive sentiment, fallback to Finished; filter by active media type
@@ -506,27 +583,28 @@ else
         StateHasChanged();
     }
 
-    private void OnWatchingSortChanged(string mode)
+    private async Task OnWatchlistSortChanged(string mode)
     {
-        _watchingSort = mode;
-        // re-sort in place without re-fetching
-        _watchingItems = _watchingSort switch
+        _watchlistSort = mode;
+        _settings.WatchlistSort = mode;
+        _ = Api.SetUserSettingsAsync(_settings);
+        // re-sort all rows in place without re-fetching
+        _watchingItems = _watchlistSort switch
         {
-            "sentiment" => [.. _watchingItems.OrderByDescending(i => i.Sentiment ?? 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-            "queue" => [.. _watchingItems.OrderBy(i => i.Position)],
+            "sentiment" => [.. _watchingItems.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+            "queue" => [.. _watchingItems.OrderBy(i => StatusSortKey(i.Status)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
             _ => [.. _watchingItems.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
         };
-        StateHasChanged();
-    }
-
-    private void OnUpcomingSortChanged(string mode)
-    {
-        _upcomingSort = mode;
-        _upcomingItems = _upcomingSort switch
+        _upcomingItems = _watchlistSort switch
         {
-            "sentiment" => [.. _upcomingItems.OrderByDescending(i => i.Sentiment ?? 0).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-            "queue" => [.. _upcomingItems.OrderBy(i => i.Position)],
+            "sentiment" => [.. _upcomingItems.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+            "queue" => [.. _upcomingItems.OrderBy(i => StatusSortKey(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
             _ => [.. _upcomingItems.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
+        };
+        _wantToWatchMovies = _watchlistSort switch
+        {
+            "sentiment" => [.. _wantToWatchMovies.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.AddedAt)],
+            _ => [.. _wantToWatchMovies.OrderByDescending(i => i.AddedAt)]
         };
         StateHasChanged();
     }

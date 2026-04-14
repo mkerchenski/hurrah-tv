@@ -147,6 +147,7 @@ public class DbService(IConfiguration config)
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWatching    BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWantToWatch BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowFinished    BOOL NOT NULL DEFAULT TRUE;
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS WatchlistSort   VARCHAR(20) NOT NULL DEFAULT 'date';
             """, transaction: tx);
 
         await tx.CommitAsync();
@@ -603,7 +604,7 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
-            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished FROM UserSettings WHERE UserId = @UserId",
+            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort FROM UserSettings WHERE UserId = @UserId",
             new { UserId = userId });
         return settings ?? new UserSettings();
     }
@@ -612,20 +613,22 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished)
-            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished)
+            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort)
+            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished, @WatchlistSort)
             ON CONFLICT (UserId) DO UPDATE SET
-                EnglishOnly    = @EnglishOnly,
-                ShowWatching   = @ShowWatching,
+                EnglishOnly     = @EnglishOnly,
+                ShowWatching    = @ShowWatching,
                 ShowWantToWatch = @ShowWantToWatch,
-                ShowFinished   = @ShowFinished
+                ShowFinished    = @ShowFinished,
+                WatchlistSort   = @WatchlistSort
             """, new
         {
             UserId = userId,
             settings.EnglishOnly,
             settings.ShowWatching,
             settings.ShowWantToWatch,
-            settings.ShowFinished
+            settings.ShowFinished,
+            settings.WatchlistSort
         });
     }
 

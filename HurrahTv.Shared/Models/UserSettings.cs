@@ -8,4 +8,7 @@ public class UserSettings
     public bool ShowWatching { get; set; } = true;
     public bool ShowWantToWatch { get; set; } = true;
     public bool ShowFinished { get; set; } = true;
+
+    // home page watchlist sort order applied to all My Watchlist rows
+    public string WatchlistSort { get; set; } = "date"; // "date" | "sentiment" | "queue"
 }

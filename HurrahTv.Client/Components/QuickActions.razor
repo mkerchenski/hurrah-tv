@@ -20,6 +20,17 @@
                 </div>
             </div>
 
+            <!-- episode watched — Continue Watching only -->
+            @if (_showEpisodeWatched)
+            {
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5
+                               @(_episodeWatched ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-300 hover:text-white")"
+                        @onclick="ToggleEpisodeWatched" @onclick:stopPropagation="true">
+                    <span class="@(_episodeWatched ? "icon-[heroicons--check-circle-20-solid]" : "icon-[heroicons--check-circle]") w-4 h-4"></span>
+                    @(_episodeWatched ? "Episode Marked Watched" : "Episode Watched")
+                </button>
+            }
+
             <!-- list status -->
             @if (_queueId > 0)
             {
@@ -100,13 +111,19 @@
         (SentimentLevel.Favorite, "bg-pink-600/30 text-pink-400 ring-1 ring-pink-500/50", "bg-surface-200 text-gray-400 hover:text-pink-400", "icon-[heroicons--heart-20-solid]", "Love"),
     ];
 
+    private bool _showEpisodeWatched;
+    private int _episodeTmdbId;
+    private int _episodeSeason;
+    private int _episodeNumber;
+    private bool _episodeWatched;
+
     protected override void OnInitialized()
     {
         QuickActionSvc.OnShowForQueueItem += ShowForQueueItem;
         QuickActionSvc.OnShowForSearchResult += ShowForSearchResult;
     }
 
-    private void ShowForQueueItem(QueueItem item)
+    private void ShowForQueueItem(QueueItem item, bool showEpisodeWatched)
     {
         _queueId = item.Id;
         _title = item.Title;
@@ -115,6 +132,11 @@
         _currentStatus = item.Status;
         _currentSentiment = item.Sentiment;
         _searchResult = null;
+        _showEpisodeWatched = showEpisodeWatched;
+        _episodeTmdbId = item.TmdbId;
+        _episodeSeason = item.LatestEpisodeSeason ?? 0;
+        _episodeNumber = item.LatestEpisodeNumber ?? 0;
+        _episodeWatched = item.IsLatestEpisodeWatched;
         _busy = false;
         _visible = true;
         StateHasChanged();
@@ -132,6 +154,31 @@
         _busy = false;
         _visible = true;
         StateHasChanged();
+    }
+
+    private async Task ToggleEpisodeWatched()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            if (_episodeSeason == 0 || _episodeNumber == 0)
+            {
+                // episode data not yet refreshed — close and trigger reload; next open will have real data
+                Close();
+                QuickActionSvc.NotifyChanged();
+                return;
+            }
+            if (_episodeWatched)
+                await Api.UnmarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
+            else
+                await Api.MarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
+            _episodeWatched = !_episodeWatched;
+            Close();
+            QuickActionSvc.NotifyChanged();
+        }
+        catch { Close(); }
+        finally { _busy = false; }
     }
 
     private async Task SetStatus(QueueStatus status)
