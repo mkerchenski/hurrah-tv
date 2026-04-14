@@ -11,18 +11,21 @@
                 <span class="text-xs text-gray-500">@Subtitle</span>
             }
         </div>
-        <!-- sort toggle -->
-        <div class="flex gap-0.5" @onclick:stopPropagation="true">
-            @foreach (string mode in new[] { "date", "sentiment", "queue" })
-            {
-                string modeLabel = mode switch { "date" => "Date", "sentiment" => "Liked", _ => "Queue" };
-                bool active = SortMode == mode;
-                <button class="@(active ? "text-white bg-surface-100" : "text-gray-600 hover:text-gray-400") text-[10px] px-2 py-1 rounded transition-colors"
-                        @onclick="() => OnSortChanged.InvokeAsync(mode)">
-                    @modeLabel
-                </button>
-            }
-        </div>
+        <!-- sort toggle — only shown when a sort handler is wired up -->
+        @if (OnSortChanged.HasDelegate)
+        {
+            <div class="flex gap-0.5" @onclick:stopPropagation="true">
+                @foreach (string mode in new[] { "date", "sentiment", "queue" })
+                {
+                    string modeLabel = mode switch { "date" => "Date", "sentiment" => "Liked", _ => "Queue" };
+                    bool active = SortMode == mode;
+                    <button class="@(active ? "text-white bg-surface-100" : "text-gray-600 hover:text-gray-400") text-[10px] px-2 py-1 rounded transition-colors"
+                            @onclick="() => OnSortChanged.InvokeAsync(mode)">
+                        @modeLabel
+                    </button>
+                }
+            </div>
+        }
     </div>
 
     @if (Items.Count == 0)

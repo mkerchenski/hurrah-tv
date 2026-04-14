@@ -18,11 +18,11 @@ public static class EpisodeEndpoints
             return Results.NoContent();
         });
 
-        // unmark an episode as watched (re-adds it to Continue Watching if still the latest episode)
-        group.MapDelete("/watched", async (WatchedEpisodeRequest req, ClaimsPrincipal user, DbService db) =>
+        // unmark an episode as watched — route params avoid DELETE-with-body inference issues
+        group.MapDelete("/watched/{tmdbId:int}/{season:int}/{episode:int}", async (int tmdbId, int season, int episode, ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            await db.UnmarkEpisodeWatchedAsync(userId, req.TmdbId, req.Season, req.Episode);
+            await db.UnmarkEpisodeWatchedAsync(userId, tmdbId, season, episode);
             return Results.NoContent();
         });
 

@@ -11,7 +11,7 @@
     <div class="relative">
         <span class="icon-[heroicons--magnifying-glass] absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500"></span>
         <input type="text" @bind="_query" @bind:event="oninput" @onkeyup="HandleKeyUp"
-               placeholder="Search movies and TV shows..."
+               placeholder="@(MediaFilter.MediaType switch { "tv" => "Search TV shows...", "movie" => "Search movies...", _ => "Search movies and TV shows..." })"
                class="w-full bg-surface-50 border border-surface-200 rounded-xl pl-12 pr-12 py-3 md:text-lg
                       text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent" />
         @if (!string.IsNullOrEmpty(_query))
@@ -25,7 +25,8 @@
 
 </div>
 
-<PosterGrid Results="_filteredResults" Loading="_loading" EmptyMessage="@_emptyMessage" />
+<PosterGrid Results="_filteredResults" Loading="_loading" EmptyMessage="@_emptyMessage"
+            ShowMediaTypeBadge="@(MediaFilter.MediaType == "all")" />
 
 @code {
     private string _query = "";

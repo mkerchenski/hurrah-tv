@@ -18,12 +18,12 @@
         <!-- media type tabs — shown on Home, Queue, and Search -->
         @if (IsContentPage)
         {
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 bg-surface-100 rounded-lg p-1">
                 @foreach (string t in new[] { "tv", "all", "movie" })
                 {
                     string tLabel = t == "tv" ? "TV Shows" : t == "all" ? "All" : "Movies";
                     bool tActive = MediaFilter.MediaType == t;
-                    <button class="@(tActive ? "text-white border-b-2 border-white font-medium" : "text-gray-400 hover:text-white transition-colors") px-3 py-1 text-sm"
+                    <button class="@(tActive ? "bg-surface-200 text-white font-medium shadow-sm" : "text-gray-400 hover:text-white") px-3 py-1.5 rounded-md text-sm transition-all"
                             @onclick="() => MediaFilter.Set(t)">
                         @tLabel
                     </button>
@@ -49,35 +49,42 @@
         </div>
     </nav>
 
-    <!-- mobile top bar (logo only, minimal) -->
-    <div class="md:hidden flex items-center justify-between px-4 py-2 bg-surface sticky top-0 z-50">
-        <a href="/" class="flex items-center gap-1.5">
-            <img src="icon.svg" alt="" class="w-5 h-5" />
-            <span class="text-xl font-bold text-accent">hurrah.tv</span>
+    <!-- mobile top bar — logo + optional tabs + sign out in one compact row -->
+    <div class="md:hidden flex items-center gap-2 px-3 py-2 bg-surface border-b border-surface-200 sticky top-0 z-50">
+        <a href="/" class="flex items-center gap-1.5 flex-shrink-0 hover:opacity-90 transition-opacity">
+            <img src="icon.svg" alt="" class="w-4 h-4" />
+            <span class="text-base font-bold text-accent">hurrah.tv</span>
         </a>
-        <button @onclick="SignOut" class="text-gray-500 p-2" title="Sign out">
+
+        @if (IsContentPage)
+        {
+            <!-- tabs fill the center -->
+            <div class="flex flex-1 justify-center">
+                <div class="flex items-center gap-0.5 bg-surface-100 rounded-lg p-0.5">
+                    @foreach (string t in new[] { "tv", "all", "movie" })
+                    {
+                        string tLabel = t == "tv" ? "TV" : t == "all" ? "All" : "Movies";
+                        bool tActive = MediaFilter.MediaType == t;
+                        <button class="@(tActive ? "bg-surface-200 text-white font-medium" : "text-gray-500 hover:text-white") px-2.5 py-1 rounded-md text-xs transition-all"
+                                @onclick="() => MediaFilter.Set(t)">
+                            @tLabel
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="flex-1"></div>
+        }
+
+        <button @onclick="SignOut" class="text-gray-500 hover:text-white p-1.5 flex-shrink-0 transition-colors" title="Sign out">
             <span class="icon-[heroicons--arrow-right-start-on-rectangle] w-5 h-5"></span>
         </button>
     </div>
 
-    <!-- mobile media type tabs — second sticky row, content pages only -->
-    @if (IsContentPage)
-    {
-        <div class="md:hidden sticky top-11 z-40 bg-surface border-b border-surface-200 flex">
-            @foreach (string t in new[] { "tv", "all", "movie" })
-            {
-                string tLabel = t == "tv" ? "TV Shows" : t == "all" ? "All" : "Movies";
-                bool tActive = MediaFilter.MediaType == t;
-                <button class="flex-1 py-2 text-sm text-center transition-colors @(tActive ? "text-white border-b-2 border-white font-medium" : "text-gray-500")"
-                        @onclick="() => MediaFilter.Set(t)">
-                    @tLabel
-                </button>
-            }
-        </div>
-    }
-
-    <!-- main content — extra top padding on mobile content pages to clear both sticky rows -->
-    <main class="flex-1 px-4 md:px-6 md:py-6 max-w-7xl mx-auto w-full pb-20 md:pb-6 @(IsContentPage ? "pt-20" : "pt-4")">
+    <!-- main content -->
+    <main class="flex-1 px-4 pt-4 pb-20 md:px-6 md:py-6 md:pb-6 max-w-7xl mx-auto w-full">
         <InstallBanner />
         @Body
     </main>

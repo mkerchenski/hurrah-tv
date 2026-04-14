@@ -19,7 +19,7 @@ else
     <div class="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 md:gap-4 fade-in">
         @foreach (SearchResult result in Results)
         {
-            <PosterCard Result="result" />
+            <PosterCard Result="result" ShowMediaTypeBadge="ShowMediaTypeBadge" />
         }
     </div>
 }
@@ -28,4 +28,5 @@ else
     [Parameter] public List<SearchResult> Results { get; set; } = [];
     [Parameter] public bool Loading { get; set; }
     [Parameter] public string EmptyMessage { get; set; } = "Nothing found";
+    [Parameter] public bool ShowMediaTypeBadge { get; set; }
 }

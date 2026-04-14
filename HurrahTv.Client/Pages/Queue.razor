@@ -16,7 +16,7 @@
     <div class="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
         @foreach ((string key, string label) in _tabs)
         {
-            int count = key == "all" ? _items.Count : _statusCounts.GetValueOrDefault(key, 0);
+            int count = key == "all" ? _totalCount : _statusCounts.GetValueOrDefault(key, 0);
             bool active = _activeTab == key;
             <button class="@($"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(active ? "bg-surface-100 text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
                     @onclick="() => { _activeTab = key; _expandedStatusId = null; }">
@@ -170,6 +170,7 @@ else
 @code {
     private List<QueueItem> _items = [];
     private Dictionary<string, int> _statusCounts = [];
+    private int _totalCount;
     private bool _loading = true;
     private string _activeTab = "all";
     private int? _expandedStatusId;
@@ -211,7 +212,7 @@ else
         await LoadQueue();
     }
 
-    private void OnMediaFilterChanged() => InvokeAsync(StateHasChanged);
+    private void OnMediaFilterChanged() => InvokeAsync(() => { UpdateCounts(); StateHasChanged(); });
 
     private async Task LoadQueue()
     {
@@ -223,7 +224,11 @@ else
 
     private void UpdateCounts()
     {
-        _statusCounts = _items
+        IEnumerable<QueueItem> scoped = MediaFilter.MediaType == "all"
+            ? _items
+            : _items.Where(i => i.MediaType == MediaFilter.MediaType);
+        _totalCount = scoped.Count();
+        _statusCounts = scoped
             .GroupBy(i => StatusKey(i.Status))
             .ToDictionary(g => g.Key, g => g.Count());
     }

@@ -21,6 +21,14 @@
         </div>
     }
 
+    <!-- media type badge — shown in All mode so TV and movies are distinguishable -->
+    @if (ShowMediaTypeBadge)
+    {
+        <div class="absolute top-1.5 left-1.5 bg-black/60 text-gray-200 text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm pointer-events-none">
+            @(Result.MediaType == "tv" ? "TV" : "Movie")
+        </div>
+    }
+
     <!-- new episode indicator -->
     @if (HasNewEpisode)
     {
@@ -142,6 +150,7 @@
 @code {
     [Parameter, EditorRequired] public SearchResult Result { get; set; } = null!;
     [Parameter] public bool HasNewEpisode { get; set; }
+    [Parameter] public bool ShowMediaTypeBadge { get; set; }
     [Inject] NavigationManager Nav { get; set; } = null!;
     [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
 

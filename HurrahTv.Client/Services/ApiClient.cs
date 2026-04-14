@@ -71,10 +71,7 @@ public class ApiClient(HttpClient http)
         await _http.PostAsJsonAsync("api/episodes/watched", new WatchedEpisodeRequest(tmdbId, season, episode));
 
     public async Task UnmarkEpisodeWatchedAsync(int tmdbId, int season, int episode) =>
-        await _http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/episodes/watched")
-        {
-            Content = JsonContent.Create(new WatchedEpisodeRequest(tmdbId, season, episode))
-        });
+        await _http.DeleteAsync($"api/episodes/watched/{tmdbId}/{season}/{episode}");
 
     public async Task<List<WatchedEpisode>> GetWatchedEpisodesAsync(int tmdbId) =>
         await _http.GetFromJsonAsync<List<WatchedEpisode>>($"api/episodes/watched/{tmdbId}") ?? [];

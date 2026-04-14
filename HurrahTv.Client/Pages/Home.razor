@@ -91,38 +91,51 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- status filter chips — applies to both watchlist rows -->
-        @if (_watchingItems.Count > 0 || _upcomingItems.Count > 0)
+        <!-- watchlist rows — hidden in Movies mode (episodes are TV-only) -->
+        @if (MediaFilter.MediaType != "movie")
         {
-            <div class="flex gap-2 mb-4 flex-wrap">
-                @foreach ((QueueStatus status, string label) in new[] {
-                    (QueueStatus.Watching, "Watching"),
-                    (QueueStatus.WantToWatch, "Want to Watch"),
-                    (QueueStatus.Finished, "Finished") })
-                {
-                    bool active = IsStatusActive(status);
-                    <button class="@(active ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white border border-surface-200") px-3 py-1 rounded-full text-xs font-medium transition-all"
-                            @onclick="() => ToggleStatusFilter(status)">
-                        @label
-                    </button>
-                }
-            </div>
+            <!-- status filter chips -->
+            @if (_watchingItems.Count > 0 || _upcomingItems.Count > 0)
+            {
+                <div class="flex gap-2 mb-4 flex-wrap">
+                    @foreach ((QueueStatus status, string label) in new[] {
+                        (QueueStatus.Watching, "Watching"),
+                        (QueueStatus.WantToWatch, "Want to Watch"),
+                        (QueueStatus.Finished, "Finished") })
+                    {
+                        bool active = IsStatusActive(status);
+                        <button class="@(active ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white border border-surface-200") px-3 py-1 rounded-full text-xs font-medium transition-all"
+                                @onclick="() => ToggleStatusFilter(status)">
+                            @label
+                        </button>
+                    }
+                </div>
+            }
+
+            <!-- continue watching row -->
+            @if (_watchingItems.Count > 0)
+            {
+                <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
+                              ShowMarkWatched="true" SortMode="_watchingSort"
+                              OnSortChanged="OnWatchingSortChanged" OnMarkWatched="HandleMarkWatched" />
+            }
+
+            <!-- upcoming episodes row -->
+            @if (_upcomingItems.Count > 0)
+            {
+                <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
+                              ShowMarkWatched="false" SortMode="_upcomingSort"
+                              OnSortChanged="OnUpcomingSortChanged" />
+            }
         }
 
-        <!-- continue watching row -->
-        @if (_watchingItems.Count > 0)
+        <!-- want to watch movies — always in Movies mode; respects Want to Watch chip in All mode -->
+        @if (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
+             && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch))
         {
-            <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
-                          ShowMarkWatched="true" SortMode="_watchingSort"
-                          OnSortChanged="OnWatchingSortChanged" OnMarkWatched="HandleMarkWatched" />
-        }
-
-        <!-- upcoming episodes row -->
-        @if (_upcomingItems.Count > 0)
-        {
-            <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
-                          ShowMarkWatched="false" SortMode="_upcomingSort"
-                          OnSortChanged="OnUpcomingSortChanged" />
+            <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false"
+                          RowMode="watching" ShowMarkWatched="false" SortMode="date"
+                          OnSortChanged="EventCallback<string>.Empty" />
         }
 
         <!-- AI-curated section -->
@@ -132,9 +145,15 @@ else
         }
         @if (!string.IsNullOrEmpty(_aiError))
         {
-            <div class="flex items-center gap-2 mb-6 px-4 py-3 bg-surface-50 border border-surface-200 rounded-lg">
-                <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent flex-shrink-0"></span>
-                <span class="text-sm text-gray-400">@_aiError</span>
+            <div class="flex items-center justify-between mb-6 px-4 py-3 bg-surface-50 border border-surface-200 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent flex-shrink-0"></span>
+                    <span class="text-sm text-gray-400">@_aiError</span>
+                </div>
+                <button class="text-xs text-accent hover:text-accent-light transition-colors flex-shrink-0 ml-4"
+                        @onclick="RefreshCuration">
+                    Retry
+                </button>
             </div>
         }
 
@@ -174,6 +193,7 @@ else
     // watchlist rows
     private List<QueueItem> _watchingItems = [];
     private List<QueueItem> _upcomingItems = [];
+    private List<QueueItem> _wantToWatchMovies = [];
     private HashSet<int> _newEpisodeTmdbIds = [];
     private List<QueueItem> _recSeeds = [];
     private int[] _queuedTmdbIds = [];
@@ -334,13 +354,51 @@ else
             "queue" => [.. upcoming.OrderBy(i => i.Position)],
             _ => [.. upcoming.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)] // "date"
         };
+
+        // want to watch movies — shown in Movies mode, newest added first
+        _wantToWatchMovies = [.. allItems
+            .Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch)
+            .OrderByDescending(i => i.AddedAt)];
+    }
+
+    private async Task RefreshCuration()
+    {
+        _aiError = null;
+        _curatedItems = [];
+        _aiLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            CurationResponse? fresh = await Api.RefreshCurationAsync();
+            _aiLoading = false;
+            if (fresh?.AiEnabled == true && fresh.Rows.Count > 0)
+            {
+                _curatedItems = [.. fresh.Rows
+                    .SelectMany(row => row.Results
+                        .Select(r => new CuratedItem
+                        {
+                            Result = r,
+                            Reason = row.Reasons.TryGetValue(r.TmdbId, out string? reason) ? reason : ""
+                        }))];
+            }
+            else
+            {
+                _aiError = fresh == null ? "Failed to reach curation API" : $"Not enough candidates ({fresh.CandidateCount})";
+            }
+        }
+        catch (Exception ex)
+        {
+            _aiLoading = false;
+            _aiError = $"Exception: {ex.Message}";
+        }
+        StateHasChanged();
     }
 
     private async Task LoadAICuration()
     {
         try
         {
-
             _aiLoading = true;
             StateHasChanged();
 

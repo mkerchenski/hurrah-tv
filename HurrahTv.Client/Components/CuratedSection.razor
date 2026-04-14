@@ -16,9 +16,12 @@
             <span>Analyzing your taste...</span>
         </div>
     }
+    else if (Items.Count > 0 && FilteredItems.Count == 0)
+    {
+        <p class="text-gray-600 text-sm py-4">No @(MediaType == "tv" ? "TV show" : "movie") recommendations yet — switch to All to see your picks.</p>
+    }
     else if (Items.Count > 0)
     {
-
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             @foreach (CuratedItem item in FilteredItems)
             {

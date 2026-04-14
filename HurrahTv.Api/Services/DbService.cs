@@ -358,9 +358,14 @@ public class DbService(IConfiguration config)
             WHERE Id = @Id
             """, new
         {
-            Latest = latestEpisodeDate, LatestSeason = latestEpisodeSeason, LatestNum = latestEpisodeNumber,
-            Next = nextEpisodeDate, NextSeason = nextEpisodeSeason, NextNum = nextEpisodeNumber,
-            CheckedAt = DateTime.UtcNow, Id = id
+            Latest = latestEpisodeDate,
+            LatestSeason = latestEpisodeSeason,
+            LatestNum = latestEpisodeNumber,
+            Next = nextEpisodeDate,
+            NextSeason = nextEpisodeSeason,
+            NextNum = nextEpisodeNumber,
+            CheckedAt = DateTime.UtcNow,
+            Id = id
         });
     }
 
