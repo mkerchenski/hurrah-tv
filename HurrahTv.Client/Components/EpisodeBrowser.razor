@@ -103,6 +103,12 @@
                                     @if (!upcoming)
                                     {
                                     <div class="flex gap-1 flex-shrink-0 ml-2">
+                                        @{ bool epWatched = IsWatched(sn, en); }
+                                        <button class="@($"w-7 h-7 rounded-full flex items-center justify-center transition-all duration-150 {(epWatched ? "text-green-400 bg-green-600/20" : "text-gray-600 hover:text-green-400 hover:bg-green-600/10")}")"
+                                                title="@(epWatched ? "Unmark watched" : "Mark watched")"
+                                                @onclick="() => ToggleWatched(sn, en)">
+                                            <span class="@(epWatched ? "icon-[heroicons--check-circle-20-solid]" : "icon-[heroicons--check-circle]") w-4 h-4"></span>
+                                        </button>
                                         <button class="@($"w-7 h-7 rounded flex items-center justify-center transition-colors {(epSent?.Sentiment == SentimentLevel.Down ? "bg-red-600/20 text-red-400" : "text-gray-600 hover:text-red-400")}")"
                                                 @onclick="() => SetEpisodeSentiment(sn, en, SentimentLevel.Down)">
                                             <span class="icon-[heroicons--hand-thumb-down] w-3.5 h-3.5"></span>
@@ -132,13 +138,34 @@
     [Parameter, EditorRequired] public List<SeasonInfo> Seasons { get; set; } = [];
 
     private ShowSentiments _sentiments = new();
+    private HashSet<(int Season, int Episode)> _watchedSet = [];
     private int? _expandedSeason;
     private SeasonDetail? _seasonDetail;
     private bool _loadingEpisodes;
 
     protected override async Task OnInitializedAsync()
     {
-        _sentiments = await Api.GetShowSentimentsAsync(TmdbId);
+        Task<ShowSentiments> sentimentsTask = Api.GetShowSentimentsAsync(TmdbId);
+        Task<List<WatchedEpisode>> watchedTask = Api.GetWatchedEpisodesAsync(TmdbId);
+        await Task.WhenAll(sentimentsTask, watchedTask);
+        _sentiments = sentimentsTask.Result;
+        _watchedSet = [.. watchedTask.Result.Select(w => (w.Season, w.Episode))];
+    }
+
+    private bool IsWatched(int season, int episode) => _watchedSet.Contains((season, episode));
+
+    private async Task ToggleWatched(int season, int episode)
+    {
+        if (IsWatched(season, episode))
+        {
+            _watchedSet.Remove((season, episode));
+            await Api.UnmarkEpisodeWatchedAsync(TmdbId, season, episode);
+        }
+        else
+        {
+            _watchedSet.Add((season, episode));
+            await Api.MarkEpisodeWatchedAsync(TmdbId, season, episode);
+        }
     }
 
     private async Task ToggleSeason(int seasonNumber)

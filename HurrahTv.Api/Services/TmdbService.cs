@@ -372,36 +372,50 @@ public class TmdbService
         return results;
     }
 
-    // returns (lastAiredDate, nextAirDate) for a TV show
-    public async Task<(DateTime? LastAired, DateTime? NextAir)> GetEpisodeDatesAsync(int tmdbId)
+    // returns dates + season/episode numbers for the latest aired and next upcoming episodes
+    public async Task<(DateTime? LastAired, int? LastSeason, int? LastEpisode, DateTime? NextAir, int? NextSeason, int? NextEpisode)> GetEpisodeDatesAsync(int tmdbId)
     {
         string cacheKey = $"episode-dates:{tmdbId}";
-        if (_cache.TryGetValue(cacheKey, out (DateTime? LastAired, DateTime? NextAir) cached))
+        if (_cache.TryGetValue(cacheKey, out (DateTime? LastAired, int? LastSeason, int? LastEpisode, DateTime? NextAir, int? NextSeason, int? NextEpisode) cached))
             return cached;
 
         string url = $"tv/{tmdbId}?api_key={_apiKey}&language=en-US";
         JsonElement? raw = await GetAsync<JsonElement?>(url);
-        if (raw == null) return (null, null);
+        if (raw == null) return (null, null, null, null, null, null);
 
         JsonElement json = raw.Value;
 
         DateTime? lastAired = null;
-        if (json.TryGetProperty("last_episode_to_air", out JsonElement lastEp) && lastEp.ValueKind != JsonValueKind.Null
-            && lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
-            && DateTime.TryParse(lastDate.GetString(), out DateTime parsedLast))
+        int? lastSeason = null, lastEpisode = null;
+        if (json.TryGetProperty("last_episode_to_air", out JsonElement lastEp) && lastEp.ValueKind != JsonValueKind.Null)
         {
-            lastAired = parsedLast;
+            if (lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
+                && DateTime.TryParse(lastDate.GetString(), out DateTime parsedLast))
+                lastAired = parsedLast;
+
+            if (lastEp.TryGetProperty("season_number", out JsonElement lastSn) && lastSn.ValueKind == JsonValueKind.Number)
+                lastSeason = lastSn.GetInt32();
+
+            if (lastEp.TryGetProperty("episode_number", out JsonElement lastEn) && lastEn.ValueKind == JsonValueKind.Number)
+                lastEpisode = lastEn.GetInt32();
         }
 
         DateTime? nextAir = null;
-        if (json.TryGetProperty("next_episode_to_air", out JsonElement nextEp) && nextEp.ValueKind != JsonValueKind.Null
-            && nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
-            && DateTime.TryParse(nextDate.GetString(), out DateTime parsedNext))
+        int? nextSeason = null, nextEpisode = null;
+        if (json.TryGetProperty("next_episode_to_air", out JsonElement nextEp) && nextEp.ValueKind != JsonValueKind.Null)
         {
-            nextAir = parsedNext;
+            if (nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
+                && DateTime.TryParse(nextDate.GetString(), out DateTime parsedNext))
+                nextAir = parsedNext;
+
+            if (nextEp.TryGetProperty("season_number", out JsonElement nextSn) && nextSn.ValueKind == JsonValueKind.Number)
+                nextSeason = nextSn.GetInt32();
+
+            if (nextEp.TryGetProperty("episode_number", out JsonElement nextEn) && nextEn.ValueKind == JsonValueKind.Number)
+                nextEpisode = nextEn.GetInt32();
         }
 
-        (DateTime? LastAired, DateTime? NextAir) result = (lastAired, nextAir);
+        var result = (lastAired, lastSeason, lastEpisode, nextAir, nextSeason, nextEpisode);
         _cache.Set(cacheKey, result, TimeSpan.FromHours(6));
         return result;
     }

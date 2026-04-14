@@ -45,8 +45,31 @@ public class ApiClient(HttpClient http)
         await _http.GetFromJsonAsync<SeasonDetail>($"api/details/tv/{tmdbId}/season/{seasonNumber}");
 
     // queue
-    public async Task<List<QueueItem>> GetQueueAsync() =>
-        await _http.GetFromJsonAsync<List<QueueItem>>("api/queue") ?? [];
+    public async Task<QueueResponse> GetQueueResponseAsync()
+    {
+        QueueResponse? response = await _http.GetFromJsonAsync<QueueResponse>("api/queue");
+        return response ?? new QueueResponse([], []);
+    }
+
+    // convenience for callers that only need items (Details page, Queue page)
+    public async Task<List<QueueItem>> GetQueueAsync()
+    {
+        QueueResponse response = await GetQueueResponseAsync();
+        return response.Items;
+    }
+
+    // watched episodes
+    public async Task MarkEpisodeWatchedAsync(int tmdbId, int season, int episode) =>
+        await _http.PostAsJsonAsync("api/episodes/watched", new WatchedEpisodeRequest(tmdbId, season, episode));
+
+    public async Task UnmarkEpisodeWatchedAsync(int tmdbId, int season, int episode) =>
+        await _http.SendAsync(new HttpRequestMessage(HttpMethod.Delete, "api/episodes/watched")
+        {
+            Content = JsonContent.Create(new WatchedEpisodeRequest(tmdbId, season, episode))
+        });
+
+    public async Task<List<WatchedEpisode>> GetWatchedEpisodesAsync(int tmdbId) =>
+        await _http.GetFromJsonAsync<List<WatchedEpisode>>($"api/episodes/watched/{tmdbId}") ?? [];
 
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item)
     {

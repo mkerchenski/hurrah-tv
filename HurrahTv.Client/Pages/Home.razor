@@ -90,16 +90,38 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
+        <!-- status filter chips — applies to both watchlist rows -->
+        @if (_watchingItems.Count > 0 || _upcomingItems.Count > 0)
+        {
+            <div class="flex gap-2 mb-4 flex-wrap">
+                @foreach ((QueueStatus status, string label) in new[] {
+                    (QueueStatus.Watching, "Watching"),
+                    (QueueStatus.WantToWatch, "Want to Watch"),
+                    (QueueStatus.Finished, "Finished") })
+                {
+                    bool active = IsStatusActive(status);
+                    <button class="@(active ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white border border-surface-200") px-3 py-1 rounded-full text-xs font-medium transition-all"
+                            @onclick="() => ToggleStatusFilter(status)">
+                        @label
+                    </button>
+                }
+            </div>
+        }
+
         <!-- continue watching row -->
         @if (_watchingItems.Count > 0)
         {
-            <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching" />
+            <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
+                          ShowMarkWatched="true" SortMode="_watchingSort"
+                          OnSortChanged="OnWatchingSortChanged" OnMarkWatched="HandleMarkWatched" />
         }
 
         <!-- upcoming episodes row -->
         @if (_upcomingItems.Count > 0)
         {
-            <WatchlistRow Title="Upcoming Episodes" Subtitle="This week" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming" />
+            <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
+                          ShowMarkWatched="false" SortMode="_upcomingSort"
+                          OnSortChanged="OnUpcomingSortChanged" />
         }
 
         <!-- AI-curated section -->
@@ -151,6 +173,10 @@ else
     private List<QueueItem> _upcomingItems = [];
     private HashSet<int> _newEpisodeTmdbIds = [];
     private List<QueueItem> _recSeeds = [];
+    private HashSet<(int TmdbId, int Season, int Episode)> _watchedSet = [];
+    private string _watchingSort = "date";
+    private string _upcomingSort = "date";
+    private UserSettings _settings = new();
 
     // AI curation
     private List<CuratedItem> _curatedItems = [];
@@ -165,7 +191,10 @@ else
         _onboardingComplete = _userServices.Count > 0;
 
         if (_onboardingComplete)
+        {
+            _settings = await Api.GetUserSettingsAsync();
             await LoadWatchlistData();
+        }
     }
 
     private async Task OnboardingNext()
@@ -208,25 +237,22 @@ else
 
     private async Task LoadWatchlistData()
     {
-        List<QueueItem> allItems = await Api.GetQueueAsync();
+        QueueResponse queueResponse = await Api.GetQueueResponseAsync();
+        List<QueueItem> allItems = queueResponse.Items;
+
+        // build watched set for O(1) lookups during render
+        _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
+
+        // stamp IsLatestEpisodeWatched on each item
+        foreach (QueueItem item in allItems)
+        {
+            if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
+                item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
+        }
 
         _recSeeds = PickRecSeeds(allItems, 3);
 
-        // continue watching: all Watching items, recently aired first then by position
-        _watchingItems = allItems
-            .Where(i => i.Status == QueueStatus.Watching)
-            .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
-            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
-            .ThenBy(i => i.Position)
-            .ToList();
-
-        // upcoming episodes: TV from any status except NotForMe, next 7 days
-        _upcomingItems = allItems
-            .Where(i => i.MediaType == "tv"
-                && i.Status != QueueStatus.NotForMe
-                && i.HasUpcomingThisWeek)
-            .OrderBy(i => i.NextEpisodeDate)
-            .ToList();
+        ApplyWatchlistFilters(allItems);
 
         _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
 
@@ -234,6 +260,73 @@ else
 
         // load AI curation (awaited so StateHasChanged works properly)
         await LoadAICuration();
+    }
+
+    private bool IsStatusActive(QueueStatus status) => status switch
+    {
+        QueueStatus.Watching    => _settings.ShowWatching,
+        QueueStatus.WantToWatch => _settings.ShowWantToWatch,
+        QueueStatus.Finished    => _settings.ShowFinished,
+        _                       => false
+    };
+
+    private async Task ToggleStatusFilter(QueueStatus status)
+    {
+        // count currently active chips — prevent turning off the last one
+        int activeCount = (_settings.ShowWatching ? 1 : 0) + (_settings.ShowWantToWatch ? 1 : 0) + (_settings.ShowFinished ? 1 : 0);
+        bool current = IsStatusActive(status);
+        if (current && activeCount == 1) return; // last active chip — snap back
+
+        switch (status)
+        {
+            case QueueStatus.Watching:    _settings.ShowWatching    = !current; break;
+            case QueueStatus.WantToWatch: _settings.ShowWantToWatch = !current; break;
+            case QueueStatus.Finished:    _settings.ShowFinished    = !current; break;
+        }
+
+        await Api.SetUserSettingsAsync(_settings);
+        // reload to re-apply filter (uses cached queue data from last load)
+        await ReloadWatchlist();
+    }
+
+    private void ApplyWatchlistFilters(List<QueueItem> allItems)
+    {
+        DateTime now = DateTime.Now;
+        DateTime sevenDaysAgo = now.AddDays(-7);
+        DateTime fourteenDaysAhead = now.AddDays(14);
+
+        // continue watching: Watching status items, respecting the ShowWatching chip, excluding watched latest episode
+        IEnumerable<QueueItem> watching = allItems
+            .Where(i => i.Status == QueueStatus.Watching && _settings.ShowWatching && !i.IsLatestEpisodeWatched);
+
+        _watchingItems = _watchingSort switch
+        {
+            "sentiment" => [.. watching
+                .OrderByDescending(i => i.Sentiment ?? 0)
+                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+            "queue" => [.. watching.OrderBy(i => i.Position)],
+            _ => [.. watching  // "date" — most recently aired first
+                .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
+                .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
+                .ThenBy(i => i.Position)]
+        };
+
+        // upcoming episodes: TV, respecting status filter chips, recently aired OR airing soon
+        IEnumerable<QueueItem> upcoming = allItems
+            .Where(i => i.MediaType == "tv"
+                && i.Status != QueueStatus.NotForMe
+                && IsStatusActive(i.Status)
+                && ((i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
+                    || (i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead)));
+
+        _upcomingItems = _upcomingSort switch
+        {
+            "sentiment" => [.. upcoming
+                .OrderByDescending(i => i.Sentiment ?? 0)
+                .ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+            "queue" => [.. upcoming.OrderBy(i => i.Position)],
+            _ => [.. upcoming.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)] // "date"
+        };
     }
 
     private async Task LoadAICuration()
@@ -312,22 +405,63 @@ else
 
     private async Task ReloadWatchlist()
     {
-        List<QueueItem> allItems = await Api.GetQueueAsync();
+        QueueResponse queueResponse = await Api.GetQueueResponseAsync();
+        List<QueueItem> allItems = queueResponse.Items;
 
-        _watchingItems = allItems
-            .Where(i => i.Status == QueueStatus.Watching)
-            .OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0)
-            .ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)
-            .ThenBy(i => i.Position)
-            .ToList();
+        _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
+        foreach (QueueItem item in allItems)
+        {
+            if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
+                item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
+        }
 
-        _upcomingItems = allItems
-            .Where(i => i.MediaType == "tv"
-                && i.Status != QueueStatus.NotForMe
-                && i.HasUpcomingThisWeek)
-            .OrderBy(i => i.NextEpisodeDate)
-            .ToList();
+        _recSeeds = PickRecSeeds(allItems, 3);
+        ApplyWatchlistFilters(allItems);
+        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
+        StateHasChanged();
+    }
 
+    private async Task HandleMarkWatched(QueueItem item)
+    {
+        if (!item.LatestEpisodeSeason.HasValue || !item.LatestEpisodeNumber.HasValue) return;
+
+        if (item.IsLatestEpisodeWatched)
+        {
+            await Api.UnmarkEpisodeWatchedAsync(item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value);
+            item.IsLatestEpisodeWatched = false;
+        }
+        else
+        {
+            await Api.MarkEpisodeWatchedAsync(item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value);
+            item.IsLatestEpisodeWatched = true;
+            // optimistically remove from Continue Watching
+            _watchingItems = [.. _watchingItems.Where(i => i.Id != item.Id)];
+        }
+        StateHasChanged();
+    }
+
+    private void OnWatchingSortChanged(string mode)
+    {
+        _watchingSort = mode;
+        // re-sort in place without re-fetching
+        _watchingItems = _watchingSort switch
+        {
+            "sentiment" => [.. _watchingItems.OrderByDescending(i => i.Sentiment ?? 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+            "queue" => [.. _watchingItems.OrderBy(i => i.Position)],
+            _ => [.. _watchingItems.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
+        };
+        StateHasChanged();
+    }
+
+    private void OnUpcomingSortChanged(string mode)
+    {
+        _upcomingSort = mode;
+        _upcomingItems = _upcomingSort switch
+        {
+            "sentiment" => [.. _upcomingItems.OrderByDescending(i => i.Sentiment ?? 0).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+            "queue" => [.. _upcomingItems.OrderBy(i => i.Position)],
+            _ => [.. _upcomingItems.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
+        };
         StateHasChanged();
     }
 

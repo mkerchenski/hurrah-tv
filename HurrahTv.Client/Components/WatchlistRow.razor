@@ -3,12 +3,24 @@
 @inject IJSRuntime JS
 
 <section class="mb-6 md:mb-8">
-    <div class="flex items-baseline justify-between mb-3">
+    <div class="flex items-center justify-between mb-3">
         <div class="flex items-baseline gap-2">
             <h3 class="text-sm md:text-base font-semibold text-white">@Title</h3>
             @if (!string.IsNullOrEmpty(Subtitle))
             {
                 <span class="text-xs text-gray-500">@Subtitle</span>
+            }
+        </div>
+        <!-- sort toggle -->
+        <div class="flex gap-0.5" @onclick:stopPropagation="true">
+            @foreach (string mode in new[] { "date", "sentiment", "queue" })
+            {
+                string modeLabel = mode switch { "date" => "Date", "sentiment" => "Liked", _ => "Queue" };
+                bool active = SortMode == mode;
+                <button class="@(active ? "text-white bg-surface-100" : "text-gray-600 hover:text-gray-400") text-[10px] px-2 py-1 rounded transition-colors"
+                        @onclick="() => OnSortChanged.InvokeAsync(mode)">
+                    @modeLabel
+                </button>
             }
         </div>
     </div>
@@ -76,10 +88,20 @@
                         <!-- title overlay at bottom -->
                         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 rounded-b-lg">
                             <div class="flex items-center gap-1">
-                                <span class="text-white text-xs font-medium leading-tight truncate">@item.Title</span>
+                                <span class="text-white text-xs font-medium leading-tight truncate flex-1">@item.Title</span>
                                 @if (item.Sentiment.HasValue)
                                 {
                                     <span class="@SentimentHelpers.Icon(item.Sentiment.Value) @SentimentHelpers.Color(item.Sentiment.Value) w-3 h-3 shrink-0"></span>
+                                }
+                                @if (ShowMarkWatched && item.MediaType == "tv" && item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
+                                {
+                                    bool watched = item.IsLatestEpisodeWatched;
+                                    <button class="@(watched ? "border-green-400 bg-green-600/20 text-green-400" : "border-white/30 text-white/40 hover:border-green-400 hover:text-green-400") w-7 h-7 rounded-full border-2 flex items-center justify-center transition-all duration-150 shrink-0"
+                                            title="@(watched ? "Unmark watched" : "Mark watched")"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => OnMarkWatched.InvokeAsync(item)">
+                                        <span class="icon-[heroicons--check] w-3.5 h-3.5"></span>
+                                    </button>
                                 }
                             </div>
                             @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
@@ -109,6 +131,10 @@
     [Parameter, EditorRequired] public List<QueueItem> Items { get; set; } = [];
     [Parameter] public bool ShowAirDates { get; set; }
     [Parameter] public string RowMode { get; set; } = "watching"; // "watching" or "upcoming"
+    [Parameter] public bool ShowMarkWatched { get; set; }         // true for Continue Watching only
+    [Parameter] public string SortMode { get; set; } = "date";   // "date" | "sentiment" | "queue"
+    [Parameter] public EventCallback<string> OnSortChanged { get; set; }
+    [Parameter] public EventCallback<QueueItem> OnMarkWatched { get; set; }
 
     [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
 

@@ -33,8 +33,9 @@ public static class QueueEndpoints
                     {
                         try
                         {
-                            (DateTime? lastAired, DateTime? nextAir) = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
-                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, nextAir);
+                            (DateTime? lastAired, int? lastSeason, int? lastEp, DateTime? nextAir, int? nextSeason, int? nextEp)
+                                = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
+                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, lastSeason, lastEp, nextAir, nextSeason, nextEp);
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException)
                         {
@@ -50,7 +51,8 @@ public static class QueueEndpoints
                 }
             }
 
-            return Results.Ok(items);
+            List<WatchedEpisode> watchedEpisodes = await db.GetWatchedEpisodesAsync(userId);
+            return Results.Ok(new QueueResponse(items, watchedEpisodes));
         });
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>

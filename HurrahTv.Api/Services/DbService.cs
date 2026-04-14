@@ -126,6 +126,27 @@ public class DbService(IConfiguration config)
                 CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 UNIQUE(UserId, TmdbId, SeasonNumber, EpisodeNumber)
             );
+
+            -- per-episode watched tracking (does not affect queue status or progress)
+            CREATE TABLE IF NOT EXISTS WatchedEpisodes (
+                UserId    VARCHAR(50) NOT NULL,
+                TmdbId    INT         NOT NULL,
+                Season    INT         NOT NULL,
+                Episode   INT         NOT NULL,
+                WatchedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (UserId, TmdbId, Season, Episode)
+            );
+
+            -- specific episode numbers for latest aired and next upcoming
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeSeason INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeNumber INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS NextEpisodeSeason   INT NULL;
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS NextEpisodeNumber   INT NULL;
+
+            -- home page watchlist status filter preferences
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWatching    BOOL NOT NULL DEFAULT TRUE;
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWantToWatch BOOL NOT NULL DEFAULT TRUE;
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowFinished    BOOL NOT NULL DEFAULT TRUE;
             """, transaction: tx);
 
         await tx.CommitAsync();
@@ -320,13 +341,27 @@ public class DbService(IConfiguration config)
         };
     }
 
-    public async Task UpdateEpisodeDatesAsync(int id, DateTime? latestEpisodeDate, DateTime? nextEpisodeDate)
+    public async Task UpdateEpisodeDatesAsync(int id,
+        DateTime? latestEpisodeDate, int? latestEpisodeSeason, int? latestEpisodeNumber,
+        DateTime? nextEpisodeDate, int? nextEpisodeSeason, int? nextEpisodeNumber)
     {
         using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            UPDATE QueueItems SET LatestEpisodeDate = @Latest, NextEpisodeDate = @Next, LastEpisodeCheckAt = @CheckedAt
+            UPDATE QueueItems SET
+                LatestEpisodeDate   = @Latest,
+                LatestEpisodeSeason = @LatestSeason,
+                LatestEpisodeNumber = @LatestNum,
+                NextEpisodeDate     = @Next,
+                NextEpisodeSeason   = @NextSeason,
+                NextEpisodeNumber   = @NextNum,
+                LastEpisodeCheckAt  = @CheckedAt
             WHERE Id = @Id
-            """, new { Latest = latestEpisodeDate, Next = nextEpisodeDate, CheckedAt = DateTime.UtcNow, Id = id });
+            """, new
+        {
+            Latest = latestEpisodeDate, LatestSeason = latestEpisodeSeason, LatestNum = latestEpisodeNumber,
+            Next = nextEpisodeDate, NextSeason = nextEpisodeSeason, NextNum = nextEpisodeNumber,
+            CheckedAt = DateTime.UtcNow, Id = id
+        });
     }
 
     // user preferences (loads services, genres, dismissals, and settings in parallel)
@@ -563,7 +598,7 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
-            "SELECT EnglishOnly FROM UserSettings WHERE UserId = @UserId",
+            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished FROM UserSettings WHERE UserId = @UserId",
             new { UserId = userId });
         return settings ?? new UserSettings();
     }
@@ -572,10 +607,58 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            INSERT INTO UserSettings (UserId, EnglishOnly)
-            VALUES (@UserId, @EnglishOnly)
-            ON CONFLICT (UserId) DO UPDATE SET EnglishOnly = @EnglishOnly
-            """, new { UserId = userId, settings.EnglishOnly });
+            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished)
+            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished)
+            ON CONFLICT (UserId) DO UPDATE SET
+                EnglishOnly    = @EnglishOnly,
+                ShowWatching   = @ShowWatching,
+                ShowWantToWatch = @ShowWantToWatch,
+                ShowFinished   = @ShowFinished
+            """, new
+        {
+            UserId = userId,
+            settings.EnglishOnly,
+            settings.ShowWatching,
+            settings.ShowWantToWatch,
+            settings.ShowFinished
+        });
+    }
+
+    // watched episodes
+    public async Task MarkEpisodeWatchedAsync(string userId, int tmdbId, int season, int episode)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            INSERT INTO WatchedEpisodes (UserId, TmdbId, Season, Episode, WatchedAt)
+            VALUES (@UserId, @TmdbId, @Season, @Episode, NOW())
+            ON CONFLICT DO NOTHING
+            """, new { UserId = userId, TmdbId = tmdbId, Season = season, Episode = episode });
+    }
+
+    public async Task UnmarkEpisodeWatchedAsync(string userId, int tmdbId, int season, int episode)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        await db.ExecuteAsync(
+            "DELETE FROM WatchedEpisodes WHERE UserId = @UserId AND TmdbId = @TmdbId AND Season = @Season AND Episode = @Episode",
+            new { UserId = userId, TmdbId = tmdbId, Season = season, Episode = episode });
+    }
+
+    public async Task<List<WatchedEpisode>> GetWatchedEpisodesAsync(string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        IEnumerable<(int TmdbId, int Season, int Episode)> rows = await db.QueryAsync<(int, int, int)>(
+            "SELECT TmdbId, Season, Episode FROM WatchedEpisodes WHERE UserId = @UserId",
+            new { UserId = userId });
+        return [.. rows.Select(r => new WatchedEpisode(r.TmdbId, r.Season, r.Episode))];
+    }
+
+    public async Task<List<WatchedEpisode>> GetWatchedEpisodesForShowAsync(string userId, int tmdbId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        IEnumerable<(int TmdbId, int Season, int Episode)> rows = await db.QueryAsync<(int, int, int)>(
+            "SELECT TmdbId, Season, Episode FROM WatchedEpisodes WHERE UserId = @UserId AND TmdbId = @TmdbId",
+            new { UserId = userId, TmdbId = tmdbId });
+        return [.. rows.Select(r => new WatchedEpisode(r.TmdbId, r.Season, r.Episode))];
     }
 
     private async Task<NpgsqlConnection> OpenAsync()

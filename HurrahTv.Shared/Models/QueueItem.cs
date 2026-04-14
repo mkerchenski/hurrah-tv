@@ -16,9 +16,16 @@ public class QueueItem
     // watchlist fields
     public int? LastSeasonWatched { get; set; }
     public int? LastEpisodeWatched { get; set; }
-    public DateTime? LatestEpisodeDate { get; set; } // last aired episode
-    public DateTime? NextEpisodeDate { get; set; } // next upcoming episode
-    public DateTime? LastEpisodeCheckAt { get; set; } // when we last refreshed from TMDb
+    public DateTime? LatestEpisodeDate { get; set; }   // when the latest episode aired
+    public int? LatestEpisodeSeason { get; set; }      // season of the latest aired episode
+    public int? LatestEpisodeNumber { get; set; }      // episode number of the latest aired episode
+    public DateTime? NextEpisodeDate { get; set; }     // when the next episode airs
+    public int? NextEpisodeSeason { get; set; }        // season of the next episode
+    public int? NextEpisodeNumber { get; set; }        // episode number of the next episode
+    public DateTime? LastEpisodeCheckAt { get; set; }  // when we last refreshed from TMDb
+
+    // set by Home.razor after loading WatchedEpisodes — true when the latest aired episode has been marked watched
+    public bool IsLatestEpisodeWatched { get; set; }
 
     public string PosterUrl(string size = "w342") => TmdbImage.Url(PosterPath, size);
 
