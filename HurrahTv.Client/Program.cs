@@ -26,5 +26,6 @@ builder.Services.AddScoped(sp =>
 });
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddSingleton<QuickActionService>();
+builder.Services.AddSingleton<MediaFilterService>();
 
 await builder.Build().RunAsync();

@@ -1,6 +1,8 @@
 @page "/queue"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
+@inject MediaFilterService MediaFilter
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -199,14 +201,17 @@ else
         _                       => "unknown"
     };
 
-    private IEnumerable<QueueItem> FilteredItems => _activeTab == "all"
-        ? _items
-        : _items.Where(i => StatusKey(i.Status) == _activeTab);
+    private IEnumerable<QueueItem> FilteredItems =>
+        (_activeTab == "all" ? _items : _items.Where(i => StatusKey(i.Status) == _activeTab))
+        .Where(i => MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType);
 
     protected override async Task OnInitializedAsync()
     {
+        MediaFilter.OnChanged += OnMediaFilterChanged;
         await LoadQueue();
     }
+
+    private void OnMediaFilterChanged() => InvokeAsync(StateHasChanged);
 
     private async Task LoadQueue()
     {
@@ -246,4 +251,6 @@ else
         }
         catch { }
     }
+
+    public void Dispose() => MediaFilter.OnChanged -= OnMediaFilterChanged;
 }

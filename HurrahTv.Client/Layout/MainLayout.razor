@@ -1,9 +1,11 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
 @inject IJSRuntime JS
 @inject IWebAssemblyHostEnvironment HostEnv
 @inject NavigationManager Nav
+@inject MediaFilterService MediaFilter
 
 <div class="min-h-screen flex flex-col">
     <!-- desktop top nav (hidden on mobile) -->
@@ -12,6 +14,22 @@
             <img src="icon.svg" alt="" class="w-6 h-6" />
             <span class="text-2xl font-bold text-accent">hurrah.tv</span>
         </a>
+
+        <!-- media type tabs — shown on Home, Queue, and Search -->
+        @if (IsContentPage)
+        {
+            <div class="flex items-center gap-1">
+                @foreach (string t in new[] { "tv", "all", "movie" })
+                {
+                    string tLabel = t == "tv" ? "TV Shows" : t == "all" ? "All" : "Movies";
+                    bool tActive = MediaFilter.MediaType == t;
+                    <button class="@(tActive ? "text-white border-b-2 border-white font-medium" : "text-gray-400 hover:text-white transition-colors") px-3 py-1 text-sm"
+                            @onclick="() => MediaFilter.Set(t)">
+                        @tLabel
+                    </button>
+                }
+            </div>
+        }
 
         <div class="flex items-center gap-4">
             <a href="/search" class="text-gray-300 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-surface-100">
@@ -42,8 +60,24 @@
         </button>
     </div>
 
-    <!-- main content -->
-    <main class="flex-1 px-4 py-4 md:px-6 md:py-6 max-w-7xl mx-auto w-full pb-20 md:pb-6">
+    <!-- mobile media type tabs — second sticky row, content pages only -->
+    @if (IsContentPage)
+    {
+        <div class="md:hidden sticky top-11 z-40 bg-surface border-b border-surface-200 flex">
+            @foreach (string t in new[] { "tv", "all", "movie" })
+            {
+                string tLabel = t == "tv" ? "TV Shows" : t == "all" ? "All" : "Movies";
+                bool tActive = MediaFilter.MediaType == t;
+                <button class="flex-1 py-2 text-sm text-center transition-colors @(tActive ? "text-white border-b-2 border-white font-medium" : "text-gray-500")"
+                        @onclick="() => MediaFilter.Set(t)">
+                    @tLabel
+                </button>
+            }
+        </div>
+    }
+
+    <!-- main content — extra top padding on mobile content pages to clear both sticky rows -->
+    <main class="flex-1 px-4 md:px-6 md:py-6 max-w-7xl mx-auto w-full pb-20 md:pb-6 @(IsContentPage ? "pt-20" : "pt-4")">
         <InstallBanner />
         @Body
     </main>
@@ -83,6 +117,15 @@
 @code {
     private string? _envPrefix;
 
+    private bool IsContentPage
+    {
+        get
+        {
+            string path = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0].Trim('/');
+            return path is "" or "queue" or "search";
+        }
+    }
+
     protected override void OnInitialized()
     {
         _envPrefix = HostEnv.Environment switch
@@ -91,7 +134,11 @@
             "Staging" => "[STAGING] ",
             _ => null
         };
+        Nav.LocationChanged += OnLocationChanged;
     }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => InvokeAsync(StateHasChanged);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -110,4 +157,6 @@
         await TokenService.ClearTokenAsync();
         AuthState.NotifyAuthChanged();
     }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }

@@ -18,17 +18,6 @@
     }
     else if (Items.Count > 0)
     {
-        <!-- tv / movies toggle -->
-        <div class="flex bg-surface-50 rounded-full p-1 mb-4 w-fit">
-            <button class="@(_tab == "tv" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 py-1.5 rounded-full text-sm font-medium transition-all"
-                    @onclick="@(() => _tab = "tv")">
-                TV Shows (@_tvItems.Count)
-            </button>
-            <button class="@(_tab == "movie" ? "bg-accent text-white" : "text-gray-400 hover:text-white") px-4 py-1.5 rounded-full text-sm font-medium transition-all"
-                    @onclick="@(() => _tab = "movie")">
-                Movies (@_movieItems.Count)
-            </button>
-        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             @foreach (CuratedItem item in FilteredItems)
@@ -106,22 +95,16 @@
 @code {
     [Parameter, EditorRequired] public List<CuratedItem> Items { get; set; } = [];
     [Parameter] public bool Loading { get; set; }
+    [Parameter] public string MediaType { get; set; } = "all"; // "all" | "tv" | "movie"
 
     private HashSet<int> _addedIds = [];
-    private string _tab = "tv";
-    private List<CuratedItem> _tvItems = [];
-    private List<CuratedItem> _movieItems = [];
 
-    private List<CuratedItem> FilteredItems => _tab == "tv" ? _tvItems : _movieItems;
-
-    protected override void OnParametersSet()
+    private List<CuratedItem> FilteredItems => MediaType switch
     {
-        _tvItems = Items.Where(i => i.Result.MediaType == MediaTypes.Tv).ToList();
-        _movieItems = Items.Where(i => i.Result.MediaType == MediaTypes.Movie).ToList();
-
-        if (_tvItems.Count == 0 && _movieItems.Count > 0)
-            _tab = "movie";
-    }
+        "tv"    => Items.Where(i => i.Result.MediaType == MediaTypes.Tv).ToList(),
+        "movie" => Items.Where(i => i.Result.MediaType == MediaTypes.Movie).ToList(),
+        _       => Items
+    };
 
     private void GoToDetails(SearchResult result) => Nav.NavigateTo($"/details/{result.MediaType}/{result.TmdbId}");
 

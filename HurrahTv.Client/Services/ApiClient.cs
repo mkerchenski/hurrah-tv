@@ -27,11 +27,19 @@ public class ApiClient(HttpClient http)
         await _http.GetFromJsonAsync<SearchResponse>($"api/search?q={Uri.EscapeDataString(query)}")
         ?? new SearchResponse();
 
-    public async Task<List<SearchResult>> ForYouAsync(string mediaType = "all") =>
-        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/for-you?mediaType={mediaType}") ?? [];
+    public async Task<List<SearchResult>> ForYouAsync(string mediaType = "all", int[]? excludeIds = null)
+    {
+        string url = $"api/search/for-you?mediaType={mediaType}";
+        if (excludeIds?.Length > 0) url += "&exclude=" + string.Join(",", excludeIds);
+        return await _http.GetFromJsonAsync<List<SearchResult>>(url) ?? [];
+    }
 
-    public async Task<List<SearchResult>> NewOnServicesAsync(string mediaType = "tv") =>
-        await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/new?mediaType={mediaType}") ?? [];
+    public async Task<List<SearchResult>> NewOnServicesAsync(string mediaType = "tv", int[]? excludeIds = null)
+    {
+        string url = $"api/search/new?mediaType={mediaType}";
+        if (excludeIds?.Length > 0) url += "&exclude=" + string.Join(",", excludeIds);
+        return await _http.GetFromJsonAsync<List<SearchResult>>(url) ?? [];
+    }
 
     public async Task<List<SearchResult>> GetRecommendationsAsync(int tmdbId, string mediaType) =>
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/recommendations/{mediaType}/{tmdbId}") ?? [];

@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject MediaFilterService MediaFilter
 
 <PageTitle>Search - Hurrah.tv</PageTitle>
 
@@ -22,35 +23,25 @@
         }
     </div>
 
-    <!-- filter tabs -->
-    <div class="flex gap-2 mt-3 md:mt-4">
-        @foreach (string tab in new[] { "all", "tv", "movie" })
-        {
-            string label = tab == "all" ? "All" : tab == "tv" ? "TV Shows" : "Movies";
-            <button class="@($"px-3 md:px-4 py-1.5 rounded-full text-sm transition-all {(_activeTab == tab ? "bg-accent text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
-                    @onclick="() => FilterByTab(tab)">
-                @label
-            </button>
-        }
-    </div>
 </div>
 
 <PosterGrid Results="_filteredResults" Loading="_loading" EmptyMessage="@_emptyMessage" />
 
 @code {
     private string _query = "";
-    private string _activeTab = "all";
     private List<SearchResult> _results = [];
     private bool _loading;
     private CancellationTokenSource? _cts;
     private string _emptyMessage = "Start typing to search";
 
-    private List<SearchResult> _filteredResults => _activeTab == "all"
+    private List<SearchResult> _filteredResults => MediaFilter.MediaType == "all"
         ? _results
-        : _results.Where(r => r.MediaType == _activeTab).ToList();
+        : _results.Where(r => r.MediaType == MediaFilter.MediaType).ToList();
 
     protected override async Task OnInitializedAsync()
     {
+        MediaFilter.OnChanged += OnMediaFilterChanged;
+
         // restore query from URL on back navigation
         Uri uri = new(Nav.Uri);
         string? q = System.Web.HttpUtility.ParseQueryString(uri.Query).Get("q");
@@ -110,10 +101,7 @@
         catch (TaskCanceledException) { }
     }
 
-    private void FilterByTab(string tab)
-    {
-        _activeTab = tab;
-    }
+    private void OnMediaFilterChanged() => InvokeAsync(StateHasChanged);
 
     private void ClearSearch()
     {
@@ -134,6 +122,7 @@
 
     public void Dispose()
     {
+        MediaFilter.OnChanged -= OnMediaFilterChanged;
         _cts?.Cancel();
         _cts?.Dispose();
     }

@@ -1,6 +1,8 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
 
+@if (!ShouldHide)
+{
 <section class="mb-6 md:mb-8">
     <div class="flex items-baseline justify-between mb-3">
         <div>
@@ -63,12 +65,14 @@
         </div>
     }
 </section>
+}
 
 @code {
     [Parameter, EditorRequired] public string Title { get; set; } = "";
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public string? SeeAllHref { get; set; }
     [Parameter] public string EmptyMessage { get; set; } = "Nothing here yet";
+    [Parameter] public int HideIfFewer { get; set; } = 0; // 0 = never hide; >0 = hide when count < threshold
 
     // data can be provided directly or fetched via a delegate
     [Parameter] public List<SearchResult>? Results { get; set; }
@@ -78,6 +82,8 @@
     private List<SearchResult> _results = [];
     private bool _loading = true;
     private bool _loaded;
+
+    private bool ShouldHide => HideIfFewer > 0 && !_loading && _results.Count < HideIfFewer;
     private ElementReference _scrollContainer;
 
     protected override async Task OnParametersSetAsync()

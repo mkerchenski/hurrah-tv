@@ -31,11 +31,11 @@ public static partial class SearchEndpoints
             return Results.Ok(new SearchResponse { Results = results });
         }).RequireAuthorization();
 
-        group.MapGet("/for-you", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
-            await GetPersonalizedAsync(mediaType, user, db, tmdb, recentOnly: false)).RequireAuthorization();
+        group.MapGet("/for-you", async (string? mediaType, string? exclude, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
+            await GetPersonalizedAsync(mediaType, exclude, user, db, tmdb, recentOnly: false)).RequireAuthorization();
 
-        group.MapGet("/new", async (string? mediaType, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
-            await GetPersonalizedAsync(mediaType, user, db, tmdb, recentOnly: true)).RequireAuthorization();
+        group.MapGet("/new", async (string? mediaType, string? exclude, ClaimsPrincipal user, DbService db, TmdbService tmdb) =>
+            await GetPersonalizedAsync(mediaType, exclude, user, db, tmdb, recentOnly: true)).RequireAuthorization();
 
         // recommendations based on a specific title, filtered to user's services
         group.MapGet("/recommendations/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
@@ -56,8 +56,8 @@ public static partial class SearchEndpoints
 
     }
 
-    private static async Task<IResult> GetPersonalizedAsync(string? mediaType, ClaimsPrincipal user,
-        DbService db, TmdbService tmdb, bool recentOnly)
+    private static async Task<IResult> GetPersonalizedAsync(string? mediaType, string? exclude,
+        ClaimsPrincipal user, DbService db, TmdbService tmdb, bool recentOnly)
     {
         string resolvedType = mediaType ?? MediaTypes.Tv;
         if (!MediaTypes.IsValid(resolvedType))
@@ -72,6 +72,11 @@ public static partial class SearchEndpoints
 
         results = await tmdb.FilterToUserServicesAsync(results, prefs.ProviderIds);
         results = ApplyPreferenceFilters(results, prefs);
+
+        // exclude items the user already has in their queue
+        HashSet<int> excludeIds = ParseExclude(exclude);
+        if (excludeIds.Count > 0)
+            results = [.. results.Where(r => !excludeIds.Contains(r.TmdbId))];
 
         // boost recent shows to the front for trending/popular (not for "new" which is already date-filtered)
         if (!recentOnly)
@@ -106,6 +111,14 @@ public static partial class SearchEndpoints
         List<SearchResult> older = [.. results.Where(r => (r.DisplayDate ?? "").CompareTo(cutoff) < 0)];
 
         return [.. recent, .. older];
+    }
+
+    private static HashSet<int> ParseExclude(string? exclude)
+    {
+        if (string.IsNullOrWhiteSpace(exclude)) return [];
+        return [.. exclude.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => int.TryParse(s.Trim(), out int id) ? id : -1)
+            .Where(id => id > 0)];
     }
 
     private static string NormalizeQuery(string query)

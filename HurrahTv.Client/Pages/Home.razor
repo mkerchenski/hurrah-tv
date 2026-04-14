@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject ApiClient Api
 @inject QuickActionService QuickActionSvc
+@inject MediaFilterService MediaFilter
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
@@ -127,7 +128,7 @@ else
         <!-- AI-curated section -->
         @if (_curatedItems.Count > 0 || _aiLoading)
         {
-            <CuratedSection Items="_curatedItems" Loading="_aiLoading" />
+            <CuratedSection Items="_curatedItems" Loading="_aiLoading" MediaType="@MediaFilter.MediaType" />
         }
         @if (!string.IsNullOrEmpty(_aiError))
         {
@@ -137,19 +138,21 @@ else
             </div>
         }
 
-        <!-- new TV on your services -->
-        <ContentRow Title="New This Season" Subtitle="Recently aired" LoadData="LoadNewTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
+        <!-- TV-only rows (hidden in Movies mode) -->
+        @if (MediaFilter.MediaType != "movie")
+        {
+            <ContentRow Title="New This Season" Subtitle="Recently aired" LoadData="LoadNewTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" HideIfFewer="4" />
+            <ContentRow Title="Trending TV Shows" Subtitle="Popular on your services" LoadData="LoadTrendingTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" HideIfFewer="4" />
+        }
 
-        <!-- trending TV on your services -->
-        <ContentRow Title="Trending TV Shows" Subtitle="Popular on your services" LoadData="LoadTrendingTv" NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
+        <!-- Movie-only rows (hidden in TV Shows mode) -->
+        @if (MediaFilter.MediaType != "tv")
+        {
+            <ContentRow Title="New Releases" Subtitle="Recently released" LoadData="LoadNewMovies" HideIfFewer="4" />
+            <ContentRow Title="Trending Movies" Subtitle="Popular on your services" LoadData="LoadTrendingMovies" HideIfFewer="4" />
+        }
 
-        <!-- new movies -->
-        <ContentRow Title="New Releases" Subtitle="Recently released" LoadData="LoadNewMovies" />
-
-        <!-- trending movies on your services -->
-        <ContentRow Title="Trending Movies" Subtitle="Popular on your services" LoadData="LoadTrendingMovies" />
-
-        <!-- "because you liked X" rows -->
+        <!-- "because you loved X" rows — seeded from matching media type -->
         @foreach (QueueItem seed in _recSeeds)
         {
             <ContentRow Title="@($"Because You Loved {seed.Title}")"
@@ -173,6 +176,7 @@ else
     private List<QueueItem> _upcomingItems = [];
     private HashSet<int> _newEpisodeTmdbIds = [];
     private List<QueueItem> _recSeeds = [];
+    private int[] _queuedTmdbIds = [];
     private HashSet<(int TmdbId, int Season, int Episode)> _watchedSet = [];
     private string _watchingSort = "date";
     private string _upcomingSort = "date";
@@ -186,6 +190,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
+        MediaFilter.OnChanged += OnMediaFilterChanged;
         _userServices = await Api.GetUserServicesAsync();
         _servicesLoaded = true;
         _onboardingComplete = _userServices.Count > 0;
@@ -242,6 +247,7 @@ else
 
         // build watched set for O(1) lookups during render
         _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
+        _queuedTmdbIds = [.. allItems.Select(i => i.TmdbId).Distinct()];
 
         // stamp IsLatestEpisodeWatched on each item
         foreach (QueueItem item in allItems)
@@ -250,7 +256,7 @@ else
                 item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
         }
 
-        _recSeeds = PickRecSeeds(allItems, 3);
+        _recSeeds = PickRecSeeds(allItems, 3, MediaFilter.MediaType);
 
         ApplyWatchlistFilters(allItems);
 
@@ -295,9 +301,10 @@ else
         DateTime sevenDaysAgo = now.AddDays(-7);
         DateTime fourteenDaysAhead = now.AddDays(14);
 
-        // continue watching: Watching status items, respecting the ShowWatching chip, excluding watched latest episode
+        // continue watching: Watching status items, filtered by media type tab and ShowWatching chip
         IEnumerable<QueueItem> watching = allItems
-            .Where(i => i.Status == QueueStatus.Watching && _settings.ShowWatching && !i.IsLatestEpisodeWatched);
+            .Where(i => i.Status == QueueStatus.Watching && _settings.ShowWatching && !i.IsLatestEpisodeWatched
+                && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType));
 
         _watchingItems = _watchingSort switch
         {
@@ -378,17 +385,18 @@ else
         }
     }
 
-    // content row data loaders
-    private Task<List<SearchResult>> LoadTrendingTv() => Api.ForYouAsync("tv");
-    private Task<List<SearchResult>> LoadNewTv() => Api.NewOnServicesAsync("tv");
-    private Task<List<SearchResult>> LoadTrendingMovies() => Api.ForYouAsync("movie");
-    private Task<List<SearchResult>> LoadNewMovies() => Api.NewOnServicesAsync("movie");
+    // content row data loaders — pass queued IDs so discovered items exclude already-queued shows
+    private Task<List<SearchResult>> LoadTrendingTv() => Api.ForYouAsync("tv", _queuedTmdbIds);
+    private Task<List<SearchResult>> LoadNewTv() => Api.NewOnServicesAsync("tv", _queuedTmdbIds);
+    private Task<List<SearchResult>> LoadTrendingMovies() => Api.ForYouAsync("movie", _queuedTmdbIds);
+    private Task<List<SearchResult>> LoadNewMovies() => Api.NewOnServicesAsync("movie", _queuedTmdbIds);
 
-    private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count)
+    private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count, string mediaType = "all")
     {
-        // prefer items with positive sentiment, fallback to Finished
+        // prefer items with positive sentiment, fallback to Finished; filter by active media type
         List<QueueItem> candidates = allItems
-            .Where(i => i.Sentiment >= SentimentLevel.Up || i.Status == QueueStatus.Finished)
+            .Where(i => (mediaType == "all" || i.MediaType == mediaType)
+                && (i.Sentiment >= SentimentLevel.Up || i.Status == QueueStatus.Finished))
             .ToList();
 
         if (candidates.Count <= count) return candidates;
@@ -415,7 +423,7 @@ else
                 item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
         }
 
-        _recSeeds = PickRecSeeds(allItems, 3);
+        _recSeeds = PickRecSeeds(allItems, 3, MediaFilter.MediaType);
         ApplyWatchlistFilters(allItems);
         _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
         StateHasChanged();
@@ -467,5 +475,15 @@ else
 
     private void OnQuickActionChanged() => _ = InvokeAsync(ReloadWatchlist);
 
-    public void Dispose() => QuickActionSvc.OnChanged -= OnQuickActionChanged;
+    private void OnMediaFilterChanged() => _ = InvokeAsync(async () =>
+    {
+        // re-seed rec rows for correct media type, re-apply watchlist filters, re-render
+        await ReloadWatchlist();
+    });
+
+    public void Dispose()
+    {
+        QuickActionSvc.OnChanged -= OnQuickActionChanged;
+        MediaFilter.OnChanged -= OnMediaFilterChanged;
+    }
 }
