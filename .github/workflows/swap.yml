@@ -3,6 +3,9 @@ name: Swap staging to production
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   swap:
     runs-on: ubuntu-latest
