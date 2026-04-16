@@ -36,9 +36,11 @@ Single `$"""` treats every `{` as interpolation start, causing CS9006 errors.
 
 **Client instantiation** — create once, not per-call:
 ```csharp
-// constructor
-_client = new AnthropicClient { APIKey = apiKey };
+// constructor (SDK 12.16.0+ — property renamed from APIKey to ApiKey)
+_client = new AnthropicClient { ApiKey = apiKey };
 
 // per-call — just use _client
 Message response = await _client.Messages.Create(new MessageCreateParams { ... });
 ```
+
+> **SDK 12.0.1 → 12.16.0 breaking change:** the property on `AnthropicClient` was renamed from `APIKey` (all-caps) to `ApiKey` (PascalCase). Pure rename — no behavior difference. If you're upgrading from an older version, grep for `APIKey` and replace.

@@ -33,7 +33,7 @@ public partial class CurationService
 
         bool enabled = config.GetValue<bool>("AI:Enabled");
         string apiKey = config["AI:AnthropicApiKey"] ?? "";
-        _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { APIKey = apiKey } : null;
+        _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { ApiKey = apiKey } : null;
     }
 
     public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false)
