@@ -39,20 +39,21 @@ WebApplication app = builder.Build();
 if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 
-// redirect www.hurrah.tv → hurrah.tv (host allowlist prevents open-redirect via spoofed Host header)
-HashSet<string> allowedApexHosts = new(StringComparer.OrdinalIgnoreCase) { "hurrah.tv", "staging.hurrah.tv" };
+// redirect www.{hurrah.tv,staging.hurrah.tv} → apex. Destination hosts are hardcoded constants
+// (not derived from the request) to eliminate open-redirect via spoofed Host header.
 app.Use(async (context, next) =>
 {
-    string host = context.Request.Host.Host;
-    if (host.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+    string? apexHost = context.Request.Host.Host.ToLowerInvariant() switch
     {
-        string bareHost = host[4..];
-        if (allowedApexHosts.Contains(bareHost))
-        {
-            string newUrl = $"{context.Request.Scheme}://{bareHost}{context.Request.Path}{context.Request.QueryString}";
-            context.Response.Redirect(newUrl, permanent: true);
-            return;
-        }
+        "www.hurrah.tv" => "hurrah.tv",
+        "www.staging.hurrah.tv" => "staging.hurrah.tv",
+        _ => null
+    };
+    if (apexHost is not null)
+    {
+        string newUrl = $"{context.Request.Scheme}://{apexHost}{context.Request.Path}{context.Request.QueryString}";
+        context.Response.Redirect(newUrl, permanent: true);
+        return;
     }
     await next();
 });
