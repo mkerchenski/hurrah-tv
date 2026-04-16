@@ -78,3 +78,26 @@ If README is out of date, flag it as an issue and offer to update.
 
 ### Step 7: Fix
 Ask: "Would you like me to fix any of these issues?"
+
+### Step 8: File unaddressed findings as GitHub issues
+
+After fixes (or if the user declines to fix), any finding scoring **50+** that is **not resolved in the current PR** should become a tracked follow-up issue — review notes should not disappear into PR comment history.
+
+1. List findings that were NOT addressed in the fix step.
+2. Ask: "File these as GitHub issues so they don't fall through the cracks?"
+3. If yes, for each unaddressed finding create a GitHub issue via `gh issue create`:
+   - **Title**: `[from review] <short finding summary>` (under 80 chars)
+   - **Body** should include:
+     - The reviewer's rationale (from the review output)
+     - File and line references (`file.cs:123`)
+     - Score and which reviewer category caught it (CLAUDE.md / Blazor / API / Bugs)
+     - **Link back to the PR or commit range** this review covered — use `gh pr view --json url` if a PR exists, otherwise use the current branch name and diff range. Always include at least one link so the context is traceable.
+     - A "Suggested approach" if the reviewer offered one
+   - **Labels**: infer from the finding
+     - Type: `type:bug` (score 80+ or bug-category), `type:refactor` (style/architecture), `type:enhancement` (nice-to-have)
+     - Area: `area:api`, `area:client`, `area:infra`, `area:auth`, etc. — pick the best match based on file paths
+     - Difficulty: `difficulty:starter` for small scope, `difficulty:intermediate` or `difficulty:advanced` for larger ones
+   - **Use `gh issue create` with flags**: `--title`, `--body-file <tempfile>`, `--label <csv>`. Do not assign initially — let the team triage later.
+4. After creating, report back a summary: `Filed N follow-up issues: #X, #Y, #Z` with their URLs so the user can add them to the PR description as `Related: #X #Y #Z`.
+
+**Why**: review findings that get deferred without being tracked tend to reappear later as bugs or tech debt. Filing them as issues makes the deferral deliberate and scheduled, not forgotten. Also teaches new contributors that review notes are first-class work, not opinions.
