@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Contributing guide
+    url: https://github.com/mkerchenski/hurrah-tv/blob/main/CONTRIBUTING.md
+    about: Setup, workflow, PR process, and how to use Claude Code on this repo.
+  - name: Engineering learnings
+    url: https://github.com/mkerchenski/hurrah-tv/tree/main/Learnings
+    about: Non-obvious gotchas about Blazor, TMDb, Tailwind, Azure, and PostgreSQL that we've hit.

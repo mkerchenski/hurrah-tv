@@ -1,0 +1,98 @@
+name: Feature, bug, or enhancement
+description: Anything that needs to be built, fixed, or improved.
+title: "[short title describing the outcome]"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing an issue. Fill in what you can — missing pieces are fine, we'll flesh them out together.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: "1-2 sentences: what needs to happen and why."
+      placeholder: "Users on the Details page should see an inline 'Add to Queue' toast..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: What kind of work is this?
+      options:
+        - bug — something is broken or behaves incorrectly
+        - feature — new capability that doesn't exist today
+        - enhancement — existing feature gets better
+        - refactor — internal change, no behavior difference
+        - chore — infrastructure, deployment, tooling, docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where in the codebase does this live?
+      options:
+        - api — backend / .NET Minimal API / Dapper / PostgreSQL
+        - client — Blazor WASM / Razor components / Tailwind CSS
+        - infra — Azure, CI/CD, deployment, DNS
+        - auth — phone OTP, JWT, sessions
+        - tmdb — TMDb API integration
+        - ai-curation — Claude-powered curation, AI usage tracking
+        - design — visual / UX / component styling (cross-cutting)
+        - docs — README, CONTRIBUTING, Learnings, etc.
+        - multiple / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Motivation
+      description: Why does this matter? What prompted it? (Bug report, user feedback, tech debt, prerequisite for another feature, etc.)
+      placeholder: "Currently users have to navigate away to see the confirmation, which breaks the browsing flow..."
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Concrete "definition of done" checklist. What has to be true before this can be closed?
+      placeholder: |
+        - [ ] Toast appears after successful add
+        - [ ] Toast auto-dismisses after 3 seconds
+        - [ ] Tested on mobile in Chrome DevTools
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant files, plans, and learnings
+      description: Pointers to help whoever picks this up. File paths, Plans/ docs, Learnings/ docs, related issues.
+      placeholder: |
+        - `HurrahTv.Client/Pages/Details.razor:330`
+        - `Learnings/blazor-async-statehaschanged.md`
+        - Related: #42
+
+  - type: textarea
+    id: hints
+    attributes:
+      label: Implementation hints (optional)
+      description: For starter/learning issues — sketch of the approach, gotchas, or a specific pattern already used elsewhere in the repo.
+      placeholder: |
+        Look at how `QueueEndpoints.cs` uses `Results.Ok(...)` with the DTO pattern;
+        mirror that structure in the new endpoint.
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty (best guess)
+      description: Helps contributors pick something appropriate. Filer-best-guess is fine — will be adjusted as we learn more.
+      options:
+        - starter — small surface area, clear DoD, good for first contribution
+        - intermediate — touches multiple files or requires design thinking
+        - advanced — architectural change, cross-cutting, or requires external research
+        - unknown
+      default: 3
