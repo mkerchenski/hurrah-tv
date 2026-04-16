@@ -1,0 +1,77 @@
+# Dependabot keeps dependencies up to date by opening PRs on a schedule.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+    # NuGet for the API project
+    - package-ecosystem: "nuget"
+      directory: "/HurrahTv.Api"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 5
+      reviewers:
+          - "mkerchenski"
+      labels:
+          - "type:chore"
+          - "area:api"
+      commit-message:
+          prefix: "deps(api)"
+
+    # NuGet for the Client (Blazor WASM) project
+    - package-ecosystem: "nuget"
+      directory: "/HurrahTv.Client"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 5
+      reviewers:
+          - "mkerchenski"
+      labels:
+          - "type:chore"
+          - "area:client"
+      commit-message:
+          prefix: "deps(client)"
+
+    # NuGet for the Shared project
+    - package-ecosystem: "nuget"
+      directory: "/HurrahTv.Shared"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 3
+      reviewers:
+          - "mkerchenski"
+      labels:
+          - "type:chore"
+      commit-message:
+          prefix: "deps(shared)"
+
+    # npm for the Client (Tailwind CSS build)
+    - package-ecosystem: "npm"
+      directory: "/HurrahTv.Client"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      open-pull-requests-limit: 5
+      reviewers:
+          - "mkerchenski"
+      labels:
+          - "type:chore"
+          - "area:client"
+      commit-message:
+          prefix: "deps(npm)"
+
+    # GitHub Actions workflows
+    - package-ecosystem: "github-actions"
+      directory: "/"
+      schedule:
+          interval: "weekly"
+          day: "monday"
+      reviewers:
+          - "mkerchenski"
+      labels:
+          - "type:chore"
+          - "area:infra"
+      commit-message:
+          prefix: "deps(actions)"

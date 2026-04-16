@@ -1,0 +1,10 @@
+# CODEOWNERS — auto-assigns reviewers when files are touched.
+# Syntax: <pattern>  <owner> [<owner> ...]
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+
+# Default: Mike owns everything. Every PR auto-requests him as reviewer.
+*       @mkerchenski
+
+# If collaborators become owners of specific areas, add lines above the catch-all, e.g.:
+# HurrahTv.Client/**   @mkerchenski @some-frontend-expert
+# .github/**           @mkerchenski
