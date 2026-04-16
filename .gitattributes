@@ -1,0 +1,35 @@
+# Normalize line endings across contributors regardless of OS.
+# Git converts text files to LF in the repo; checkouts get native EOL (or LF when forced).
+* text=auto eol=lf
+
+# Explicit overrides
+*.cs           text eol=lf
+*.razor        text eol=lf
+*.csproj       text eol=lf
+*.sln          text eol=crlf
+*.json         text eol=lf
+*.md           text eol=lf
+*.yml          text eol=lf
+*.yaml         text eol=lf
+*.css          text eol=lf
+*.js           text eol=lf
+*.html         text eol=lf
+*.sh           text eol=lf
+*.ps1          text eol=crlf
+
+# Binary files — never convert
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.ico          binary
+*.webp         binary
+*.pdf          binary
+*.woff         binary
+*.woff2        binary
+*.ttf          binary
+*.otf          binary
+*.eot          binary
+*.zip          binary
+*.gz           binary
+*.7z           binary
