@@ -98,6 +98,12 @@ public class ApiClient(HttpClient http)
 
     public Task<QueueItem?> MarkAsSeenAsync(SearchResult result) => PostStatusAsync("api/queue/seen", result);
 
+    // returns the queue item for this content, creating as WantToWatch if absent.
+    // never mutates existing — used by QuickActions when the dialog opens from a browse surface
+    // that can't know whether the item is already queued. Caller follows up with UpdateStatus /
+    // UpdateSentiment using the returned Id.
+    public Task<QueueItem?> EnsureQueueItemAsync(SearchResult result) => PostStatusAsync("api/queue/ensure", result);
+
     // season & episode sentiments
     public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId) =>
         await _http.GetFromJsonAsync<ShowSentiments>($"api/shows/{tmdbId}/sentiments") ?? new();

@@ -12,7 +12,7 @@
             <div class="flex items-center gap-3 mb-4">
                 @if (!string.IsNullOrEmpty(_posterUrl))
                 {
-                    <img src="@_posterUrl" alt="" class="w-10 h-14 object-cover rounded" />
+                    <img src="@_posterUrl" alt="" draggable="false" class="w-10 h-14 object-cover rounded no-callout" />
                 }
                 <div class="flex-1 min-w-0">
                     <div class="text-white font-semibold text-sm truncate">@_title</div>
@@ -20,8 +20,9 @@
                 </div>
             </div>
 
-            <!-- episode watched — Continue Watching only -->
-            @if (_showEpisodeWatched)
+            <!-- episode watched — only for TV shows in the queue with a recently-aired,
+                 not-yet-watched latest episode. Self-gated: no caller flag needed. -->
+            @if (ShouldShowEpisodeWatched())
             {
                 <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5
                                @(_episodeWatched ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-300 hover:text-white")"
@@ -32,60 +33,36 @@
             }
 
             <!-- list status -->
-            @if (_queueId > 0)
-            {
-                <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">List Status</div>
-                <div class="grid grid-cols-4 gap-2 mb-4">
-                    @foreach (QueueStatus status in BadgeHelpers.AllStatuses)
-                    {
-                        bool active = _currentStatus == status;
-                        bool isNfm = status == QueueStatus.NotForMe;
-                        string activeCss = isNfm ? "bg-gray-600/80 text-white" : BadgeHelpers.StatusBg(status) + " text-white";
-                        string inactiveCss = isNfm ? "bg-surface-200 text-gray-600 hover:text-gray-400" : "bg-surface-200 text-gray-400 hover:text-white";
-                        <button class="py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
-                                       @(active ? activeCss : inactiveCss)"
-                                @onclick="() => SetStatus(status)" @onclick:stopPropagation="true">
-                            <span class="@BadgeHelpers.StatusIcon(status) w-3.5 h-3.5"></span>
-                            <span>@BadgeHelpers.StatusShortLabel(status)</span>
-                        </button>
-                    }
-                </div>
+            <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">List Status</div>
+            <div class="grid grid-cols-4 gap-2 mb-4">
+                @foreach (QueueStatus status in BadgeHelpers.AllStatuses)
+                {
+                    bool active = _queueId > 0 && _currentStatus == status;
+                    bool isNfm = status == QueueStatus.NotForMe;
+                    string activeCss = isNfm ? "bg-gray-600/80 text-white" : BadgeHelpers.StatusBg(status) + " text-white";
+                    string inactiveCss = isNfm ? "bg-surface-200 text-gray-600 hover:text-gray-400" : "bg-surface-200 text-gray-400 hover:text-white";
+                    <button class="py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                   @(active ? activeCss : inactiveCss)"
+                            @onclick="() => SetStatus(status)" @onclick:stopPropagation="true">
+                        <span class="@BadgeHelpers.StatusIcon(status) w-3.5 h-3.5"></span>
+                        <span>@BadgeHelpers.StatusShortLabel(status)</span>
+                    </button>
+                }
+            </div>
 
-                <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">Sentiment</div>
-                <div class="flex gap-2 mb-4">
-                    @foreach ((int level, string activeCss, string inactiveCss, string icon, string label) in _sentimentOptions)
-                    {
-                        bool active = _currentSentiment == level;
-                        <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
-                                       @(active ? activeCss : inactiveCss)"
-                                @onclick="() => SetSentiment(level)" @onclick:stopPropagation="true">
-                            <span class="@icon w-3.5 h-3.5"></span>
-                            @label
-                        </button>
-                    }
-                </div>
-            }
-            else
-            {
-                <!-- browse card: not yet in queue -->
-                <div class="flex flex-col gap-2 mb-4">
-                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-gray-700/80 text-white transition-colors flex items-center justify-center gap-1.5"
-                            @onclick="AddToQueue" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--plus] w-4 h-4"></span>
-                        Want to Watch
+            <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">Sentiment</div>
+            <div class="flex gap-2 mb-4">
+                @foreach ((int level, string activeCss, string inactiveCss, string icon, string label) in _sentimentOptions)
+                {
+                    bool active = _queueId > 0 && _currentSentiment == level;
+                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                                   @(active ? activeCss : inactiveCss)"
+                            @onclick="() => SetSentiment(level)" @onclick:stopPropagation="true">
+                        <span class="@icon w-3.5 h-3.5"></span>
+                        @label
                     </button>
-                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-green-600/80 text-white transition-colors flex items-center justify-center gap-1.5"
-                            @onclick="MarkThumbsUp" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--hand-thumb-up] w-4 h-4"></span>
-                        Thumbs Up
-                    </button>
-                    <button class="w-full py-2.5 rounded-lg text-sm font-medium bg-blue-600/80 text-white transition-colors flex items-center justify-center gap-1.5"
-                            @onclick="MarkSeen" @onclick:stopPropagation="true">
-                        <span class="icon-[heroicons--eye] w-4 h-4"></span>
-                        I've Seen This
-                    </button>
-                </div>
-            }
+                }
+            </div>
 
             <button class="w-full py-2 text-gray-500 text-sm" @onclick="Close" @onclick:stopPropagation="true">Cancel</button>
         </div>
@@ -111,20 +88,56 @@
         (SentimentLevel.Favorite, "bg-pink-600/30 text-pink-400 ring-1 ring-pink-500/50", "bg-surface-200 text-gray-400 hover:text-pink-400", "icon-[heroicons--heart-20-solid]", "Love"),
     ];
 
-    private bool _showEpisodeWatched;
     private bool _hasEpisodeData; // false when LatestEpisodeSeason/Number not yet populated
     private int _episodeTmdbId;
     private int _episodeSeason;
     private int _episodeNumber;
     private bool _episodeWatched;
+    private DateTime? _latestEpisodeDate;
+
+    // mirrors the Continue Watching filter; 7-day window matches DbService.GetQueueAsync.
+    // UTC on both sides so users west of UTC don't get a negative-days window for episodes
+    // that aired late-UTC the prior calendar day local-time.
+    private bool ShouldShowEpisodeWatched()
+    {
+        if (_queueId <= 0 || _mediaType != MediaTypes.Tv) return false;
+        if (_currentStatus != QueueStatus.Watching) return false;
+        if (!_hasEpisodeData || _episodeWatched) return false;
+        if (_latestEpisodeDate is not DateTime aired) return false;
+        int days = (int)(DateTime.UtcNow.Date - aired.ToUniversalTime().Date).TotalDays;
+        return days >= 0 && days <= 7;
+    }
+
+    private async Task RunAction(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            await action();
+        }
+        catch { }
+        finally
+        {
+            _busy = false;
+            Close();
+            // always notify so a failed action refreshes the page; the server state
+            // is the source of truth — local changes are lost if the API call failed
+            QuickActionSvc.NotifyChanged();
+        }
+    }
 
     protected override void OnInitialized()
     {
+        // idempotent registration — unsubscribe first so a re-mount (hot reload, double render)
+        // doesn't stack multiple listeners on the singleton event bus
+        QuickActionSvc.OnShowForQueueItem -= ShowForQueueItem;
         QuickActionSvc.OnShowForQueueItem += ShowForQueueItem;
+        QuickActionSvc.OnShowForSearchResult -= ShowForSearchResult;
         QuickActionSvc.OnShowForSearchResult += ShowForSearchResult;
     }
 
-    private void ShowForQueueItem(QueueItem item, bool showEpisodeWatched)
+    private void ShowForQueueItem(QueueItem item)
     {
         _queueId = item.Id;
         _title = item.Title;
@@ -133,13 +146,12 @@
         _currentStatus = item.Status;
         _currentSentiment = item.Sentiment;
         _searchResult = null;
-        _showEpisodeWatched = showEpisodeWatched;
         _hasEpisodeData = item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue;
         _episodeTmdbId = item.TmdbId;
         _episodeSeason = item.LatestEpisodeSeason ?? 0; // 0 only when HasValue==false; Season 0 (specials) is HasValue==true
         _episodeNumber = item.LatestEpisodeNumber ?? 0;
         _episodeWatched = item.IsLatestEpisodeWatched;
-        _busy = false;
+        _latestEpisodeDate = item.LatestEpisodeDate;
         _visible = true;
         StateHasChanged();
     }
@@ -153,113 +165,71 @@
         _currentStatus = default;
         _currentSentiment = null;
         _searchResult = result;
-        _busy = false;
+        _hasEpisodeData = false;
+        _episodeTmdbId = 0;
+        _episodeSeason = 0;
+        _episodeNumber = 0;
+        _episodeWatched = false;
+        _latestEpisodeDate = null;
         _visible = true;
         StateHasChanged();
     }
 
-    private async Task ToggleEpisodeWatched()
+    private Task ToggleEpisodeWatched() => RunAction(async () =>
     {
-        if (_busy) return;
-        _busy = true;
-        try
-        {
-            if (!_hasEpisodeData)
-            {
-                // season/episode not yet populated — trigger reload so next open has real data
-                Close();
-                QuickActionSvc.NotifyChanged();
-                return;
-            }
-            if (_episodeWatched)
-                await Api.UnmarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
-            else
-                await Api.MarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
-            _episodeWatched = !_episodeWatched;
-            Close();
-            QuickActionSvc.NotifyChanged();
-        }
-        catch { Close(); }
-        finally { _busy = false; }
-    }
+        // data not yet populated — skip API call; refresh will rehydrate and reopen will work
+        if (!_hasEpisodeData) return;
+        if (_episodeWatched)
+            await Api.UnmarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
+        else
+            await Api.MarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
+        _episodeWatched = !_episodeWatched;
+    });
 
-    private async Task SetStatus(QueueStatus status)
+    private Task SetStatus(QueueStatus status)
     {
-        if (_busy || status == _currentStatus) return;
-        _busy = true;
-        try
+        if (_queueId > 0 && status == _currentStatus) return Task.CompletedTask;
+        return RunAction(async () =>
         {
-            await Api.UpdateStatusAsync(_queueId, status);
+            int targetId = _queueId;
+            if (targetId <= 0 && _searchResult != null)
+            {
+                // browse surface: the item may or may not be queued — resolve its id first
+                QueueItem? ensured = await Api.EnsureQueueItemAsync(_searchResult);
+                if (ensured == null) return;
+                targetId = ensured.Id;
+                _queueId = ensured.Id;
+                _currentStatus = ensured.Status;
+                if (ensured.Status == status) return; // already in the target state
+            }
+            if (targetId <= 0) return;
+            await Api.UpdateStatusAsync(targetId, status);
             _currentStatus = status;
-            Close();
-            QuickActionSvc.NotifyChanged();
-        }
-        catch { Close(); }
-        finally { _busy = false; }
+        });
     }
 
-    private async Task SetSentiment(int sentiment)
+    private Task SetSentiment(int sentiment) => RunAction(async () =>
     {
-        if (_busy) return;
-        _busy = true;
-        try
+        int targetId = _queueId;
+        int? newValue = sentiment;
+        if (targetId > 0)
         {
-            int? newValue = _currentSentiment == sentiment ? null : sentiment;
-            await Api.UpdateSentimentAsync(_queueId, newValue);
-            _currentSentiment = newValue;
-            Close();
-            QuickActionSvc.NotifyChanged();
+            // toggle off when tapping the currently-selected sentiment
+            newValue = _currentSentiment == sentiment ? null : sentiment;
         }
-        catch { Close(); }
-        finally { _busy = false; }
-    }
-
-    private async Task AddToQueue()
-    {
-        if (_busy || _searchResult == null) return;
-        _busy = true;
-        try
+        else if (_searchResult != null)
         {
-            QueueItem? added = await Api.AddToQueueAsync(_searchResult.ToQueueItem());
-            if (added != null)
-            {
-                Close();
-                QuickActionSvc.NotifyChanged();
-            }
+            QueueItem? ensured = await Api.EnsureQueueItemAsync(_searchResult);
+            if (ensured == null) return;
+            targetId = ensured.Id;
+            _queueId = ensured.Id;
+            _currentStatus = ensured.Status;
+            newValue = _currentSentiment == sentiment ? null : sentiment;
         }
-        catch { Close(); }
-        finally { _busy = false; }
-    }
-
-    private async Task MarkThumbsUp()
-    {
-        if (_busy || _searchResult == null) return;
-        _busy = true;
-        try
-        {
-            QueueItem? item = await Api.MarkAsSeenAsync(_searchResult);
-            if (item != null)
-                await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
-            Close();
-            QuickActionSvc.NotifyChanged();
-        }
-        catch { Close(); }
-        finally { _busy = false; }
-    }
-
-    private async Task MarkSeen()
-    {
-        if (_busy || _searchResult == null) return;
-        _busy = true;
-        try
-        {
-            await Api.MarkAsSeenAsync(_searchResult);
-            Close();
-            QuickActionSvc.NotifyChanged();
-        }
-        catch { Close(); }
-        finally { _busy = false; }
-    }
+        if (targetId <= 0) return;
+        await Api.UpdateSentimentAsync(targetId, newValue);
+        _currentSentiment = newValue;
+    });
 
     private void Close()
     {

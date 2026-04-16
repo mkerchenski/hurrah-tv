@@ -62,6 +62,9 @@ public static class QueueEndpoints
         {
             if (string.IsNullOrWhiteSpace(item.Title) || !MediaTypes.IsValid(item.MediaType) || item.TmdbId <= 0)
                 return Results.BadRequest("Invalid queue item");
+            // QueueStatus is non-contiguous (0, 1, 2, 4) — value 3 was removed. Reject anything undefined.
+            if (!Enum.IsDefined(item.Status))
+                return Results.BadRequest("Invalid status");
 
             string userId = user.GetUserId();
             QueueItem? added = await db.AddToQueueAsync(item, userId);
@@ -117,6 +120,20 @@ public static class QueueEndpoints
                 request.TmdbId, request.MediaType, request.Title,
                 request.PosterPath, request.AvailableOnJson, userId);
             return Results.Ok(item);
+        });
+
+        // returns the queue item for this content, creating it as WantToWatch if absent.
+        // never mutates an existing record — callers use the PUT endpoints to change status/sentiment.
+        group.MapPost("/ensure", async (SeenRequest request, ClaimsPrincipal user, DbService db) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.Title) || !MediaTypes.IsValid(request.MediaType) || request.TmdbId <= 0)
+                return Results.BadRequest("Invalid request");
+
+            string userId = user.GetUserId();
+            QueueItem? item = await db.EnsureQueueItemAsync(
+                request.TmdbId, request.MediaType, request.Title,
+                request.PosterPath, request.AvailableOnJson, userId);
+            return item != null ? Results.Ok(item) : Results.Problem("Ensure failed");
         });
 
     }

@@ -37,8 +37,8 @@
                          @onclick="() => GoToDetails(item)">
                         @if (!string.IsNullOrEmpty(item.PosterUrl()))
                         {
-                            <img src="@item.PosterUrl()" alt="@item.Title"
-                                 class="w-full aspect-[2/3] object-cover rounded-lg" loading="lazy" />
+                            <img src="@item.PosterUrl()" alt="@item.Title" draggable="false"
+                                 class="w-full aspect-[2/3] object-cover rounded-lg no-callout" loading="lazy" />
                         }
                         else
                         {
@@ -101,9 +101,7 @@
     [Parameter, EditorRequired] public List<QueueItem> Items { get; set; } = [];
     [Parameter] public bool ShowAirDates { get; set; }
     [Parameter] public string RowMode { get; set; } = "watching"; // "watching" or "upcoming"
-    [Parameter] public bool ShowMarkWatched { get; set; }
     [Parameter] public bool ShowStatusBadge { get; set; } = true;
-    [Parameter] public EventCallback<QueueItem> OnMarkWatched { get; set; }
 
     [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
 
@@ -158,7 +156,7 @@
     {
         QueueItem? item = Items.FirstOrDefault(i => i.Id == itemId);
         if (item != null)
-            QuickActionSvc.ShowForQueueItem(item, showEpisodeWatched: ShowMarkWatched && item.MediaType == "tv");
+            QuickActionSvc.ShowForQueueItem(item);
     }
 
     public async ValueTask DisposeAsync()
@@ -180,6 +178,9 @@
         {
             if (!item.NextEpisodeDate.HasValue) return "";
             int daysUntil = (int)(item.NextEpisodeDate.Value.Date - now.Date).TotalDays;
+            // NextEpisodeDate can briefly be in the past between airtime and TMDb refresh —
+            // don't surface "-1d" to the user; treat as aired/today and let the refresh correct it
+            if (daysUntil < 0) return "";
             return daysUntil switch
             {
                 0 => "Today",

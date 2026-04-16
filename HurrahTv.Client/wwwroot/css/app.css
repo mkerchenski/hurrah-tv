@@ -2074,6 +2074,11 @@ body {
   background-color: #0f0f0f;
   -webkit-tap-highlight-color: transparent;
 }
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }

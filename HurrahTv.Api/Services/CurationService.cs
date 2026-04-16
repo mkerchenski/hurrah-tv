@@ -7,7 +7,7 @@ using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
 
-public class CurationService
+public partial class CurationService
 {
     private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
     private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
@@ -173,8 +173,7 @@ public class CurationService
 
             await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "curation");
 
-            _logger.LogInformation("AI curation for {UserId}: {InputTokens} in / {OutputTokens} out = ${Cost:F4}",
-                userId, inputTokens, outputTokens, cost);
+            LogCurationUsage(userId, inputTokens, outputTokens, cost);
 
             // parse response
             text = text.Trim();
@@ -421,6 +420,10 @@ public class CurationService
         public int Id { get; set; }
         public string Reason { get; set; } = "";
     }
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "AI curation for {UserId}: {InputTokens} in / {OutputTokens} out = ${Cost:F4}")]
+    private partial void LogCurationUsage(string userId, int inputTokens, int outputTokens, decimal cost);
 }
 
 // cached row data

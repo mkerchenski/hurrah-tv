@@ -288,6 +288,14 @@ public class DbService(IConfiguration config)
         UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Finished,
             existing => existing is QueueStatus.WantToWatch or QueueStatus.Watching);
 
+    // returns the queue item for this (user, tmdbId, mediaType), creating it as WantToWatch
+    // if it doesn't exist. never modifies an existing row — use the targeted PUT endpoints
+    // (/status, /sentiment) to mutate. used by QuickActions when the dialog opens from a
+    // browse-result surface that can't know the item's current queue state.
+    public Task<QueueItem?> EnsureQueueItemAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
+        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.WantToWatch,
+            existing => false);
+
     private async Task<QueueItem?> UpsertWithStatusAsync(int tmdbId, string mediaType, string title, string posterPath,
         string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
     {

@@ -6,8 +6,8 @@
      @onclick="NavigateToDetails">
     @if (!string.IsNullOrEmpty(Result.PosterUrl()))
     {
-        <img src="@Result.PosterUrl()" alt="@Result.Title"
-             class="w-full aspect-[2/3] object-cover" loading="lazy" />
+        <img src="@Result.PosterUrl()" alt="@Result.Title" draggable="false"
+             class="w-full aspect-[2/3] object-cover no-callout" loading="lazy" />
     }
     else
     {

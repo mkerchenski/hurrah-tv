@@ -65,6 +65,14 @@ body {
     -webkit-tap-highlight-color: transparent;
 }
 
+/* suppress iOS Safari's native long-press image preview / share sheet on
+   elements that have their own long-press gesture (QuickActions menu) */
+.no-callout {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 /* safe area for notched phones */
 .safe-area-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0px);

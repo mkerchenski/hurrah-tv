@@ -160,21 +160,18 @@ else
                 {
                     @if (_watchingItems.Count > 0)
                     {
-                        <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching"
-                                      ShowMarkWatched="true" OnMarkWatched="HandleMarkWatched" />
+                        <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching" />
                     }
                     @if (_upcomingItems.Count > 0)
                     {
-                        <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming"
-                                      ShowMarkWatched="false" />
+                        <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming" />
                     }
                 }
 
                 @if (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
                      && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch))
                 {
-                    <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false"
-                                  ShowMarkWatched="false" ShowStatusBadge="false" />
+                    <WatchlistRow Title="Movies to Watch" Items="_wantToWatchMovies" ShowAirDates="false" ShowStatusBadge="false" />
                 }
 
                 @if (!hasVisibleRows)
@@ -543,25 +540,6 @@ else
         _recSeeds = PickRecSeeds(allItems, 3, MediaFilter.MediaType);
         ApplyWatchlistFilters(allItems);
         _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
-        StateHasChanged();
-    }
-
-    private async Task HandleMarkWatched(QueueItem item)
-    {
-        if (!item.LatestEpisodeSeason.HasValue || !item.LatestEpisodeNumber.HasValue) return;
-
-        if (item.IsLatestEpisodeWatched)
-        {
-            await Api.UnmarkEpisodeWatchedAsync(item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value);
-            item.IsLatestEpisodeWatched = false;
-        }
-        else
-        {
-            await Api.MarkEpisodeWatchedAsync(item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value);
-            item.IsLatestEpisodeWatched = true;
-            // optimistically remove from Continue Watching
-            _watchingItems = [.. _watchingItems.Where(i => i.Id != item.Id)];
-        }
         StateHasChanged();
     }
 
