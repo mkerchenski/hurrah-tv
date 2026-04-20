@@ -21,6 +21,10 @@ Plans/
 # database backups
 *.bacpac
 *.dump
+Backups/
+
+# local-only scripts (single-user tools that don't belong in the shared repo)
+Local/
 
 # OS
 Thumbs.db
