@@ -1,0 +1,1 @@
+Throwaway file to trigger the CI workflow on a PR. Delete after the `CI / build` status check has been observed green on this PR (closing the PR without merging is fine — the goal is just to see the check appear).
