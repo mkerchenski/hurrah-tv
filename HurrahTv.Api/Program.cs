@@ -29,8 +29,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+string[] corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["https://localhost:7267", "http://localhost:5271"];
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
-        policy.WithOrigins("https://localhost:7267", "http://localhost:5271")
+        policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()));
 
