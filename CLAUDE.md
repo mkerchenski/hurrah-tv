@@ -31,21 +31,23 @@ Blazor WebAssembly frontend + .NET Minimal API backend. Three projects:
 
 ## Running Locally
 
-Both projects must run simultaneously. Always use `dotnet watch` (not `dotnet run`) for hot reload. Launch each in its own Windows Terminal tab:
+Both projects must run simultaneously. Always use `dotnet watch` (not `dotnet run`) for hot reload.
 
-```powershell
-# API (Terminal 1)
-wt new-tab --title "Hurrah.tv API" -d "C:\Users\mkerc\Documents\Hurrah.tv\HurrahTv.Api" pwsh -NoExit -Command "dotnet watch --launch-profile https"
+Preferred flow: open `Hurrah.tv.code-workspace` in VS Code and run the `Watch All (API + Client)` task. CONTRIBUTING.md covers the full IDE setup.
 
-# Client (Terminal 2)
-wt new-tab --title "Hurrah.tv Client" -d "C:\Users\mkerc\Documents\Hurrah.tv\HurrahTv.Client" pwsh -NoExit -Command "dotnet watch --launch-profile https"
+Terminal-only alternative, from the repo root in two tabs/panes:
+
+```bash
+# Terminal 1 — API
+cd HurrahTv.Api && dotnet watch --launch-profile https
+
+# Terminal 2 — Client
+cd HurrahTv.Client && dotnet watch --launch-profile https
 ```
 
 **Ports:** API = https://localhost:7201, Client = https://localhost:7267
 
-**TMDb API key** is in `appsettings.Development.json` (gitignored). The committed `appsettings.json` has a placeholder.
-
-**Shortcut:** `claude-tv` opens a Claude Code session in this directory (red tab, #E50914).
+**TMDb API key** is in `appsettings.Development.json` (gitignored). The committed `appsettings.json` has a placeholder. See CONTRIBUTING.md's "First-time setup" for how to get the secrets file.
 
 ## Key Patterns
 
