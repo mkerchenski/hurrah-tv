@@ -8,4 +8,5 @@
   <Project Path="HurrahTv.Api/HurrahTv.Api.csproj" />
   <Project Path="HurrahTv.Client/HurrahTv.Client.csproj" />
   <Project Path="HurrahTv.Shared/HurrahTv.Shared.csproj" />
+  <Project Path="HurrahTv.Shared.Tests/HurrahTv.Shared.Tests.csproj" />
 </Solution>
