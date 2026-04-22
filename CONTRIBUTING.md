@@ -8,8 +8,25 @@ If you want to run the project locally, start with [`README.md`](README.md) for 
 
 ---
 
+<a id="your-first-day"></a>
+## Your first day
+
+Run through this top-to-bottom. Most steps link to deeper sections below. If any step fails, ping Mike — don't spend an hour stuck.
+
+- [ ] Clone the repo and install prerequisites: .NET 10 SDK, Node 22+, PostgreSQL 17, VS Code. See [First-time setup](#first-time-setup).
+- [ ] `dotnet dev-certs https --trust` — accept the OS prompt so `https://localhost` works.
+- [ ] Get `appsettings.Development.json` from Mike. It holds the TMDb, Anthropic, Twilio, and DB keys. Shared out-of-band (not in git). Drop it into `HurrahTv.Api/`.
+- [ ] Configure [signed commits](#signed-commits). Branch protection rejects unsigned commits — if you skip this, your first push will bounce.
+- [ ] Open `Hurrah.tv.code-workspace` in VS Code (File → Open Workspace from File). Install recommended extensions when prompted.
+- [ ] Run `Cmd/Ctrl+Shift+P → Tasks: Run Task → Watch All (API + Client)`. Open https://localhost:7267 in Chrome.
+- [ ] Sign in with your phone (OTP flow), add a show to your watchlist, confirm it renders. That proves the whole stack — client, API, Postgres, Twilio — is working.
+- [ ] Pick a [`good first issue`](https://github.com/mkerchenski/hurrah-tv/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), comment "I'd like to take this", open a [PR](#pull-request-workflow).
+
+---
+
 ## Table of contents
 
+- [Your first day](#your-first-day)
 - [Architecture primer — API vs Client vs Shared](#architecture-primer)
 - [First-time setup](#first-time-setup)
 - [Opening the project in VS Code](#opening-the-project-in-vs-code)
@@ -84,6 +101,36 @@ Run through [`README.md`](README.md) first for prerequisites and the basic clone
 4. Both API and Client are configured to run on these ports:
    - API: `https://localhost:7201`
    - Client: `https://localhost:7267` ← open this in Chrome
+
+<a id="signed-commits"></a>
+### Signed commits
+
+`main` is protected by a ruleset that rejects unsigned commits. SSH signing with your existing GitHub SSH key is the easiest path:
+
+```bash
+git config --global gpg.format ssh
+git config --global user.signingkey ~/.ssh/id_ed25519.pub   # or whatever key you use
+git config --global commit.gpgsign true
+```
+
+Then in GitHub: **Settings → SSH and GPG keys → New SSH key**, set **Key type: Signing Key**, and paste the same public key you use for auth. You need *both* an Authentication key entry and a Signing key entry, even when the key material is identical.
+
+Verify on the next commit:
+
+```bash
+git commit --allow-empty -m "signing test"
+git log -1 --show-signature
+# expected: "Good 'git' signature" line
+```
+
+If you see `gpg.ssh.allowedSignersFile needs to be configured`, run:
+
+```bash
+echo "$(git config user.email) namespaces=\"git\" $(cat ~/.ssh/id_ed25519.pub)" > ~/.ssh/allowed_signers
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+```
+
+That creates an allowed-signers file with your own email + key, which is what local verification needs. (GitHub does its own verification against the uploaded signing key — the allowed-signers file only affects local `git log --show-signature`.)
 
 ---
 
@@ -265,6 +312,20 @@ Include BOTH desktop and mobile screenshots in your pull request. The PR templat
 - Push more commits to the same branch — the PR updates automatically
 - Do not rebase or force-push unless asked (keeps the review-history readable)
 - Reply to Mike's comments with either "fixed in abc1234" or a question if something's unclear
+
+### If your PR falls behind `main`
+
+Branch protection requires PRs to be up-to-date with `main` before merging (strict status checks). If `main` advances after your CI passed, GitHub shows an **Update branch** button on the PR. Click it — GitHub merges `main` into your branch, CI re-runs, and once it's green Mike can merge.
+
+From the command line:
+
+```bash
+git fetch origin
+git rebase origin/main
+git push --force-with-lease
+```
+
+Prefer rebase over merge — the ruleset requires linear history, so a merge-commit update will eventually get rejected anyway. `--force-with-lease` is the safe variant of `--force`: it refuses to clobber the remote if someone else pushed to your branch in the meantime.
 
 ---
 
