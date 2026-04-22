@@ -1,5 +1,10 @@
 # Dependabot keeps dependencies up to date by opening PRs on a schedule.
 # Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Grouping strategy:
+#   - patch/minor bumps are grouped into a single "patch-and-minor" PR per ecosystem per week
+#     (fewer admin-merge cycles; related libs that move in lockstep — e.g. tailwindcss + @tailwindcss/cli — land together)
+#   - major bumps stay ungrouped so each one gets its own review-and-test pass
 
 version: 2
 updates:
@@ -17,6 +22,11 @@ updates:
           - "area:api"
       commit-message:
           prefix: "deps(api)"
+      groups:
+          patch-and-minor:
+              update-types:
+                  - "patch"
+                  - "minor"
 
     # NuGet for the Client (Blazor WASM) project
     - package-ecosystem: "nuget"
@@ -32,6 +42,11 @@ updates:
           - "area:client"
       commit-message:
           prefix: "deps(client)"
+      groups:
+          patch-and-minor:
+              update-types:
+                  - "patch"
+                  - "minor"
 
     # NuGet for the Shared project
     - package-ecosystem: "nuget"
@@ -46,6 +61,11 @@ updates:
           - "type:chore"
       commit-message:
           prefix: "deps(shared)"
+      groups:
+          patch-and-minor:
+              update-types:
+                  - "patch"
+                  - "minor"
 
     # npm for the Client (Tailwind CSS build)
     - package-ecosystem: "npm"
@@ -61,6 +81,11 @@ updates:
           - "area:client"
       commit-message:
           prefix: "deps(npm)"
+      groups:
+          patch-and-minor:
+              update-types:
+                  - "patch"
+                  - "minor"
 
     # GitHub Actions workflows
     - package-ecosystem: "github-actions"
@@ -75,3 +100,8 @@ updates:
           - "area:infra"
       commit-message:
           prefix: "deps(actions)"
+      groups:
+          patch-and-minor:
+              update-types:
+                  - "patch"
+                  - "minor"
