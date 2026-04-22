@@ -363,9 +363,11 @@ else
 
     private void ApplyWatchlistFilters(List<QueueItem> allItems)
     {
-        DateTime now = DateTime.Now;
-        DateTime sevenDaysAgo = now.AddDays(-7);
-        DateTime fourteenDaysAhead = now.AddDays(14);
+        // LatestEpisodeDate / NextEpisodeDate come from Postgres TIMESTAMPTZ (Kind=Utc) — compare
+        // in UTC calendar days so both operands share the same Kind. See Learnings/wasm-datetime-source-matters.md
+        DateTime todayUtc = DateTime.UtcNow.Date;
+        DateTime sevenDaysAgoUtc = todayUtc.AddDays(-7);
+        DateTime fourteenDaysAheadUtc = todayUtc.AddDays(14);
 
         // pre-filter existence: does the user have any TV/movie watchlist content at all?
         // used by the section header so it stays visible even when chips filter everything out
@@ -374,25 +376,32 @@ else
 
         // continue watching: Watching always shows; WantToWatch/Finished need date activity
         // Finished: recently aired only (7d window) — upcoming Finished go to Upcoming row
-        // WantToWatch: recently aired OR upcoming (same ranges as Upcoming row)
+        // WantToWatch: recently aired OR upcoming in the next 14 days
         IEnumerable<QueueItem> watching = allItems
             .Where(i => IsStatusActive(i.Status)
                 && i.Status != QueueStatus.NotForMe
                 && !i.IsLatestEpisodeWatched
                 && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
                 && (i.Status == QueueStatus.Watching
-                    || (i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
-                    || (i.Status != QueueStatus.Finished && i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead)));
+                    || (i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value.Date >= sevenDaysAgoUtc)
+                    || (i.Status != QueueStatus.Finished
+                        && i.NextEpisodeDate.HasValue
+                        && i.NextEpisodeDate.Value.Date > todayUtc
+                        && i.NextEpisodeDate.Value.Date <= fourteenDaysAheadUtc)));
 
         _watchingItems = SortWatching(watching);
 
+        // Upcoming: strictly future NextEpisodeDate within the next 14 days. A past NextEpisodeDate
+        // can briefly occur between airtime and the next TMDb refresh — excluding it here keeps
+        // stale items from leaking in with a blank/negative badge, and Watching-status items are
+        // already surfaced by Continue Watching.
         IEnumerable<QueueItem> upcoming = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status != QueueStatus.NotForMe
                 && IsStatusActive(i.Status)
-                && ((i.LatestEpisodeDate.HasValue && i.LatestEpisodeDate.Value >= sevenDaysAgo)
-                    || (i.NextEpisodeDate.HasValue && i.NextEpisodeDate.Value <= fourteenDaysAhead))
-                && (i.Status != QueueStatus.Finished || i.NextEpisodeDate.HasValue));
+                && i.NextEpisodeDate.HasValue
+                && i.NextEpisodeDate.Value.Date > todayUtc
+                && i.NextEpisodeDate.Value.Date <= fourteenDaysAheadUtc);
 
         _upcomingItems = SortUpcoming(upcoming);
 
