@@ -305,14 +305,14 @@ public class TmdbService
         return details;
     }
 
-    public async Task<List<AvailableService>> GetWatchProvidersAsync(int tmdbId, string mediaType)
+    public async Task<List<AvailableService>> GetWatchProvidersAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"providers:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out List<AvailableService>? cached))
             return cached!;
 
         string url = $"{mediaType}/{tmdbId}/watch/providers?api_key={_apiKey}";
-        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
         if (raw == null) return [];
 
         List<AvailableService> providers = [];

@@ -146,6 +146,9 @@ public class DbService(IConfiguration config)
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS NextEpisodeSeason   INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS NextEpisodeNumber   INT NULL;
 
+            -- provider refresh: AvailableOnJson is a snapshot at add-time; this tracks when it was last refreshed against TMDb
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS AvailableOnCheckedAt TIMESTAMPTZ NULL;
+
             -- home page watchlist status filter preferences
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWatching    BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWantToWatch BOOL NOT NULL DEFAULT TRUE;
@@ -351,6 +354,23 @@ public class DbService(IConfiguration config)
             Position = maxPos + 1,
             Status = targetStatus
         };
+    }
+
+    public async Task UpdateProvidersAsync(int id, string availableOnJson, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        CommandDefinition cmd = new("""
+            UPDATE QueueItems SET
+                AvailableOnJson      = @AvailableOnJson,
+                AvailableOnCheckedAt = @CheckedAt
+            WHERE Id = @Id
+            """, new
+        {
+            AvailableOnJson = availableOnJson,
+            CheckedAt = DateTime.UtcNow,
+            Id = id
+        }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
     }
 
     public async Task UpdateEpisodeDatesAsync(int id,
