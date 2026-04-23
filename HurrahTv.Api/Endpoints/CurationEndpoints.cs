@@ -178,8 +178,17 @@ public static class CurationEndpoints
         {
             Task<ShowDetails?>[] tasks = [.. aiRow.TmdbIds.Select(async tmdbId =>
             {
-                ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv);
-                details ??= await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Movie);
+                ShowDetails? details;
+                if (aiRow.ItemMediaTypes.TryGetValue(tmdbId, out string? knownType) && MediaTypes.IsValid(knownType))
+                {
+                    details = await tmdb.GetDetailsAsync(tmdbId, knownType);
+                }
+                else
+                {
+                    // fallback for rows cached before ItemMediaTypes existed
+                    details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv);
+                    details ??= await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Movie);
+                }
 
                 if (details != null)
                 {

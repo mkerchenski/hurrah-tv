@@ -187,6 +187,7 @@ public partial class CurationService
             // build a single flat curated list
             List<int> tmdbIds = [];
             Dictionary<int, string> reasons = [];
+            Dictionary<int, string> itemMediaTypes = [];
 
             foreach (AIPick pick in picks)
             {
@@ -196,6 +197,7 @@ public partial class CurationService
                     if (!tmdbIds.Contains(candidate.TmdbId))
                     {
                         tmdbIds.Add(candidate.TmdbId);
+                        itemMediaTypes[candidate.TmdbId] = candidate.MediaType;
                         if (!string.IsNullOrEmpty(pick.Reason))
                             reasons[candidate.TmdbId] = pick.Reason;
                     }
@@ -209,7 +211,8 @@ public partial class CurationService
                 Title = "Curated for You",
                 Subtitle = "Personalized picks based on your taste",
                 TmdbIds = tmdbIds,
-                Reasons = reasons
+                Reasons = reasons,
+                ItemMediaTypes = itemMediaTypes
             }];
         }
         catch (Exception ex)
@@ -433,6 +436,7 @@ public class AICuratedRow
     public string Subtitle { get; set; } = "";
     public List<int> TmdbIds { get; set; } = [];
     public Dictionary<int, string> Reasons { get; set; } = []; // TmdbId → reason
+    public Dictionary<int, string> ItemMediaTypes { get; set; } = [];
 }
 
 public class CurationResult
