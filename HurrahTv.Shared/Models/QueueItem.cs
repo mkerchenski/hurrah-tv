@@ -11,6 +11,7 @@ public class QueueItem
     public QueueStatus Status { get; set; } = QueueStatus.WantToWatch;
     public int? Sentiment { get; set; } // null=no opinion, 1=down, 2=up, 3=favorite
     public string AvailableOnJson { get; set; } = "[]"; // service provider IDs
+    public DateTime? AvailableOnCheckedAt { get; set; }   // when we last refreshed AvailableOnJson from TMDb
     public DateTime AddedAt { get; set; } = DateTime.UtcNow;
 
     // watchlist fields

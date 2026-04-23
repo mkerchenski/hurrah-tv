@@ -161,8 +161,8 @@ Want to run them separately? Use the individual "Watch API" and "Watch Client" t
 
 ### IDE alternatives
 
-- **Visual Studio 2022+** (PC): ignores the workspace file; opens `HurrahTv.sln` as a multi-project solution. Use VS's built-in multi-project startup.
-- **JetBrains Rider**: open `HurrahTv.sln`. Works fine, but you lose the VS Code task presets.
+- **Visual Studio 2022+** (PC): ignores the workspace file; opens `HurrahTv.slnx` as a multi-project solution. Use VS's built-in multi-project startup.
+- **JetBrains Rider**: open `HurrahTv.slnx`. Works fine, but you lose the VS Code task presets.
 
 ---
 

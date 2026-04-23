@@ -305,14 +305,14 @@ public class TmdbService
         return details;
     }
 
-    public async Task<List<AvailableService>> GetWatchProvidersAsync(int tmdbId, string mediaType)
+    public async Task<List<AvailableService>> GetWatchProvidersAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"providers:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out List<AvailableService>? cached))
             return cached!;
 
         string url = $"{mediaType}/{tmdbId}/watch/providers?api_key={_apiKey}";
-        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
         if (raw == null) return [];
 
         List<AvailableService> providers = [];
@@ -373,14 +373,14 @@ public class TmdbService
     }
 
     // returns dates + season/episode numbers for the latest aired and next upcoming episodes
-    public async Task<(DateTime? LastAired, int? LastSeason, int? LastEpisode, DateTime? NextAir, int? NextSeason, int? NextEpisode)> GetEpisodeDatesAsync(int tmdbId)
+    public async Task<(DateTime? LastAired, int? LastSeason, int? LastEpisode, DateTime? NextAir, int? NextSeason, int? NextEpisode)> GetEpisodeDatesAsync(int tmdbId, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"episode-dates:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out (DateTime? LastAired, int? LastSeason, int? LastEpisode, DateTime? NextAir, int? NextSeason, int? NextEpisode) cached))
             return cached;
 
         string url = $"tv/{tmdbId}?api_key={_apiKey}&language=en-US";
-        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
         if (raw == null) return (null, null, null, null, null, null);
 
         JsonElement json = raw.Value;
@@ -476,16 +476,16 @@ public class TmdbService
         OriginalLanguage = r.OriginalLanguage ?? "",
     };
 
-    private async Task<T?> GetAsync<T>(string url)
+    private async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken = default)
     {
         try
         {
-            HttpResponseMessage response = await _http.GetAsync(url);
+            HttpResponseMessage response = await _http.GetAsync(url, cancellationToken);
             response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync();
+            string json = await response.Content.ReadAsStringAsync(cancellationToken);
             return JsonSerializer.Deserialize<T>(json, JsonOpts);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.Error.WriteLine($"TMDb API error: {ex.Message}");
             return default;

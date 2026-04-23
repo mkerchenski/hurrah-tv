@@ -67,7 +67,7 @@
         "files.associations": {
             "*.razor": "aspnetcorerazor"
         },
-        "dotnet.defaultSolution": "HurrahTv.sln",
+        "dotnet.defaultSolution": "HurrahTv.slnx",
         "search.exclude": {
             "**/bin": true,
             "**/obj": true,
@@ -204,7 +204,7 @@
                 "command": "dotnet",
                 "args": [
                     "build",
-                    "HurrahTv.sln"
+                    "HurrahTv.slnx"
                 ],
                 "options": {
                     "cwd": "${workspaceFolder:Root (docs, plans, config)}"
