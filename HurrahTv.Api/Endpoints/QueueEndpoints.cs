@@ -38,14 +38,14 @@ public static class QueueEndpoints
                         try
                         {
                             (DateTime? lastAired, int? lastSeason, int? lastEp, DateTime? nextAir, int? nextSeason, int? nextEp)
-                                = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
-                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, lastSeason, lastEp, nextAir, nextSeason, nextEp);
+                                = await tmdb.GetEpisodeDatesAsync(item.TmdbId, cts.Token);
+                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, lastSeason, lastEp, nextAir, nextSeason, nextEp, cts.Token);
                         }
                         catch (Exception ex) when (ex is not OperationCanceledException)
                         {
                             logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
                         }
-                    })).WaitAsync(cts.Token);
+                    }));
 
                     items = await db.GetQueueAsync(userId);
                 }

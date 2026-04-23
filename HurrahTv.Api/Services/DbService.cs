@@ -352,10 +352,11 @@ public class DbService(IConfiguration config)
 
     public async Task UpdateEpisodeDatesAsync(int id,
         DateTime? latestEpisodeDate, int? latestEpisodeSeason, int? latestEpisodeNumber,
-        DateTime? nextEpisodeDate, int? nextEpisodeSeason, int? nextEpisodeNumber)
+        DateTime? nextEpisodeDate, int? nextEpisodeSeason, int? nextEpisodeNumber,
+        CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("""
+        CommandDefinition cmd = new("""
             UPDATE QueueItems SET
                 LatestEpisodeDate   = @Latest,
                 LatestEpisodeSeason = @LatestSeason,
@@ -375,7 +376,8 @@ public class DbService(IConfiguration config)
             NextNum = nextEpisodeNumber,
             CheckedAt = DateTime.UtcNow,
             Id = id
-        });
+        }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
     }
 
     // user preferences (loads services, genres, dismissals, and settings in parallel)
