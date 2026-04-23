@@ -61,6 +61,9 @@ public class DbService(IConfiguration config)
             -- migrate old Paramount+ provider ID (531 → 2303)
             UPDATE UserServices SET ProviderId = 2303 WHERE ProviderId = 531;
 
+            -- soft-hide: preserve history when a user removes a service so re-subscribing restores it
+            ALTER TABLE UserServices ADD COLUMN IF NOT EXISTS IsActive BOOLEAN NOT NULL DEFAULT TRUE;
+
             CREATE TABLE IF NOT EXISTS UserDismissals (
                 UserId VARCHAR(50) NOT NULL,
                 TmdbId INT NOT NULL,
@@ -398,7 +401,7 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         IEnumerable<int> ids = await db.QueryAsync<int>(
-            "SELECT ProviderId FROM UserServices WHERE UserId = @UserId",
+            "SELECT ProviderId FROM UserServices WHERE UserId = @UserId AND IsActive = TRUE",
             new { UserId = userId });
         return [.. ids];
     }
@@ -407,11 +410,19 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         using NpgsqlTransaction tx = await db.BeginTransactionAsync();
-        await db.ExecuteAsync("DELETE FROM UserServices WHERE UserId = @UserId", new { UserId = userId }, tx);
+
+        // flip every existing row inactive, then upsert each id in the new set to active.
+        // preserves history so a later re-subscribe restores the user's prior association.
+        await db.ExecuteAsync("UPDATE UserServices SET IsActive = FALSE WHERE UserId = @UserId",
+            new { UserId = userId }, tx);
+
         foreach (int pid in providerIds)
         {
-            await db.ExecuteAsync("INSERT INTO UserServices (UserId, ProviderId) VALUES (@UserId, @ProviderId)",
-                new { UserId = userId, ProviderId = pid }, tx);
+            await db.ExecuteAsync("""
+                INSERT INTO UserServices (UserId, ProviderId, IsActive)
+                VALUES (@UserId, @ProviderId, TRUE)
+                ON CONFLICT (UserId, ProviderId) DO UPDATE SET IsActive = TRUE
+                """, new { UserId = userId, ProviderId = pid }, tx);
         }
 
         await tx.CommitAsync();
