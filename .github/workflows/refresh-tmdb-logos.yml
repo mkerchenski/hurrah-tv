@@ -1,0 +1,37 @@
+name: Refresh TMDb provider logos
+
+on:
+  schedule:
+    # Mondays 13:00 UTC — weekly cadence, off-hours for North America
+    - cron: '0 13 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Refresh StreamingService logo paths from TMDb
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+        run: python3 .github/scripts/refresh_provider_logos.py
+
+      - name: Open PR if file changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore: refresh TMDb provider logo paths'
+          title: 'Refresh TMDb provider logo paths'
+          body: |
+            Automated weekly check — TMDb has rotated one or more `logo_path` values for providers we ship in `StreamingService.All`.
+
+            QueueItem surfaces (WatchlistRow, Queue list) look up logos from this static map because `AvailableOnJson` stores only provider IDs. Merge to keep those logos current.
+
+            See `.github/workflows/refresh-tmdb-logos.yml` and `.github/scripts/refresh_provider_logos.py`.
+          branch: auto/refresh-tmdb-logos
+          delete-branch: true
+          labels: automated,area:shared
