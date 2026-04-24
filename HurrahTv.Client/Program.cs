@@ -25,6 +25,7 @@ builder.Services.AddScoped(sp =>
     return new HttpClient(handler) { BaseAddress = new Uri(apiBaseUrl) };
 });
 builder.Services.AddScoped<ApiClient>();
+builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddSingleton<MediaFilterService>();
 

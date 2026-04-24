@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject QuickActionService QuickActionSvc
 @inject MediaFilterService MediaFilter
+@inject UserServicesCache UserServicesCache
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
@@ -256,7 +257,7 @@ else
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
-        _userServices = await Api.GetUserServicesAsync();
+        _userServices = [.. await UserServicesCache.GetAsync()];
         _servicesLoaded = true;
         _onboardingComplete = _userServices.Count > 0;
 
@@ -274,6 +275,7 @@ else
         {
             // save services immediately so step 3 can use existing discovery endpoints
             await Api.SetUserServicesAsync(_pendingServices);
+            UserServicesCache.Set(_pendingServices);
             _userServices = _pendingServices;
         }
         else if (_onboardingStep == 2)

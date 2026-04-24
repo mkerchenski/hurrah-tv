@@ -3,6 +3,7 @@
 @implements IDisposable
 @inject ApiClient Api
 @inject MediaFilterService MediaFilter
+@inject UserServicesCache UserServicesCache
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -114,6 +115,13 @@ else
                             <span class="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-surface-200 text-gray-500">
                                 @(item.MediaType == "tv" ? "TV" : "Movie")
                             </span>
+                            @foreach (StreamingService svc in _itemServices.GetValueOrDefault(item.Id, []))
+                            {
+                                <span class="flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-200 text-gray-300">
+                                    <img src="@svc.LogoUrl("w45")" alt="" class="w-3.5 h-3.5 rounded" />
+                                    @svc.Name
+                                </span>
+                            }
                             @if (item.Sentiment.HasValue)
                             {
                                 <span class="@SentimentHelpers.Color(item.Sentiment.Value) flex items-center">
@@ -170,6 +178,8 @@ else
 @code {
     private List<QueueItem> _items = [];
     private Dictionary<string, int> _statusCounts = [];
+    private Dictionary<int, List<StreamingService>> _itemServices = [];
+    private IReadOnlyList<int> _userServices = [];
     private int _totalCount;
     private bool _loading = true;
     private string _activeTab = "all";
@@ -209,10 +219,19 @@ else
     protected override async Task OnInitializedAsync()
     {
         MediaFilter.OnChanged += OnMediaFilterChanged;
+        UserServicesCache.Changed += OnServicesChanged;
+        _userServices = await UserServicesCache.GetAsync();
         await LoadQueue();
     }
 
     private void OnMediaFilterChanged() => InvokeAsync(() => { UpdateCounts(); StateHasChanged(); });
+
+    private void OnServicesChanged()
+    {
+        _userServices = UserServicesCache.TryGetCached();
+        UpdateItemServices();
+        InvokeAsync(StateHasChanged);
+    }
 
     private async Task LoadQueue()
     {
@@ -220,6 +239,12 @@ else
         _items = await Api.GetQueueAsync();
         _loading = false;
         UpdateCounts();
+        UpdateItemServices();
+    }
+
+    private void UpdateItemServices()
+    {
+        _itemServices = _items.ToDictionary(i => i.Id, i => i.VisibleServicesFor(_userServices));
     }
 
     private void UpdateCounts()
@@ -257,5 +282,9 @@ else
         catch { }
     }
 
-    public void Dispose() => MediaFilter.OnChanged -= OnMediaFilterChanged;
+    public void Dispose()
+    {
+        MediaFilter.OnChanged -= OnMediaFilterChanged;
+        UserServicesCache.Changed -= OnServicesChanged;
+    }
 }

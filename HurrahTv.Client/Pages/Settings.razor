@@ -1,6 +1,7 @@
 @page "/settings"
 @attribute [Authorize]
 @inject ApiClient Api
+@inject UserServicesCache UserServicesCache
 
 <PageTitle>Settings - Hurrah.tv</PageTitle>
 
@@ -114,6 +115,7 @@
                 Api.SetUserServicesAsync(_selectedServices),
                 Api.SetUserGenresAsync(_selectedGenres),
                 Api.SetUserSettingsAsync(new UserSettings { EnglishOnly = _englishOnly }));
+            UserServicesCache.Set(_selectedServices);
             _saved = true;
             StateHasChanged();
             await Task.Delay(2000);

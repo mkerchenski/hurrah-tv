@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject UserServicesCache UserServicesCache
 
 <div @ref="_cardRef" class="poster-card relative rounded-lg overflow-hidden bg-surface-50 cursor-pointer group"
      @onclick="NavigateToDetails">
@@ -38,17 +39,17 @@
         </div>
     }
 
-    <!-- network badges — always visible at bottom of poster -->
-    @if (Result.AvailableOn.Count > 0)
+    <!-- service logos — bottom-left, filtered to user's subscribed services, capped at 2 -->
+    @if (_visibleServices.Count > 0)
     {
         <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 pt-6">
             <div class="flex gap-1 flex-wrap">
-                @foreach (AvailableService svc in Result.AvailableOn.Take(4))
+                @foreach (AvailableService svc in _visibleServices)
                 {
                     @if (!string.IsNullOrEmpty(svc.LogoUrl()))
                     {
                         <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" title="@svc.ProviderName"
-                             class="w-5 h-5 md:w-6 md:h-6 rounded service-badge" />
+                             class="w-6 h-6 md:w-7 md:h-7 rounded service-badge" />
                     }
                 }
             </div>
@@ -84,16 +85,16 @@
             </div>
         }
 
-        <!-- service badges in hover too for context -->
-        @if (Result.AvailableOn.Count > 0)
+        <!-- service logos in hover — same filter + cap as the bottom strip -->
+        @if (_visibleServices.Count > 0)
         {
             <div class="flex gap-1 flex-wrap">
-                @foreach (AvailableService svc in Result.AvailableOn.Take(4))
+                @foreach (AvailableService svc in _visibleServices)
                 {
                     @if (!string.IsNullOrEmpty(svc.LogoUrl()))
                     {
                         <img src="@svc.LogoUrl("w45")" alt="@svc.ProviderName" title="@svc.ProviderName"
-                             class="w-6 h-6 rounded service-badge" />
+                             class="w-7 h-7 rounded service-badge" />
                     }
                 }
             </div>
@@ -159,8 +160,32 @@
     private ElementReference _cardRef;
     private DotNetObjectReference<PosterCard>? _dotNetRef;
     private IJSObjectReference? _longPressHandle;
+    private List<AvailableService> _visibleServices = [];
 
     private enum ActionState { None, Added, Seen, ThumbsUp }
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserServicesCache.Changed += OnServicesChanged;
+        await UserServicesCache.GetAsync();
+        RecomputeVisibleServices();
+    }
+
+    protected override void OnParametersSet() => RecomputeVisibleServices();
+
+    private void OnServicesChanged()
+    {
+        RecomputeVisibleServices();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void RecomputeVisibleServices()
+    {
+        IReadOnlyList<int> userServices = UserServicesCache.TryGetCached();
+        _visibleServices = userServices.Count == 0
+            ? []
+            : [.. Result.AvailableOn.Where(s => userServices.Contains(s.ProviderId)).Take(2)];
+    }
 
     private void NavigateToDetails()
     {
@@ -188,6 +213,7 @@
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
+        UserServicesCache.Changed -= OnServicesChanged;
         if (_longPressHandle != null)
         {
             try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", _longPressHandle); }

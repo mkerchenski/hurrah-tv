@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject UserServicesCache UserServicesCache
 
 <section class="mb-6 md:mb-8">
     <div class="flex items-center justify-between mb-3">
@@ -32,43 +33,58 @@
                  class="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory scroll-smooth">
                 @foreach (QueueItem item in Items)
                 {
+                    List<StreamingService> visible = item.VisibleServicesFor(_userServices);
                     <div @key="item.Id" @ref="_cardRefs[item.Id]"
-                         class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer relative group"
+                         class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer group"
                          @onclick="() => GoToDetails(item)">
-                        @if (!string.IsNullOrEmpty(item.PosterUrl()))
-                        {
-                            <img src="@item.PosterUrl()" alt="@item.Title" draggable="false"
-                                 class="w-full aspect-[2/3] object-cover rounded-lg no-callout" loading="lazy" />
-                        }
-                        else
-                        {
-                            <div class="w-full aspect-[2/3] bg-surface-100 rounded-lg flex items-center justify-center">
-                                <span class="text-gray-500 text-xs text-center px-2">@item.Title</span>
-                            </div>
-                        }
+                        <div class="relative">
+                            @if (!string.IsNullOrEmpty(item.PosterUrl()))
+                            {
+                                <img src="@item.PosterUrl()" alt="@item.Title" draggable="false"
+                                     class="w-full aspect-[2/3] object-cover rounded-lg no-callout" loading="lazy" />
+                            }
+                            else
+                            {
+                                <div class="w-full aspect-[2/3] bg-surface-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-gray-500 text-xs text-center px-2">@item.Title</span>
+                                </div>
+                            }
 
-                        @{ string badge = ShowAirDates ? FormatAirBadge(item) : ""; }
-                        @if (!string.IsNullOrEmpty(badge))
-                        {
-                            <div class="absolute top-1.5 left-1.5 bg-black/60 text-gray-200 text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
-                                @badge
-                            </div>
-                        }
+                            @{ string badge = ShowAirDates ? FormatAirBadge(item) : ""; }
+                            @if (!string.IsNullOrEmpty(badge))
+                            {
+                                <div class="absolute top-1.5 left-1.5 bg-black/60 text-gray-200 text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm">
+                                    @badge
+                                </div>
+                            }
 
-                        @if (ShowStatusBadge && item.Status != QueueStatus.Watching)
-                        {
-                            string icon = BadgeHelpers.StatusIcon(item.Status);
-                            string label = BadgeHelpers.StatusShortLabel(item.Status);
-                            <div class="absolute top-1.5 right-1.5 bg-black/60 text-white backdrop-blur-sm flex items-center justify-center rounded-full w-5 h-5"
-                                 title="@label">
-                                <span class="@icon w-3 h-3"></span>
-                            </div>
-                        }
+                            @if (ShowStatusBadge && item.Status != QueueStatus.Watching)
+                            {
+                                string icon = BadgeHelpers.StatusIcon(item.Status);
+                                string label = BadgeHelpers.StatusShortLabel(item.Status);
+                                <div class="absolute top-1.5 right-1.5 bg-black/60 text-white backdrop-blur-sm flex items-center justify-center rounded-full w-5 h-5"
+                                     title="@label">
+                                    <span class="@icon w-3 h-3"></span>
+                                </div>
+                            }
 
-                        <!-- title overlay at bottom -->
-                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-6 rounded-b-lg">
+                            @if (visible.Count > 0)
+                            {
+                                <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-2 pt-6 rounded-b-lg">
+                                    <div class="flex gap-1 flex-wrap">
+                                        @foreach (StreamingService svc in visible)
+                                        {
+                                            <img src="@svc.LogoUrl("w45")" alt="@svc.Name" title="@svc.Name"
+                                                 class="w-6 h-6 md:w-7 md:h-7 rounded service-badge" />
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="mt-1.5">
                             <div class="flex items-center gap-1">
-                                <span class="text-white text-xs font-medium leading-tight truncate flex-1">@item.Title</span>
+                                <span class="text-gray-200 text-xs font-medium leading-tight truncate flex-1">@item.Title</span>
                                 @if (item.Sentiment.HasValue)
                                 {
                                     <span class="@SentimentHelpers.Icon(item.Sentiment.Value) @SentimentHelpers.Color(item.Sentiment.Value) w-3 h-3 shrink-0"></span>
@@ -76,7 +92,7 @@
                             </div>
                             @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
                             {
-                                <div class="text-gray-400 text-[10px]">S@(item.LastSeasonWatched)E@(item.LastEpisodeWatched)</div>
+                                <div class="text-gray-500 text-[10px]">S@(item.LastSeasonWatched)E@(item.LastEpisodeWatched)</div>
                             }
                         </div>
                     </div>
@@ -109,12 +125,25 @@
     private Dictionary<int, ElementReference> _cardRefs = new();
     private DotNetObjectReference<WatchlistRow>? _dotNetRef;
     private Dictionary<int, IJSObjectReference> _longPressHandles = new();
+    private IReadOnlyList<int> _userServices = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserServicesCache.Changed += OnServicesChanged;
+        _userServices = await UserServicesCache.GetAsync();
+    }
 
     protected override void OnParametersSet()
     {
         _cardRefs = new();
         foreach (QueueItem item in Items)
             _cardRefs[item.Id] = default;
+    }
+
+    private void OnServicesChanged()
+    {
+        _userServices = UserServicesCache.TryGetCached();
+        InvokeAsync(StateHasChanged);
     }
 
     private void GoToDetails(QueueItem item) => Nav.NavigateTo($"/details/{item.MediaType}/{item.TmdbId}");
@@ -161,6 +190,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        UserServicesCache.Changed -= OnServicesChanged;
         foreach (IJSObjectReference handle in _longPressHandles.Values)
         {
             try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", handle); }
