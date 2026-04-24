@@ -1,0 +1,22 @@
+name: Auto-request Copilot review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  request:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request Copilot review
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        # tolerate re-request failures — if Copilot is already a requested reviewer
+        # the command exits non-zero, which we don't want to fail the workflow on
+        run: gh pr edit "$PR" --add-reviewer Copilot || true
