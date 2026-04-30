@@ -142,10 +142,15 @@
             _ => null
         };
         Nav.LocationChanged += OnLocationChanged;
+        MediaFilter.OnChanged += OnMediaFilterChanged;
     }
+
+    protected override Task OnInitializedAsync() => MediaFilter.InitializeAsync();
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => InvokeAsync(StateHasChanged);
+
+    private void OnMediaFilterChanged() => InvokeAsync(StateHasChanged);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -165,5 +170,9 @@
         AuthState.NotifyAuthChanged();
     }
 
-    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+        MediaFilter.OnChanged -= OnMediaFilterChanged;
+    }
 }

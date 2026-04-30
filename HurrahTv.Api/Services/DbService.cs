@@ -154,6 +154,7 @@ public class DbService(IConfiguration config)
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowWantToWatch BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowFinished    BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS WatchlistSort   VARCHAR(20) NOT NULL DEFAULT 'date';
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS MediaType       VARCHAR(10) NOT NULL DEFAULT 'all';
             """, transaction: tx);
 
         await tx.CommitAsync();
@@ -645,7 +646,7 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
-            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort FROM UserSettings WHERE UserId = @UserId",
+            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType FROM UserSettings WHERE UserId = @UserId",
             new { UserId = userId });
         return settings ?? new UserSettings();
     }
@@ -654,14 +655,15 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort)
-            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished, @WatchlistSort)
+            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType)
+            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished, @WatchlistSort, @MediaType)
             ON CONFLICT (UserId) DO UPDATE SET
                 EnglishOnly     = @EnglishOnly,
                 ShowWatching    = @ShowWatching,
                 ShowWantToWatch = @ShowWantToWatch,
                 ShowFinished    = @ShowFinished,
-                WatchlistSort   = @WatchlistSort
+                WatchlistSort   = @WatchlistSort,
+                MediaType       = @MediaType
             """, new
         {
             UserId = userId,
@@ -669,7 +671,8 @@ public class DbService(IConfiguration config)
             settings.ShowWatching,
             settings.ShowWantToWatch,
             settings.ShowFinished,
-            settings.WatchlistSort
+            settings.WatchlistSort,
+            settings.MediaType
         });
     }
 

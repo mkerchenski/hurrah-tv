@@ -11,4 +11,7 @@ public class UserSettings
 
     // home page watchlist sort order applied to all My Watchlist rows
     public string WatchlistSort { get; set; } = "date"; // "date" | "sentiment" | "queue"
+
+    // global media type filter — tab in MainLayout, drives Home/Queue/Search
+    public string MediaType { get; set; } = "all"; // "all" | "tv" | "movie"
 }
