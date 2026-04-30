@@ -4,18 +4,12 @@ namespace HurrahTv.Client.Services;
 // service-logo overlays (PosterCard, WatchlistRow, Queue) read this to gate which
 // logos appear. MainLayout pre-warms on first render; Settings.Save() invalidates
 // after a successful PUT.
-public class UserServicesCache
+public class UserServicesCache(ApiClient api)
 {
-    private readonly ApiClient _api;
     private Task<IReadOnlyList<int>>? _inFlight;
     private IReadOnlyList<int> _cached = [];
 
     public event Action? Changed;
-
-    public UserServicesCache(ApiClient api)
-    {
-        _api = api;
-    }
 
     public Task<IReadOnlyList<int>> GetAsync()
     {
@@ -44,7 +38,7 @@ public class UserServicesCache
 
     private async Task<IReadOnlyList<int>> LoadAsync()
     {
-        List<int> services = await _api.GetUserServicesAsync();
+        List<int> services = await api.GetUserServicesAsync();
         _cached = services;
         Changed?.Invoke();
         return _cached;
