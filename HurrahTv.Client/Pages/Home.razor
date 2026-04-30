@@ -220,7 +220,8 @@ else
         {
             <ContentRow Title="@($"Because You Loved {seed.Title}")"
                         LoadData="@(() => Api.GetRecommendationsAsync(seed.TmdbId, seed.MediaType))"
-                        NewEpisodeTmdbIds="_newEpisodeTmdbIds" />
+                        NewEpisodeTmdbIds="_newEpisodeTmdbIds"
+                        HideIfFewer="4" />
         }
     </div>
 }
