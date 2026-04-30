@@ -11,7 +11,7 @@
   "devDependencies": {
     "@iconify-json/heroicons": "^1.2.3",
     "@iconify/types": "^2.0.0",
-    "@iconify/utils": "^3.1.0",
+    "@iconify/utils": "^3.1.1",
     "@tailwindcss/cli": "^4.2.4",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.2.4"
