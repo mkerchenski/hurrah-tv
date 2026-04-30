@@ -31,7 +31,6 @@ public static class CurationEndpoints
                 if (result.Rows.Count > 0)
                 {
                     HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
-                    excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
                     ExcludeShows(result, excludeIds);
                 }
 
@@ -85,7 +84,6 @@ public static class CurationEndpoints
                 if (result.Rows.Count > 0)
                 {
                     HashSet<int> excludeIds = [.. watchlist.Select(i => i.TmdbId)];
-                    excludeIds.UnionWith(await db.GetDismissalsAsync(userId));
                     ExcludeShows(result, excludeIds);
                 }
 

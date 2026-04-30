@@ -61,19 +61,6 @@
         </label>
     </div>
 
-    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
-        <h2 class="text-lg font-semibold mb-2">Hidden Content</h2>
-        <p class="text-gray-400 text-sm mb-4">Reset titles you've dismissed from your home page.</p>
-        <button class="bg-surface-100 hover:bg-surface-200 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
-                @onclick="ResetDismissals">
-            Reset hidden titles
-        </button>
-        @if (_dismissalsCleared)
-        {
-            <span class="text-green-400 text-sm ml-3 fade-in">Cleared!</span>
-        }
-    </div>
-
     <div class="bg-surface-50 rounded-xl p-4 md:p-6">
         <h2 class="text-lg font-semibold mb-2">About Hurrah.tv</h2>
         <p class="text-gray-400 text-sm">
@@ -90,7 +77,6 @@
     private bool _loaded;
     private bool _saving;
     private bool _saved;
-    private bool _dismissalsCleared;
 
     protected override async Task OnInitializedAsync()
     {
@@ -122,14 +108,5 @@
             _saved = false;
         }
         finally { _saving = false; }
-    }
-
-    private async Task ResetDismissals()
-    {
-        await Api.ClearDismissalsAsync();
-        _dismissalsCleared = true;
-        StateHasChanged();
-        await Task.Delay(2000);
-        _dismissalsCleared = false;
     }
 }

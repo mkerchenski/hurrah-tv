@@ -175,13 +175,6 @@ public class ApiClient(HttpClient http)
     public async Task SetUserServicesAsync(List<int> providerIds) =>
         await _http.PutAsJsonAsync("api/services", providerIds);
 
-    // dismissals
-    public async Task DismissAsync(int tmdbId) =>
-        await _http.PostAsync($"api/dismissals/{tmdbId}", null);
-
-    public async Task ClearDismissalsAsync() =>
-        await _http.DeleteAsync("api/dismissals");
-
     // user genres
     public async Task<List<int>> GetUserGenresAsync() =>
         await _http.GetFromJsonAsync<List<int>>("api/genres") ?? [];

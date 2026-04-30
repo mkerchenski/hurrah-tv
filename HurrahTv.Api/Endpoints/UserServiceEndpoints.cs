@@ -40,22 +40,6 @@ public static class UserServiceEndpoints
             return Results.Ok();
         });
 
-        RouteGroupBuilder dismissals = app.MapGroup("/api/dismissals").RequireAuthorization();
-
-        dismissals.MapPost("/{tmdbId:int}", async (int tmdbId, ClaimsPrincipal user, DbService db) =>
-        {
-            string userId = user.GetUserId();
-            await db.DismissAsync(tmdbId, userId);
-            return Results.Ok();
-        });
-
-        dismissals.MapDelete("", async (ClaimsPrincipal user, DbService db) =>
-        {
-            string userId = user.GetUserId();
-            await db.ClearDismissalsAsync(userId);
-            return Results.Ok();
-        });
-
         RouteGroupBuilder settings = app.MapGroup("/api/settings").RequireAuthorization();
 
         settings.MapGet("", async (ClaimsPrincipal user, DbService db) =>

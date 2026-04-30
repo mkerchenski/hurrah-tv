@@ -70,9 +70,8 @@ public partial class CurationService
         if (signalItems.Count < 2)
             return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
-        // phase 1: gather candidate pool from TMDb (excluding watchlist + dismissed)
-        HashSet<int> dismissed = await _db.GetDismissalsAsync(userId);
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, dismissed, englishOnly);
+        // phase 1: gather candidate pool from TMDb (excluding watchlist)
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, englishOnly);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
@@ -89,10 +88,9 @@ public partial class CurationService
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, HashSet<int> dismissed, bool englishOnly)
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, bool englishOnly)
     {
         HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
-        watchlistIds.UnionWith(dismissed); // exclude both watchlist and dismissed items
 
         // fetch recent TV and movies in parallel across user's services
         Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly);

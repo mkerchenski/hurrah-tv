@@ -64,12 +64,8 @@ public class DbService(IConfiguration config)
             -- soft-hide: preserve history when a user removes a service so re-subscribing restores it
             ALTER TABLE UserServices ADD COLUMN IF NOT EXISTS IsActive BOOLEAN NOT NULL DEFAULT TRUE;
 
-            CREATE TABLE IF NOT EXISTS UserDismissals (
-                UserId VARCHAR(50) NOT NULL,
-                TmdbId INT NOT NULL,
-                DismissedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY (UserId, TmdbId)
-            );
+            -- legacy dismissals removed — replaced by sentiment system
+            DROP TABLE IF EXISTS UserDismissals;
 
             -- AI usage tracking per user
             CREATE TABLE IF NOT EXISTS AIUsage (
@@ -404,17 +400,16 @@ public class DbService(IConfiguration config)
         await db.ExecuteAsync(cmd);
     }
 
-    // user preferences (loads services, genres, dismissals, and settings in parallel)
-    public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, HashSet<int> Dismissed, bool EnglishOnly);
+    // user preferences (loads services, genres, and settings in parallel)
+    public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, bool EnglishOnly);
 
     public async Task<UserPreferences> GetUserPreferencesAsync(string userId)
     {
         Task<List<int>> providers = GetUserServicesAsync(userId);
         Task<List<int>> genres = GetUserGenresAsync(userId);
-        Task<HashSet<int>> dismissed = GetDismissalsAsync(userId);
         Task<UserSettings> settings = GetUserSettingsAsync(userId);
-        await Task.WhenAll(providers, genres, dismissed, settings);
-        return new UserPreferences(providers.Result, genres.Result, dismissed.Result, settings.Result.EnglishOnly);
+        await Task.WhenAll(providers, genres, settings);
+        return new UserPreferences(providers.Result, genres.Result, settings.Result.EnglishOnly);
     }
 
     // user services
@@ -522,30 +517,6 @@ public class DbService(IConfiguration config)
                 ON CONFLICT (UserId, TmdbId, SeasonNumber, EpisodeNumber) DO UPDATE SET Sentiment = @Sentiment
                 """, new { UserId = userId, TmdbId = tmdbId, Season = seasonNumber, Episode = episodeNumber, Sentiment = sentiment });
         }
-    }
-
-    // dismissals
-    public async Task<HashSet<int>> GetDismissalsAsync(string userId)
-    {
-        using NpgsqlConnection db = await OpenAsync();
-        IEnumerable<int> ids = await db.QueryAsync<int>(
-            "SELECT TmdbId FROM UserDismissals WHERE UserId = @UserId",
-            new { UserId = userId });
-        return [.. ids];
-    }
-
-    public async Task DismissAsync(int tmdbId, string userId)
-    {
-        using NpgsqlConnection db = await OpenAsync();
-        await db.ExecuteAsync(
-            "INSERT INTO UserDismissals (UserId, TmdbId) VALUES (@UserId, @TmdbId) ON CONFLICT DO NOTHING",
-            new { UserId = userId, TmdbId = tmdbId });
-    }
-
-    public async Task ClearDismissalsAsync(string userId)
-    {
-        using NpgsqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("DELETE FROM UserDismissals WHERE UserId = @UserId", new { UserId = userId });
     }
 
     // auth operations

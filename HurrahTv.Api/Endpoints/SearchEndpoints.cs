@@ -92,8 +92,6 @@ public static partial class SearchEndpoints
             HashSet<int> userGenres = [.. prefs.GenreIds];
             results = [.. results.Where(r => r.GenreIds.Any(g => userGenres.Contains(g)))];
         }
-        if (prefs.Dismissed.Count > 0)
-            results = [.. results.Where(r => !prefs.Dismissed.Contains(r.TmdbId))];
         if (prefs.EnglishOnly)
             results = [.. results.Where(r => r.OriginalLanguage is "" or "en")];
 
