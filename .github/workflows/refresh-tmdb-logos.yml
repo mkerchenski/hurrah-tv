@@ -22,7 +22,7 @@ jobs:
         run: python3 .github/scripts/refresh_provider_logos.py
 
       - name: Open PR if file changed
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           commit-message: 'chore: refresh TMDb provider logo paths'
           title: 'Refresh TMDb provider logo paths'
