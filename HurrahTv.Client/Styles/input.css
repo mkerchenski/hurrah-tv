@@ -28,6 +28,12 @@
 
 @utility service-badge {
     transition: all 0.15s ease;
+    /* subtle ring anchors logos whose tile background blends with the app
+       surface (Max is the worst offender — black tile + small wordmark).
+       Uses outline + negative offset because inset box-shadow gets covered
+       by the opaque image bitmap on full-bleed logos like Netflix. */
+    outline: 1px solid rgba(255, 255, 255, 0.25);
+    outline-offset: -1px;
 }
 
 @utility fade-in {
