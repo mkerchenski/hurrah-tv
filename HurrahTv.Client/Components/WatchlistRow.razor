@@ -84,11 +84,11 @@
 
                         <div class="mt-1.5">
                             <div class="flex items-center gap-1">
-                                <span class="text-gray-200 text-xs font-medium leading-tight truncate flex-1">@item.Title</span>
                                 @if (item.Sentiment.HasValue)
                                 {
                                     <span class="@SentimentHelpers.Icon(item.Sentiment.Value) @SentimentHelpers.Color(item.Sentiment.Value) w-3 h-3 shrink-0"></span>
                                 }
+                                <span class="text-gray-200 text-xs font-medium leading-tight truncate flex-1">@item.Title</span>
                             </div>
                             @if (item.MediaType == "tv" && item.LastSeasonWatched.HasValue && item.LastEpisodeWatched.HasValue)
                             {
