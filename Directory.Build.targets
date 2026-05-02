@@ -1,0 +1,146 @@
+<Project>
+
+    <!--
+        Hurrah cross-platform case-sensitivity check.
+
+        Fails the build if any source file contains a static-asset URL whose case
+        doesn't match the on-disk filesystem. macOS and Linux are case-sensitive;
+        Windows is not, so violations slip through Windows builds and only break on
+        deploy or on a Mac dev machine.
+
+        Two protections:
+
+          1. Capital-base check: catches any '/_content/Hurrah.Core/' (with capital
+             H/C) since StaticWebAssetBasePath is set to lowercase 'hurrah.core'.
+
+          2. Lowercase-segment check: for each known PascalCase folder under
+             /_content/hurrah.core/, catches the lowercase variant of the LAST
+             path segment when the parent segments are correct.
+
+        To extend: add the full PascalCase path of any new mixed-case folder under
+        Hurrah.Core/ that gets exposed as a static asset to the PascalSegments list
+        below. The check generates a regex automatically.
+
+        See Hurrah.Core/Learnings/staticwebassetbasepath-mac-case-sensitivity.md.
+
+        Set <SkipHurrahCaseCheck>true</SkipHurrahCaseCheck> in a project to skip.
+    -->
+
+    <UsingTask TaskName="HurrahCaseCheck"
+               TaskFactory="RoslynCodeTaskFactory"
+               AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+        <ParameterGroup>
+            <Root ParameterType="System.String" Required="true" />
+        </ParameterGroup>
+        <Task>
+            <Code Type="Class" Language="cs">
+                <![CDATA[
+                using System;
+                using System.Collections.Generic;
+                using System.IO;
+                using System.Linq;
+                using System.Text.RegularExpressions;
+                using Microsoft.Build.Framework;
+
+                public class HurrahCaseCheck : Microsoft.Build.Utilities.Task
+                {
+                    public string Root { get; set; }
+
+                    // PascalCase folders that exist in Hurrah.Core and could appear in
+                    // /_content/hurrah.core/<...>/ URLs. Add new entries when new
+                    // mixed-case folders are introduced.
+                    // Only include folders that appear in /_content/hurrah.core/<...>/ URLs
+                    // (i.e., RCL static assets). Server-side folders like Areas/ are routed
+                    // through ASP.NET MVC and don't go through _content/, so they don't need
+                    // to be listed here.
+                    private static readonly string[] PascalSegments = new[]
+                    {
+                        "Components",
+                        "Components/Layout",
+                        "Components/EditSection",
+                    };
+
+                    public override bool Execute()
+                    {
+                        var extensions = new[] { ".razor", ".cs", ".cshtml", ".html" };
+                        var jsExt = ".razor.js";
+                        var skipDirs = new[] { "/obj/", "/bin/", "/node_modules/", "/Packages/", "/.git/", "/.vs/", "/wwwroot/lib/" };
+
+                        var checks = BuildChecks();
+
+                        var anyFailed = false;
+                        foreach (var file in Directory.EnumerateFiles(Root, "*", SearchOption.AllDirectories))
+                        {
+                            var normalized = file.Replace('\\', '/');
+                            if (skipDirs.Any(d => normalized.IndexOf(d, StringComparison.OrdinalIgnoreCase) >= 0)) continue;
+                            var matches = extensions.Any(e => file.EndsWith(e, StringComparison.OrdinalIgnoreCase))
+                                          || file.EndsWith(jsExt, StringComparison.OrdinalIgnoreCase);
+                            if (!matches) continue;
+
+                            string content;
+                            try { content = File.ReadAllText(file); }
+                            catch { continue; }
+
+                            var lineNum = 0;
+                            foreach (var line in content.Split('\n'))
+                            {
+                                lineNum++;
+                                foreach (var c in checks)
+                                {
+                                    if (c.Regex.IsMatch(line))
+                                    {
+                                        Log.LogError(null, "HRC001", null, file, lineNum, 0, 0, 0,
+                                            "{0} (matched: {1})", c.Message, line.Trim());
+                                        anyFailed = true;
+                                    }
+                                }
+                            }
+                        }
+                        return !anyFailed;
+                    }
+
+                    private static List<(Regex Regex, string Message)> BuildChecks()
+                    {
+                        var list = new List<(Regex Regex, string Message)>();
+
+                        // Capital base path: '_content/Hurrah.Core/' should be lowercase.
+                        list.Add((
+                            new Regex("_content/Hurrah\\.Core/", RegexOptions.Compiled),
+                            "Capital '_content/Hurrah.Core/' base path; use lowercase '_content/hurrah.core/' to match StaticWebAssetBasePath."
+                        ));
+
+                        // For each PascalCase folder, catch the case where the parent
+                        // segments are correct but the last segment is lowercased.
+                        foreach (var segment in PascalSegments)
+                        {
+                            var parts = segment.Split('/');
+                            var lastPart = parts[parts.Length - 1];
+                            var lastLower = lastPart.ToLowerInvariant();
+                            if (lastLower == lastPart) continue; // already lowercase
+
+                            string parentPath;
+                            if (parts.Length == 1)
+                                parentPath = string.Empty;
+                            else
+                                parentPath = string.Join("/", parts.Take(parts.Length - 1)) + "/";
+
+                            var pattern = "_content/hurrah\\.core/" + Regex.Escape(parentPath + lastLower) + "/";
+                            var msg = "Lowercase '" + lastLower + "/' segment under '_content/hurrah.core/" + parentPath + "'; correct case is '" + segment + "/' (case-sensitive on Mac/Linux).";
+                            list.Add((new Regex(pattern, RegexOptions.Compiled), msg));
+                        }
+
+                        return list;
+                    }
+                }
+                ]]>
+            </Code>
+        </Task>
+    </UsingTask>
+
+    <Target Name="HurrahCaseCheckBeforeBuild"
+            BeforeTargets="BeforeBuild"
+            Condition="'$(SkipHurrahCaseCheck)' != 'true'">
+        <HurrahCaseCheck Root="$(MSBuildProjectDirectory)" />
+    </Target>
+
+</Project>
