@@ -28,10 +28,21 @@ jobs:
 
       - name: Verify production health
         run: |
-          sleep 15
-          STATUS=$(curl -sk -o /dev/null -w "%{http_code}" https://hurrahtv-api.azurewebsites.net/api/health)
-          echo "Health check status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "Health check failed! Consider swapping back."
-            exit 1
-          fi
+          # cold start of the new prod slot includes .NET host boot + DbService.InitializeAsync
+          # (PostgreSQL migrations). Poll up to 120s before declaring the deploy unhealthy —
+          # a single-shot 15s check used to flag healthy deploys as failures.
+          DEADLINE=$((SECONDS + 120))
+          ATTEMPT=0
+          while [ $SECONDS -lt $DEADLINE ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            STATUS=$(curl -sk --max-time 10 -o /dev/null -w "%{http_code}" https://hurrahtv-api.azurewebsites.net/api/health || echo "000")
+            echo "[attempt $ATTEMPT, t+${SECONDS}s] /api/health → $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              VERSION=$(curl -sk --max-time 5 https://hurrahtv-api.azurewebsites.net/api/version || true)
+              echo "Production healthy. Version: $VERSION"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Production did not become healthy within 120s. Consider swapping back via /deploy now."
+          exit 1
