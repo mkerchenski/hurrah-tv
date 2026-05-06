@@ -1,0 +1,18 @@
+@{
+    int pct = Total > 0 ? Count * 100 / Total : 0;
+}
+<div>
+    <div class="flex items-baseline justify-between text-sm mb-1">
+        <span>@Label</span>
+        <span class="text-gray-400">@Count / @Total <span class="text-xs">(@pct%)</span></span>
+    </div>
+    <div class="bg-surface-100 rounded h-3 overflow-hidden">
+        <div class="bg-accent h-full transition-all" style="width: @(pct)%"></div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public int Count { get; set; }
+    [Parameter] public int Total { get; set; }
+}

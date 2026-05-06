@@ -1,0 +1,67 @@
+@page "/admin"
+@attribute [Authorize(Policy = "Admin")]
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Admin - Hurrah.tv</PageTitle>
+
+<div class="max-w-5xl mx-auto">
+    <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">Admin</h1>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else
+    {
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+            <StatCard Label="Users" Value="@_users?.TotalUsers.ToString()" Href="/admin/users" />
+            <StatCard Label="Admins" Value="@_users?.Users.Count(u => u.IsAdmin).ToString()" Href="/admin/users" />
+            <StatCard Label="MTD AI Cost" Value="@(_aiUsage is null ? null : $"${_aiUsage.MonthToDateCostUsd:F2}")" Href="/admin/ai-usage" />
+            <StatCard Label="Onboarded" Value="@(_funnel is null ? null : $"{_funnel.WithFirstQueueAdd}/{_funnel.TotalSignups}")" Href="/admin/onboarding" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+            <a href="/admin/users" class="block bg-surface-50 hover:bg-surface-100 rounded-xl p-4 md:p-6 transition-colors">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="icon-[heroicons--users] w-5 h-5 text-accent"></span>
+                    <h2 class="text-lg font-semibold">Users</h2>
+                </div>
+                <p class="text-sm text-gray-400">List, inspect, and grant/revoke admin.</p>
+            </a>
+            <a href="/admin/ai-usage" class="block bg-surface-50 hover:bg-surface-100 rounded-xl p-4 md:p-6 transition-colors">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="icon-[heroicons--currency-dollar] w-5 h-5 text-accent"></span>
+                    <h2 class="text-lg font-semibold">AI Usage</h2>
+                </div>
+                <p class="text-sm text-gray-400">Token spend per day / week / month.</p>
+            </a>
+            <a href="/admin/onboarding" class="block bg-surface-50 hover:bg-surface-100 rounded-xl p-4 md:p-6 transition-colors">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="icon-[heroicons--funnel] w-5 h-5 text-accent"></span>
+                    <h2 class="text-lg font-semibold">Onboarding</h2>
+                </div>
+                <p class="text-sm text-gray-400">Signup funnel + completion rates.</p>
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private AdminUsersResponse? _users;
+    private AdminAiUsageResponse? _aiUsage;
+    private AdminOnboardingFunnel? _funnel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Task<AdminUsersResponse?> usersTask = Api.GetAdminUsersAsync();
+        Task<AdminAiUsageResponse?> aiTask = Api.GetAdminAiUsageAsync();
+        Task<AdminOnboardingFunnel?> funnelTask = Api.GetAdminOnboardingAsync();
+        await Task.WhenAll(usersTask, aiTask, funnelTask);
+        _users = usersTask.Result;
+        _aiUsage = aiTask.Result;
+        _funnel = funnelTask.Result;
+        _loading = false;
+    }
+}

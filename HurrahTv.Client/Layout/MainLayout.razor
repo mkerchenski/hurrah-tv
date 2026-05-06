@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
+@inject AuthenticationStateProvider AuthProvider
 @inject IJSRuntime JS
 @inject IWebAssemblyHostEnvironment HostEnv
 @inject NavigationManager Nav
@@ -43,6 +44,12 @@
             <a href="/settings" class="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-surface-100">
                 <span class="icon-[heroicons--cog-6-tooth] w-5 h-5"></span>
             </a>
+            @if (_isAdmin)
+            {
+                <a href="/admin" class="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-surface-100" title="Admin">
+                    <span class="icon-[heroicons--shield-check] w-5 h-5"></span>
+                </a>
+            }
             <button @onclick="SignOut" class="text-gray-500 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-surface-100" title="Sign out">
                 <span class="icon-[heroicons--arrow-right-start-on-rectangle] w-5 h-5"></span>
             </button>
@@ -123,6 +130,7 @@
 
 @code {
     private string? _envPrefix;
+    private bool _isAdmin;
 
     private bool IsContentPage
     {
@@ -145,7 +153,12 @@
         MediaFilter.OnChanged += OnMediaFilterChanged;
     }
 
-    protected override Task OnInitializedAsync() => MediaFilter.InitializeAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await MediaFilter.InitializeAsync();
+        AuthenticationState state = await AuthProvider.GetAuthenticationStateAsync();
+        _isAdmin = state.User.HasClaim("is_admin", "true");
+    }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => InvokeAsync(StateHasChanged);

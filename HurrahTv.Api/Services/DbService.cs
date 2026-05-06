@@ -151,7 +151,20 @@ public class DbService(IConfiguration config)
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowFinished    BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS WatchlistSort   VARCHAR(20) NOT NULL DEFAULT 'date';
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS MediaType       VARCHAR(10) NOT NULL DEFAULT 'all';
+
+            -- admin role on users (managed in-app once seeded)
+            ALTER TABLE Users ADD COLUMN IF NOT EXISTS IsAdmin BOOLEAN NOT NULL DEFAULT FALSE;
+
+            -- optional first name — collected during onboarding for greetings + AI personalization
+            ALTER TABLE Users ADD COLUMN IF NOT EXISTS FirstName VARCHAR(50) NULL;
             """, transaction: tx);
+
+        // bootstrap admins — runs on every startup, idempotent. Owner is always admin in every environment.
+        string[] bootstrapPhones = ["4406228711", .. config.GetSection("Admin:BootstrapPhones").Get<string[]>() ?? []];
+        await db.ExecuteAsync(
+            "UPDATE Users SET IsAdmin = TRUE WHERE PhoneNumber = ANY(@Phones) AND IsAdmin = FALSE",
+            new { Phones = bootstrapPhones },
+            transaction: tx);
 
         await tx.CommitAsync();
     }
@@ -682,6 +695,207 @@ public class DbService(IConfiguration config)
             "SELECT TmdbId, Season, Episode FROM WatchedEpisodes WHERE UserId = @UserId AND TmdbId = @TmdbId",
             new { UserId = userId, TmdbId = tmdbId });
         return [.. rows.Select(r => new WatchedEpisode(r.TmdbId, r.Season, r.Episode))];
+    }
+
+    // user profile
+    public async Task<string?> GetUserFirstNameAsync(string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        return await db.QuerySingleOrDefaultAsync<string?>(
+            "SELECT FirstName FROM Users WHERE Id = @UserId",
+            new { UserId = userId });
+    }
+
+    public async Task SetUserFirstNameAsync(string userId, string? firstName)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        await db.ExecuteAsync(
+            "UPDATE Users SET FirstName = @FirstName WHERE Id = @UserId",
+            new { UserId = userId, FirstName = firstName });
+    }
+
+    // admin role
+    public async Task<bool> IsUserAdminAsync(string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        return await db.QuerySingleOrDefaultAsync<bool>(
+            "SELECT IsAdmin FROM Users WHERE Id = @UserId",
+            new { UserId = userId });
+    }
+
+    public async Task<int> GetAdminCountAsync()
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        return await db.QuerySingleAsync<int>("SELECT COUNT(*)::int FROM Users WHERE IsAdmin = TRUE");
+    }
+
+    public async Task<bool> SetUserAdminAsync(string userId, bool isAdmin)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        int rows = await db.ExecuteAsync(
+            "UPDATE Users SET IsAdmin = @IsAdmin WHERE Id = @UserId",
+            new { UserId = userId, IsAdmin = isAdmin });
+        return rows > 0;
+    }
+
+    // admin queries — read-only aggregates over all users
+    public async Task<List<AdminUserSummary>> GetAdminUserSummariesAsync()
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        IEnumerable<AdminUserSummary> rows = await db.QueryAsync<AdminUserSummary>("""
+            SELECT
+                u.Id                                                            AS Id,
+                u.PhoneNumber                                                   AS PhoneNumber,
+                u.FirstName                                                     AS FirstName,
+                u.CreatedAt                                                     AS CreatedAt,
+                u.IsAdmin                                                       AS IsAdmin,
+                COALESCE(q.QueueCount, 0)                                       AS QueueCount,
+                COALESCE(s.ActiveServiceCount, 0)                               AS ActiveServiceCount,
+                COALESCE(a.TotalAiCostUsd, 0)                                   AS TotalAiCostUsd,
+                q.LastQueueAddAt                                                AS LastQueueAddAt
+            FROM Users u
+            LEFT JOIN (
+                SELECT UserId, COUNT(*)::int AS QueueCount, MAX(AddedAt) AS LastQueueAddAt
+                FROM QueueItems GROUP BY UserId
+            ) q ON q.UserId = u.Id
+            LEFT JOIN (
+                SELECT UserId, COUNT(*)::int AS ActiveServiceCount
+                FROM UserServices WHERE IsActive = TRUE GROUP BY UserId
+            ) s ON s.UserId = u.Id
+            LEFT JOIN (
+                SELECT UserId, SUM(EstimatedCostUsd) AS TotalAiCostUsd
+                FROM AIUsage GROUP BY UserId
+            ) a ON a.UserId = u.Id
+            ORDER BY u.CreatedAt DESC
+            """);
+        return [.. rows];
+    }
+
+    public async Task<AdminUserDetail?> GetAdminUserDetailAsync(string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+
+        (string Id, string PhoneNumber, string? FirstName, DateTime CreatedAt, bool IsAdmin)? user = await db.QuerySingleOrDefaultAsync<(string, string, string?, DateTime, bool)?>(
+            "SELECT Id, PhoneNumber, FirstName, CreatedAt, IsAdmin FROM Users WHERE Id = @UserId",
+            new { UserId = userId });
+
+        if (user is null) return null;
+
+        IEnumerable<AdminQueueRow> queue = await db.QueryAsync<AdminQueueRow>("""
+            SELECT Id, TmdbId, MediaType, Title, Status, Sentiment, AddedAt
+            FROM QueueItems WHERE UserId = @UserId
+            ORDER BY AddedAt DESC
+            """, new { UserId = userId });
+
+        IEnumerable<int> services = await db.QueryAsync<int>(
+            "SELECT ProviderId FROM UserServices WHERE UserId = @UserId AND IsActive = TRUE ORDER BY ProviderId",
+            new { UserId = userId });
+
+        IEnumerable<int> genres = await db.QueryAsync<int>(
+            "SELECT GenreId FROM UserGenres WHERE UserId = @UserId ORDER BY GenreId",
+            new { UserId = userId });
+
+        int seasonSent = await db.QuerySingleAsync<int>(
+            "SELECT COUNT(*)::int FROM SeasonSentiments WHERE UserId = @UserId", new { UserId = userId });
+        int episodeSent = await db.QuerySingleAsync<int>(
+            "SELECT COUNT(*)::int FROM EpisodeSentiments WHERE UserId = @UserId", new { UserId = userId });
+        int watched = await db.QuerySingleAsync<int>(
+            "SELECT COUNT(*)::int FROM WatchedEpisodes WHERE UserId = @UserId", new { UserId = userId });
+
+        (decimal Cost, int RequestCount) ai = await db.QuerySingleAsync<(decimal Cost, int RequestCount)>(
+            "SELECT COALESCE(SUM(EstimatedCostUsd), 0)::decimal AS Cost, COUNT(*)::int AS RequestCount FROM AIUsage WHERE UserId = @UserId",
+            new { UserId = userId });
+
+        return new AdminUserDetail(
+            user.Value.Id,
+            user.Value.PhoneNumber,
+            user.Value.FirstName,
+            user.Value.CreatedAt,
+            user.Value.IsAdmin,
+            [.. queue],
+            [.. services],
+            [.. genres],
+            seasonSent,
+            episodeSent,
+            watched,
+            ai.Cost,
+            ai.RequestCount);
+    }
+
+    public async Task<AdminAiUsageResponse> GetAdminAiUsageAsync()
+    {
+        using NpgsqlConnection db = await OpenAsync();
+
+        decimal monthToDate = await db.QuerySingleAsync<decimal>("""
+            SELECT COALESCE(SUM(EstimatedCostUsd), 0)
+            FROM AIUsage
+            WHERE date_trunc('month', CreatedAt) = date_trunc('month', NOW())
+            """);
+
+        IEnumerable<AdminAiUsageBucket> daily = await db.QueryAsync<AdminAiUsageBucket>("""
+            SELECT date_trunc('day', CreatedAt)         AS BucketStart,
+                   COALESCE(SUM(InputTokens), 0)::int   AS InputTokens,
+                   COALESCE(SUM(OutputTokens), 0)::int  AS OutputTokens,
+                   COALESCE(SUM(EstimatedCostUsd), 0)   AS CostUsd,
+                   COUNT(*)::int                        AS RequestCount,
+                   COUNT(DISTINCT UserId)::int          AS DistinctUsers
+            FROM AIUsage
+            WHERE CreatedAt >= NOW() - INTERVAL '30 days'
+            GROUP BY 1 ORDER BY 1 DESC
+            """);
+
+        IEnumerable<AdminAiUsageBucket> weekly = await db.QueryAsync<AdminAiUsageBucket>("""
+            SELECT date_trunc('week', CreatedAt)        AS BucketStart,
+                   COALESCE(SUM(InputTokens), 0)::int   AS InputTokens,
+                   COALESCE(SUM(OutputTokens), 0)::int  AS OutputTokens,
+                   COALESCE(SUM(EstimatedCostUsd), 0)   AS CostUsd,
+                   COUNT(*)::int                        AS RequestCount,
+                   COUNT(DISTINCT UserId)::int          AS DistinctUsers
+            FROM AIUsage
+            WHERE CreatedAt >= NOW() - INTERVAL '12 weeks'
+            GROUP BY 1 ORDER BY 1 DESC
+            """);
+
+        IEnumerable<AdminAiUsageBucket> monthly = await db.QueryAsync<AdminAiUsageBucket>("""
+            SELECT date_trunc('month', CreatedAt)       AS BucketStart,
+                   COALESCE(SUM(InputTokens), 0)::int   AS InputTokens,
+                   COALESCE(SUM(OutputTokens), 0)::int  AS OutputTokens,
+                   COALESCE(SUM(EstimatedCostUsd), 0)   AS CostUsd,
+                   COUNT(*)::int                        AS RequestCount,
+                   COUNT(DISTINCT UserId)::int          AS DistinctUsers
+            FROM AIUsage
+            WHERE CreatedAt >= NOW() - INTERVAL '12 months'
+            GROUP BY 1 ORDER BY 1 DESC
+            """);
+
+        IEnumerable<AdminAiUsageByType> byType = await db.QueryAsync<AdminAiUsageByType>("""
+            SELECT RequestType, COUNT(*)::int AS RequestCount, COALESCE(SUM(EstimatedCostUsd), 0) AS CostUsd
+            FROM AIUsage GROUP BY RequestType ORDER BY CostUsd DESC
+            """);
+
+        decimal monthlyBudget = decimal.TryParse(config["AI:MonthlyBudgetUsd"], out decimal b) ? b : 0m;
+
+        return new AdminAiUsageResponse(monthToDate, monthlyBudget, [.. daily], [.. weekly], [.. monthly], [.. byType]);
+    }
+
+    public async Task<AdminOnboardingFunnel> GetAdminOnboardingFunnelAsync()
+    {
+        using NpgsqlConnection db = await OpenAsync();
+
+        int total = await db.QuerySingleAsync<int>("SELECT COUNT(*)::int FROM Users");
+        int withServices = await db.QuerySingleAsync<int>(
+            "SELECT COUNT(DISTINCT UserId)::int FROM UserServices WHERE IsActive = TRUE");
+        int withGenres = await db.QuerySingleAsync<int>("SELECT COUNT(DISTINCT UserId)::int FROM UserGenres");
+        int withQueue = await db.QuerySingleAsync<int>("SELECT COUNT(DISTINCT UserId)::int FROM QueueItems");
+
+        IEnumerable<AdminSignupBucket> buckets = await db.QueryAsync<AdminSignupBucket>("""
+            SELECT date_trunc('day', CreatedAt) AS Day, COUNT(*)::int AS Count
+            FROM Users
+            WHERE CreatedAt >= NOW() - INTERVAL '60 days'
+            GROUP BY 1 ORDER BY 1 DESC
+            """);
+
+        return new AdminOnboardingFunnel(total, withServices, withGenres, withQueue, [.. buckets]);
     }
 
     private async Task<NpgsqlConnection> OpenAsync()

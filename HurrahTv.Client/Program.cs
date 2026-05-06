@@ -12,7 +12,11 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<HurrahAuthStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp => sp.GetRequiredService<HurrahAuthStateProvider>());
-builder.Services.AddAuthorizationCore();
+builder.Services.AddAuthorizationCore(options =>
+{
+    // client-side gate is a UI hint based on the JWT claim; the API re-checks against the DB
+    options.AddPolicy("Admin", policy => policy.RequireClaim("is_admin", "true"));
+});
 
 // http client with auth handler
 // in production, WASM is served from the API (same origin), so use the host URL
@@ -27,6 +31,6 @@ builder.Services.AddScoped(sp =>
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
-builder.Services.AddSingleton<MediaFilterService>();
+builder.Services.AddScoped<MediaFilterService>();
 
 await builder.Build().RunAsync();

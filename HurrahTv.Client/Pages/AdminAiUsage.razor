@@ -1,0 +1,82 @@
+@page "/admin/ai-usage"
+@attribute [Authorize(Policy = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Admin · AI Usage - Hurrah.tv</PageTitle>
+
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center gap-3 mb-4 md:mb-6">
+        <a href="/admin" class="text-gray-400 hover:text-white">
+            <span class="icon-[heroicons--chevron-left] w-5 h-5 inline-block align-text-bottom"></span>
+            Admin
+        </a>
+        <span class="text-gray-600">/</span>
+        <h1 class="text-xl md:text-2xl font-bold">AI Usage</h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else if (_data is null)
+    {
+        <div class="text-red-400">Could not load AI usage.</div>
+    }
+    else
+    {
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
+            <StatCard Label="MTD Cost" Value="@($"${_data.MonthToDateCostUsd:F2}")" />
+            <StatCard Label="Monthly Budget" Value="@($"${_data.MonthlyBudgetUsd:F2}")" />
+            <StatCard Label="MTD %" Value="@PercentOfBudget()" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4 md:mb-6">
+            <BucketTable Title="Last 30 Days (daily)" Buckets="_data.Daily" Format="d MMM" />
+            <BucketTable Title="Last 12 Weeks" Buckets="_data.Weekly" Format="d MMM" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4">
+            <BucketTable Title="Last 12 Months" Buckets="_data.Monthly" Format="MMM yyyy" />
+            <section class="bg-surface-50 rounded-xl overflow-hidden">
+                <h2 class="text-sm uppercase tracking-wide text-gray-400 px-4 pt-4 mb-3">By Request Type</h2>
+                <table class="w-full text-sm">
+                    <thead class="bg-surface-100 text-gray-400 text-xs uppercase">
+                        <tr>
+                            <th class="px-3 py-2 text-left">Type</th>
+                            <th class="px-3 py-2 text-right">Calls</th>
+                            <th class="px-3 py-2 text-right">Cost</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (AdminAiUsageByType row in _data.ByType)
+                        {
+                            <tr class="border-t border-surface-200">
+                                <td class="px-3 py-2 font-mono text-xs">@row.RequestType</td>
+                                <td class="px-3 py-2 text-right">@row.RequestCount</td>
+                                <td class="px-3 py-2 text-right">@($"${row.CostUsd:F4}")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private AdminAiUsageResponse? _data;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _data = await Api.GetAdminAiUsageAsync();
+        _loading = false;
+    }
+
+    private string PercentOfBudget()
+    {
+        if (_data is null || _data.MonthlyBudgetUsd <= 0) return "—";
+        decimal pct = _data.MonthToDateCostUsd / _data.MonthlyBudgetUsd * 100m;
+        return $"{pct:F0}%";
+    }
+}

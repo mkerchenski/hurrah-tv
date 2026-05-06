@@ -2,11 +2,36 @@
 @attribute [Authorize]
 @inject ApiClient Api
 @inject UserServicesCache UserServicesCache
+@inject TokenService TokenService
+@inject HurrahAuthStateProvider AuthState
 
 <PageTitle>Settings - Hurrah.tv</PageTitle>
 
 <div class="max-w-2xl mx-auto">
     <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">Settings</h1>
+
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">Your Name</h2>
+        <p class="text-gray-400 text-sm mb-4">Used to personalize your home page and AI recommendations. Optional.</p>
+
+        @if (_loaded)
+        {
+            <div class="flex items-center gap-3 max-w-md">
+                <input type="text" @bind="_firstName" @bind:event="oninput"
+                       placeholder="First name"
+                       maxlength="50"
+                       class="flex-1 bg-surface-100 border border-surface-200 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent" />
+                <button class="bg-accent hover:bg-accent-light text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-40"
+                        @onclick="SaveName" disabled="@_savingName">
+                    @(_savingName ? "..." : "Save")
+                </button>
+                @if (_savedName)
+                {
+                    <span class="text-green-400 text-sm fade-in">Saved!</span>
+                }
+            </div>
+        }
+    </div>
 
     <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
         <h2 class="text-lg font-semibold mb-2">My Streaming Services</h2>
@@ -74,21 +99,47 @@
     private List<int> _selectedServices = [];
     private List<int> _selectedGenres = [];
     private bool _englishOnly;
+    private string _firstName = "";
     private bool _loaded;
     private bool _saving;
     private bool _saved;
+    private bool _savingName;
+    private bool _savedName;
 
     protected override async Task OnInitializedAsync()
     {
         Task<List<int>> servicesTask = Api.GetUserServicesAsync();
         Task<List<int>> genresTask = Api.GetUserGenresAsync();
         Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
-        await Task.WhenAll(servicesTask, genresTask, settingsTask);
+        Task<UserProfile?> profileTask = Api.GetProfileAsync();
+        await Task.WhenAll(servicesTask, genresTask, settingsTask, profileTask);
 
         _selectedServices = servicesTask.Result;
         _selectedGenres = genresTask.Result;
         _englishOnly = settingsTask.Result.EnglishOnly;
+        _firstName = profileTask.Result?.FirstName ?? "";
         _loaded = true;
+    }
+
+    private async Task SaveName()
+    {
+        if (_savingName) return;
+        _savingName = true;
+        try
+        {
+            string? trimmed = string.IsNullOrWhiteSpace(_firstName) ? null : _firstName.Trim();
+            AuthResponse? auth = await Api.UpdateProfileAsync(trimmed);
+            if (auth is not null)
+            {
+                await TokenService.SetTokenAsync(auth.Token);
+                AuthState.NotifyAuthChanged();
+            }
+            _savedName = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _savedName = false;
+        }
+        finally { _savingName = false; }
     }
 
     private async Task Save()

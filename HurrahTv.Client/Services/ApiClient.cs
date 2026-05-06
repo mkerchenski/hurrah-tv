@@ -181,4 +181,34 @@ public class ApiClient(HttpClient http)
 
     public async Task SetUserGenresAsync(List<int> genreIds) =>
         await _http.PutAsJsonAsync("api/genres", genreIds);
+
+    // profile
+    public async Task<UserProfile?> GetProfileAsync() =>
+        await _http.GetFromJsonAsync<UserProfile>("api/profile");
+
+    public async Task<AuthResponse?> UpdateProfileAsync(string? firstName)
+    {
+        HttpResponseMessage response = await _http.PutAsJsonAsync("api/profile", new UpdateProfileRequest(firstName));
+        if (!response.IsSuccessStatusCode) return null;
+        return await response.Content.ReadFromJsonAsync<AuthResponse>();
+    }
+
+    // admin
+    public async Task<AdminUsersResponse?> GetAdminUsersAsync() =>
+        await _http.GetFromJsonAsync<AdminUsersResponse>("api/admin/users");
+
+    public async Task<AdminUserDetail?> GetAdminUserDetailAsync(string userId) =>
+        await _http.GetFromJsonAsync<AdminUserDetail>($"api/admin/users/{userId}");
+
+    public async Task<HttpResponseMessage> SetUserAdminAsync(string userId, bool isAdmin) =>
+        await _http.PostAsJsonAsync($"api/admin/users/{userId}/admin", new AdminSetAdminRequest(isAdmin));
+
+    public async Task<HttpResponseMessage> SetUserFirstNameAsync(string userId, string? firstName) =>
+        await _http.PutAsJsonAsync($"api/admin/users/{userId}/firstname", new AdminSetFirstNameRequest(firstName));
+
+    public async Task<AdminAiUsageResponse?> GetAdminAiUsageAsync() =>
+        await _http.GetFromJsonAsync<AdminAiUsageResponse>("api/admin/ai-usage");
+
+    public async Task<AdminOnboardingFunnel?> GetAdminOnboardingAsync() =>
+        await _http.GetFromJsonAsync<AdminOnboardingFunnel>("api/admin/onboarding");
 }

@@ -1,0 +1,34 @@
+@if (Href is not null)
+{
+    <a href="@Href" class="block bg-surface-50 hover:bg-surface-100 rounded-xl p-3 md:p-4 transition-colors">
+        <div class="text-xs text-gray-400 uppercase tracking-wide">@Label</div>
+        @if (Value is null)
+        {
+            <div class="h-7 mt-1 w-16 bg-surface-200 rounded animate-pulse"></div>
+        }
+        else
+        {
+            <div class="text-xl md:text-2xl font-bold mt-1">@Value</div>
+        }
+    </a>
+}
+else
+{
+    <div class="bg-surface-50 rounded-xl p-3 md:p-4">
+        <div class="text-xs text-gray-400 uppercase tracking-wide">@Label</div>
+        @if (Value is null)
+        {
+            <div class="h-7 mt-1 w-16 bg-surface-200 rounded animate-pulse"></div>
+        }
+        else
+        {
+            <div class="text-xl md:text-2xl font-bold mt-1">@Value</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string? Href { get; set; }
+}

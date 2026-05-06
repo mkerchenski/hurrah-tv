@@ -1,0 +1,86 @@
+@page "/admin/onboarding"
+@attribute [Authorize(Policy = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Admin · Onboarding - Hurrah.tv</PageTitle>
+
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center gap-3 mb-4 md:mb-6">
+        <a href="/admin" class="text-gray-400 hover:text-white">
+            <span class="icon-[heroicons--chevron-left] w-5 h-5 inline-block align-text-bottom"></span>
+            Admin
+        </a>
+        <span class="text-gray-600">/</span>
+        <h1 class="text-xl md:text-2xl font-bold">Onboarding</h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else if (_funnel is null)
+    {
+        <div class="text-red-400">Could not load funnel.</div>
+    }
+    else
+    {
+        <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+            <h2 class="text-sm uppercase tracking-wide text-gray-400 mb-4">Funnel</h2>
+            <div class="space-y-3">
+                <FunnelStep Label="Signed up" Count="_funnel.TotalSignups" Total="_funnel.TotalSignups" />
+                <FunnelStep Label="Picked services" Count="_funnel.WithServices" Total="_funnel.TotalSignups" />
+                <FunnelStep Label="Picked genres" Count="_funnel.WithGenres" Total="_funnel.TotalSignups" />
+                <FunnelStep Label="Added to queue" Count="_funnel.WithFirstQueueAdd" Total="_funnel.TotalSignups" />
+            </div>
+        </div>
+
+        <section class="bg-surface-50 rounded-xl overflow-hidden">
+            <h2 class="text-sm uppercase tracking-wide text-gray-400 px-4 md:px-6 pt-4 md:pt-6 mb-3">Signups (last 60 days)</h2>
+            @if (_funnel.SignupsByDay.Count == 0)
+            {
+                <div class="px-4 md:px-6 pb-4 md:pb-6 text-gray-500 text-sm">No signups in window.</div>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-surface-100 text-gray-400 text-xs uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Day</th>
+                                <th class="px-3 py-2 text-right">Signups</th>
+                                <th class="px-3 py-2 text-left w-1/2">Bar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @{
+                                int max = _funnel.SignupsByDay.Max(b => b.Count);
+                            }
+                            @foreach (AdminSignupBucket b in _funnel.SignupsByDay)
+                            {
+                                int pct = max > 0 ? b.Count * 100 / max : 0;
+                                <tr class="border-t border-surface-200">
+                                    <td class="px-3 py-2">@b.Day.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                                    <td class="px-3 py-2 text-right">@b.Count</td>
+                                    <td class="px-3 py-2">
+                                        <div class="bg-accent rounded h-2" style="width: @(pct)%"></div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private AdminOnboardingFunnel? _funnel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _funnel = await Api.GetAdminOnboardingAsync();
+        _loading = false;
+    }
+}

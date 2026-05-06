@@ -25,24 +25,32 @@ public class AuthService(DbService db, SmsService sms, IConfiguration config)
         bool valid = await _db.VerifyOtpCodeAsync(phoneNumber, code);
         if (!valid) return null;
 
-        // ensure user exists
         string userId = await _db.GetOrCreateUserAsync(phoneNumber);
-        return GenerateToken(userId, phoneNumber);
+        bool isAdmin = await _db.IsUserAdminAsync(userId);
+        string? firstName = await _db.GetUserFirstNameAsync(userId);
+        return GenerateToken(userId, phoneNumber, isAdmin, firstName);
     }
 
-    private string GenerateToken(string userId, string phoneNumber)
+    public string IssueToken(string userId, string phoneNumber, bool isAdmin, string? firstName) =>
+        GenerateToken(userId, phoneNumber, isAdmin, firstName);
+
+    private string GenerateToken(string userId, string phoneNumber, bool isAdmin, string? firstName)
     {
         byte[] keyBytes = Convert.FromBase64String(_jwtKey);
         SymmetricSecurityKey key = new(keyBytes);
 
+        List<Claim> claims =
+        [
+            new Claim("sub", userId),
+            new Claim("phone", phoneNumber)
+        ];
+        if (isAdmin) claims.Add(new Claim("is_admin", "true"));
+        if (!string.IsNullOrWhiteSpace(firstName)) claims.Add(new Claim("firstname", firstName));
+
         JsonWebTokenHandler handler = new();
         string token = handler.CreateToken(new SecurityTokenDescriptor
         {
-            Subject = new ClaimsIdentity(
-            [
-                new Claim("sub", userId),
-                new Claim("phone", phoneNumber)
-            ]),
+            Subject = new ClaimsIdentity(claims),
             Expires = DateTime.UtcNow.AddDays(90),
             Issuer = _jwtIssuer,
             SigningCredentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256Signature)

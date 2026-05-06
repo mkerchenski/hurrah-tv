@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
+using HurrahTv.Api.Authorization;
 using HurrahTv.Api.Endpoints;
 using HurrahTv.Api.Services;
 
@@ -27,7 +29,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String(jwtKey))
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddScoped<IAuthorizationHandler, AdminRequirementHandler>();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy => policy.AddRequirements(new AdminRequirement()));
+});
 
 string[] corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 if (builder.Environment.IsDevelopment())
@@ -100,6 +106,8 @@ app.MapEpisodeEndpoints();
 app.MapSentimentEndpoints();
 app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
+app.MapAdminEndpoints();
+app.MapProfileEndpoints();
 
 // health check + version
 string buildVersion = builder.Configuration["BuildVersion"] ?? "dev";

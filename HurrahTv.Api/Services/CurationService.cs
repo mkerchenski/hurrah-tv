@@ -122,10 +122,12 @@ public partial class CurationService
     {
         string tasteProfile = BuildTasteProfile(signalItems, allItems);
         string candidateList = BuildCandidateList(candidates);
+        string? firstName = await _db.GetUserFirstNameAsync(userId);
+        string namedAddress = string.IsNullOrWhiteSpace(firstName) ? "" : $"\nThe user's name is {firstName}. Address them by name in 1-2 of the reasons where it lands naturally — don't force it into every line.\n";
 
         string prompt = $$"""
             You are the AI curator for hurrah.tv. You find surprising connections in what people watch and surface shows they didn't know they'd love.
-
+            {{namedAddress}}
             ## USER'S TASTE PROFILE
             {{tasteProfile}}
 

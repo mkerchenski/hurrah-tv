@@ -1,0 +1,169 @@
+@page "/admin/users/{UserId}"
+@attribute [Authorize(Policy = "Admin")]
+@using DetailDto = HurrahTv.Shared.Models.AdminUserDetail
+@inject ApiClient Api
+
+<PageTitle>Admin · User - Hurrah.tv</PageTitle>
+
+<div class="max-w-5xl mx-auto">
+    <div class="flex items-center gap-2 mb-4 md:mb-6 flex-wrap">
+        <a href="/admin" class="text-gray-400 hover:text-white">Admin</a>
+        <span class="text-gray-600">/</span>
+        <a href="/admin/users" class="text-gray-400 hover:text-white">Users</a>
+        <span class="text-gray-600">/</span>
+        @if (_detail is not null)
+        {
+            <h1 class="text-xl md:text-2xl font-bold">
+                @(string.IsNullOrWhiteSpace(_detail.FirstName) ? FormatPhone(_detail.PhoneNumber) : _detail.FirstName)
+            </h1>
+            @if (_detail.IsAdmin)
+            {
+                <span class="text-[10px] uppercase bg-accent/20 text-accent px-1.5 py-0.5 rounded">Admin</span>
+            }
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else if (_detail is null)
+    {
+        <div class="text-red-400">User not found.</div>
+    }
+    else
+    {
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-6">
+            <StatCard Label="Joined" Value="@_detail.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")" />
+            <StatCard Label="Queue" Value="@_detail.Queue.Count.ToString()" />
+            <StatCard Label="AI $" Value="@($"${_detail.TotalAiCostUsd:F2}")" />
+            <StatCard Label="AI Requests" Value="@_detail.AiRequestCount.ToString()" />
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 mb-4 md:mb-6">
+            <section class="bg-surface-50 rounded-xl p-4 md:p-6">
+                <h2 class="text-sm uppercase tracking-wide text-gray-400 mb-3">Services (@_detail.Services.Count)</h2>
+                @if (_detail.Services.Count == 0)
+                {
+                    <div class="text-gray-500 text-sm">No active services.</div>
+                }
+                else
+                {
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (int id in _detail.Services)
+                        {
+                            <span class="bg-surface-100 px-2 py-1 rounded text-xs">@StreamingService.LookupName(id)</span>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="bg-surface-50 rounded-xl p-4 md:p-6">
+                <h2 class="text-sm uppercase tracking-wide text-gray-400 mb-3">Genres (@_detail.Genres.Count)</h2>
+                @if (_detail.Genres.Count == 0)
+                {
+                    <div class="text-gray-500 text-sm">No genres set.</div>
+                }
+                else
+                {
+                    <div class="flex flex-wrap gap-2">
+                        @foreach (int id in _detail.Genres)
+                        {
+                            <span class="bg-surface-100 px-2 py-1 rounded text-xs">@(Genre.ById.TryGetValue(id, out Genre? g) ? g.Name : id.ToString())</span>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="bg-surface-50 rounded-xl p-4 md:p-6">
+                <h2 class="text-sm uppercase tracking-wide text-gray-400 mb-3">Engagement</h2>
+                <dl class="grid grid-cols-2 gap-y-2 text-sm">
+                    <dt class="text-gray-400">Season ratings</dt>
+                    <dd>@_detail.SeasonSentimentCount</dd>
+                    <dt class="text-gray-400">Episode ratings</dt>
+                    <dd>@_detail.EpisodeSentimentCount</dd>
+                    <dt class="text-gray-400">Episodes watched</dt>
+                    <dd>@_detail.WatchedEpisodeCount</dd>
+                </dl>
+            </section>
+
+            <section class="bg-surface-50 rounded-xl p-4 md:p-6">
+                <h2 class="text-sm uppercase tracking-wide text-gray-400 mb-3">Identity</h2>
+                <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                    <dt class="text-gray-400">User Id</dt>
+                    <dd class="font-mono text-xs break-all">@_detail.Id</dd>
+                    <dt class="text-gray-400">Phone</dt>
+                    <dd>@_detail.PhoneNumber</dd>
+                    <dt class="text-gray-400">First name</dt>
+                    <dd>@(_detail.FirstName ?? "—")</dd>
+                </dl>
+            </section>
+        </div>
+
+        <section class="bg-surface-50 rounded-xl overflow-hidden">
+            <h2 class="text-sm uppercase tracking-wide text-gray-400 px-4 md:px-6 pt-4 md:pt-6 mb-3">Queue (@_detail.Queue.Count)</h2>
+            @if (_detail.Queue.Count == 0)
+            {
+                <div class="px-4 md:px-6 pb-4 md:pb-6 text-gray-500 text-sm">Queue is empty.</div>
+            }
+            else
+            {
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-surface-100 text-gray-400 text-xs uppercase">
+                            <tr>
+                                <th class="px-3 py-2 text-left">Title</th>
+                                <th class="px-3 py-2 text-left">Type</th>
+                                <th class="px-3 py-2 text-left">Status</th>
+                                <th class="px-3 py-2 text-left">Sentiment</th>
+                                <th class="px-3 py-2 text-left">Added</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (AdminQueueRow row in _detail.Queue)
+                            {
+                                QueueStatus status = (QueueStatus)row.Status;
+                                <tr class="border-t border-surface-200">
+                                    <td class="px-3 py-2">@row.Title</td>
+                                    <td class="px-3 py-2 text-gray-400">@row.MediaType</td>
+                                    <td class="px-3 py-2">@HurrahTv.Client.Helpers.BadgeHelpers.StatusShortLabel(status)</td>
+                                    <td class="px-3 py-2 text-gray-400">@SentimentLabel(row.Sentiment)</td>
+                                    <td class="px-3 py-2 text-gray-400">@row.AddedAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public string UserId { get; set; } = "";
+
+    private bool _loading = true;
+    private DetailDto? _detail;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _detail = await Api.GetAdminUserDetailAsync(UserId);
+        _loading = false;
+    }
+
+    private static string FormatPhone(string phone)
+    {
+        string digits = new(phone.Where(char.IsDigit).ToArray());
+        if (digits.Length == 11 && digits[0] == '1') digits = digits[1..];
+        if (digits.Length == 10) return $"({digits[..3]}) {digits[3..6]}-{digits[6..]}";
+        return phone;
+    }
+
+    private static string SentimentLabel(int? s) => s switch
+    {
+        SentimentLevel.Down => "Down",
+        SentimentLevel.Up => "Up",
+        SentimentLevel.Favorite => "Favorite",
+        _ => "—"
+    };
+}
