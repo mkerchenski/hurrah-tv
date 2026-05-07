@@ -46,6 +46,29 @@ public static class AdminEndpoints
             return ok ? Results.NoContent() : Results.NotFound();
         });
 
+        group.MapDelete("/users/{userId}", async (
+            string userId,
+            ClaimsPrincipal caller,
+            DbService db,
+            ILogger<DbService> logger) =>
+        {
+            string callerId = caller.GetUserId();
+
+            if (userId == callerId)
+                return Results.BadRequest(new { error = "Admins cannot delete themselves." });
+
+            // require explicit demotion before delete — surfaces the high-trust account
+            // and prevents accidental destruction of another admin's data
+            if (await db.IsUserAdminAsync(userId))
+                return Results.BadRequest(new { error = "Revoke admin before deleting this user." });
+
+            bool deleted = await db.DeleteUserAsync(userId);
+            if (!deleted) return Results.NotFound();
+
+            logger.LogWarning("Admin {CallerId} hard-deleted user {UserId}", callerId, userId);
+            return Results.NoContent();
+        });
+
         group.MapPut("/users/{userId}/firstname", async (
             string userId,
             AdminSetFirstNameRequest request,

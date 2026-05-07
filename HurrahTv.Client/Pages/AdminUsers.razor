@@ -45,6 +45,7 @@
                             <th class="px-3 py-2 text-right">AI $</th>
                             <th class="px-3 py-2 text-left">Last Add</th>
                             <th class="px-3 py-2 text-center">Admin</th>
+                            <th class="px-3 py-2 text-center w-8"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -101,6 +102,20 @@
                                             disabled="@(_busyId == u.Id)"
                                             class="@(u.IsAdmin ? "bg-accent text-white" : "bg-surface-200 text-gray-300 hover:bg-surface-300") px-2 py-1 rounded text-xs transition-colors disabled:opacity-50">
                                         @(u.IsAdmin ? "Revoke" : "Grant")
+                                    </button>
+                                </td>
+                                <td class="px-3 py-2 text-center">
+                                    @{
+                                        bool canDelete = !u.IsAdmin;
+                                        string deleteTitle = u.IsAdmin
+                                            ? "Revoke admin before deleting"
+                                            : "Delete user (permanent)";
+                                    }
+                                    <button @onclick="() => DeleteUser(u)"
+                                            disabled="@(!canDelete || _busyId == u.Id)"
+                                            title="@deleteTitle"
+                                            class="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-30 disabled:hover:text-gray-500 p-1">
+                                        <span class="icon-[heroicons--trash] w-4 h-4"></span>
                                     </button>
                                 </td>
                             </tr>
@@ -186,6 +201,41 @@
     {
         _editingNameId = null;
         _nameDraft = "";
+    }
+
+    private async Task DeleteUser(AdminUserSummary u)
+    {
+        _error = null;
+
+        // type-to-confirm: user must type the full phone number to enable the destructive action
+        string label = string.IsNullOrWhiteSpace(u.FirstName)
+            ? FormatPhone(u.PhoneNumber)
+            : $"{u.FirstName} ({FormatPhone(u.PhoneNumber)})";
+        string? typed = await JS.InvokeAsync<string?>("prompt",
+            $"DELETE {label} and all their data?\n\nThis cannot be undone. Type the phone number to confirm:\n{u.PhoneNumber}");
+
+        if (typed is null) return;
+        if (typed.Trim() != u.PhoneNumber)
+        {
+            _error = "Phone number didn't match — deletion cancelled.";
+            return;
+        }
+
+        _busyId = u.Id;
+        try
+        {
+            HttpResponseMessage res = await Api.DeleteUserAsync(u.Id);
+            if (!res.IsSuccessStatusCode)
+            {
+                _error = await ExtractErrorAsync(res) ?? $"Failed to delete (HTTP {(int)res.StatusCode}).";
+                return;
+            }
+            _response = await Api.GetAdminUsersAsync();
+        }
+        finally
+        {
+            _busyId = null;
+        }
     }
 
     private async Task SaveName(AdminUserSummary u)

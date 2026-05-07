@@ -206,6 +206,9 @@ public class ApiClient(HttpClient http)
     public async Task<HttpResponseMessage> SetUserFirstNameAsync(string userId, string? firstName) =>
         await _http.PutAsJsonAsync($"api/admin/users/{userId}/firstname", new AdminSetFirstNameRequest(firstName));
 
+    public async Task<HttpResponseMessage> DeleteUserAsync(string userId) =>
+        await _http.DeleteAsync($"api/admin/users/{userId}");
+
     public async Task<AdminAiUsageResponse?> GetAdminAiUsageAsync() =>
         await _http.GetFromJsonAsync<AdminAiUsageResponse>("api/admin/ai-usage");
 

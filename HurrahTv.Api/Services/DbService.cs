@@ -697,6 +697,43 @@ public class DbService(IConfiguration config)
         return [.. rows.Select(r => new WatchedEpisode(r.TmdbId, r.Season, r.Episode))];
     }
 
+    // hard delete — wipes the user and every row keyed off their UserId in a single
+    // transaction. Issue #22 originally said "no destructive operations from the UI";
+    // this is the deliberate exception, gated behind the Admin policy + UI confirmation.
+    // Returns true if a Users row was deleted, false if no such user existed.
+    public async Task<bool> DeleteUserAsync(string userId)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
+
+        string? phone = await db.QuerySingleOrDefaultAsync<string?>(
+            "SELECT PhoneNumber FROM Users WHERE Id = @UserId",
+            new { UserId = userId }, transaction: tx);
+
+        if (phone is null)
+        {
+            await tx.RollbackAsync();
+            return false;
+        }
+
+        await db.ExecuteAsync("""
+            DELETE FROM QueueItems        WHERE UserId = @UserId;
+            DELETE FROM UserServices      WHERE UserId = @UserId;
+            DELETE FROM UserGenres        WHERE UserId = @UserId;
+            DELETE FROM UserSettings      WHERE UserId = @UserId;
+            DELETE FROM SeasonSentiments  WHERE UserId = @UserId;
+            DELETE FROM EpisodeSentiments WHERE UserId = @UserId;
+            DELETE FROM WatchedEpisodes   WHERE UserId = @UserId;
+            DELETE FROM AIUsage           WHERE UserId = @UserId;
+            DELETE FROM CurationCache     WHERE UserId = @UserId;
+            DELETE FROM OtpCodes          WHERE PhoneNumber = @Phone;
+            DELETE FROM Users             WHERE Id = @UserId;
+            """, new { UserId = userId, Phone = phone }, transaction: tx);
+
+        await tx.CommitAsync();
+        return true;
+    }
+
     // user profile
     public async Task<string?> GetUserFirstNameAsync(string userId)
     {
