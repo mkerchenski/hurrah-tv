@@ -27,9 +27,10 @@ public class CurationCache : IDisposable
     {
         _quickActions = quickActions;
         _js = js;
+        // every successful mutation fires one of the targeted events; OnChanged only fires
+        // on failure, where rehydrating from server already covers the cache's correctness
         _quickActions.OnItemUpdated += OnInvalidate;
         _quickActions.OnEpisodeWatchedChanged += OnEpisodeInvalidate;
-        _quickActions.OnChanged += Invalidate;
     }
 
     public async Task<CurationResponse?> GetAsync()
@@ -115,6 +116,5 @@ public class CurationCache : IDisposable
     {
         _quickActions.OnItemUpdated -= OnInvalidate;
         _quickActions.OnEpisodeWatchedChanged -= OnEpisodeInvalidate;
-        _quickActions.OnChanged -= Invalidate;
     }
 }

@@ -14,7 +14,7 @@
         @if (_detail is not null)
         {
             <h1 class="text-xl md:text-2xl font-bold">
-                @(string.IsNullOrWhiteSpace(_detail.FirstName) ? FormatPhone(_detail.PhoneNumber) : _detail.FirstName)
+                @(string.IsNullOrWhiteSpace(_detail.FirstName) ? PhoneHelpers.Format(_detail.PhoneNumber) : _detail.FirstName)
             </h1>
             @if (_detail.IsAdmin)
             {
@@ -149,14 +149,6 @@
     {
         _detail = await Api.GetAdminUserDetailAsync(UserId);
         _loading = false;
-    }
-
-    private static string FormatPhone(string phone)
-    {
-        string digits = new(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length == 11 && digits[0] == '1') digits = digits[1..];
-        if (digits.Length == 10) return $"({digits[..3]}) {digits[3..6]}-{digits[6..]}";
-        return phone;
     }
 
     private static string SentimentLabel(int? s) => s switch

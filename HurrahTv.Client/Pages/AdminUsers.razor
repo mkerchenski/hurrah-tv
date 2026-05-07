@@ -53,7 +53,7 @@
                         {
                             <tr class="border-t border-surface-200 hover:bg-surface-100 transition-colors">
                                 <td class="px-3 py-2">
-                                    <a href="@($"/admin/users/{u.Id}")" class="text-accent hover:underline">@FormatPhone(u.PhoneNumber)</a>
+                                    <a href="@($"/admin/users/{u.Id}")" class="text-accent hover:underline">@PhoneHelpers.Format(u.PhoneNumber)</a>
                                     @if (u.IsAdmin)
                                     {
                                         <span class="ml-2 text-[10px] uppercase bg-accent/20 text-accent px-1.5 py-0.5 rounded">Admin</span>
@@ -153,8 +153,8 @@
         bool target = !user.IsAdmin;
         string verb = target ? "grant" : "revoke";
         string confirmMsg = target
-            ? $"Grant admin to {FormatPhone(user.PhoneNumber)}?"
-            : $"Revoke admin from {FormatPhone(user.PhoneNumber)}?";
+            ? $"Grant admin to {PhoneHelpers.Format(user.PhoneNumber)}?"
+            : $"Revoke admin from {PhoneHelpers.Format(user.PhoneNumber)}?";
 
         // simple confirm — destructive toggle deserves a beat
         bool confirmed = await ConfirmAsync(confirmMsg);
@@ -209,8 +209,8 @@
 
         // type-to-confirm: user must type the full phone number to enable the destructive action
         string label = string.IsNullOrWhiteSpace(u.FirstName)
-            ? FormatPhone(u.PhoneNumber)
-            : $"{u.FirstName} ({FormatPhone(u.PhoneNumber)})";
+            ? PhoneHelpers.Format(u.PhoneNumber)
+            : $"{u.FirstName} ({PhoneHelpers.Format(u.PhoneNumber)})";
         string? typed = await JS.InvokeAsync<string?>("prompt",
             $"DELETE {label} and all their data?\n\nThis cannot be undone. Type the phone number to confirm:\n{u.PhoneNumber}");
 
@@ -258,15 +258,6 @@
         {
             _savingName = false;
         }
-    }
-
-    private static string FormatPhone(string phone)
-    {
-        // E.164 (+12345678900) or 10-digit US (2345678900) → (234) 567-8900
-        string digits = new(phone.Where(char.IsDigit).ToArray());
-        if (digits.Length == 11 && digits[0] == '1') digits = digits[1..];
-        if (digits.Length == 10) return $"({digits[..3]}) {digits[3..6]}-{digits[6..]}";
-        return phone;
     }
 
     private record ErrorBody(string Error);

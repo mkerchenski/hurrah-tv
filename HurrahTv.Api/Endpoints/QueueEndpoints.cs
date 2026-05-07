@@ -138,12 +138,12 @@ public static class QueueEndpoints
         List<QueueItem> staleEpisodes,
         List<QueueItem> staleProviders)
     {
+        await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
+        ILogger<DbService> logger = scope.ServiceProvider.GetRequiredService<ILogger<DbService>>();
         try
         {
-            await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
             DbService db = scope.ServiceProvider.GetRequiredService<DbService>();
             TmdbService tmdb = scope.ServiceProvider.GetRequiredService<TmdbService>();
-            ILogger<DbService> logger = scope.ServiceProvider.GetRequiredService<ILogger<DbService>>();
 
             Task episodeRefresh = Task.WhenAll(staleEpisodes.Take(10).Select(async item =>
             {
@@ -178,9 +178,11 @@ public static class QueueEndpoints
 
             await Task.WhenAll(episodeRefresh, providerRefresh);
         }
-        catch
+        catch (Exception ex)
         {
-            // top-level safety net — fire-and-forget tasks must never crash the host
+            // top-level safety net — fire-and-forget tasks must never crash the host,
+            // but losing the failure silently hides DI / scope / connection-pool problems
+            logger.LogError(ex, "Background queue-stale refresh aborted at the top level");
         }
     }
 

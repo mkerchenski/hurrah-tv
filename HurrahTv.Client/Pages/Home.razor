@@ -127,7 +127,7 @@ else
         <!-- hero billboard — replaces the standalone greeting; selection prefers Continue Watching,
              then a recently-aired show, then the top AI pick. nothing renders if no candidate has a
              backdrop yet (e.g. fresh user before any TMDb backfill landed). -->
-        <HomeHero Item="SelectHero()" />
+        <HomeHero Item="_hero" />
 
         <!-- My Watchlist section — header with chips + all three rows grouped together -->
         @{
@@ -317,6 +317,10 @@ else
     private bool _aiLoading;
     private string? _aiError;
 
+    // hero billboard — cached so it doesn't recompute on every render. recomputed in
+    // ReapplyDerivedState after queue mutations and after AI curation arrives.
+    private HomeHero.HeroItem? _hero;
+
     protected override async Task OnInitializedAsync()
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
@@ -423,6 +427,7 @@ else
         _recSeeds = PickRecSeeds(_allItems, 3, MediaFilter.MediaType);
         ApplyWatchlistFilters(_allItems);
         _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
+        _hero = SelectHero();
     }
 
     private void StampWatchedFlags()
@@ -561,6 +566,7 @@ else
             {
                 CurationCache.Set(fresh);
                 _curatedItems = FlattenCuration(fresh);
+                _hero = SelectHero();
             }
             else
             {
@@ -586,6 +592,7 @@ else
             _curatedItems = FlattenCuration(cached);
             _aiError = cached.Error;
             _aiLoading = false;
+            _hero = SelectHero();
             StateHasChanged();
             return;
         }
@@ -615,6 +622,7 @@ else
             _aiError = curation.Error;
             CurationCache.Set(curation);
             _curatedItems = FlattenCuration(curation);
+            _hero = SelectHero(); // re-pick now that AI candidates exist
 
             StateHasChanged();
         }
@@ -678,15 +686,8 @@ else
         return weighted.Take(count).Select(x => x.item).ToList();
     }
 
-    private async Task ReloadWatchlist()
-    {
-        QueueResponse queueResponse = await Api.GetQueueResponseAsync();
-        _allItems = queueResponse.Items;
-        _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
-        StampWatchedFlags();
-        ReapplyDerivedState();
-        StateHasChanged();
-    }
+    private async Task ReloadWatchlist() =>
+        ProcessQueueResponse(await Api.GetQueueResponseAsync());
 
     private async Task OnWatchlistSortChanged(string mode)
     {
