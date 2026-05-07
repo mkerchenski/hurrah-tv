@@ -328,12 +328,10 @@ else
         QuickActionSvc.OnEpisodeWatchedChanged += OnEpisodeWatchedChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
 
-        // start the three independent fetches in parallel — services count gates onboarding
-        // vs content, but settings + queue can be in flight while services resolves. AI
-        // curation is fired below as fire-and-forget so it doesn't block first paint.
+        // services-count is the onboarding gate — resolve it before firing settings/queue,
+        // so a non-onboarded user doesn't waste two authenticated round-trips on results
+        // that get discarded
         Task<IReadOnlyList<int>> servicesTask = UserServicesCache.GetAsync();
-        Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
-        Task<QueueResponse> queueTask = Api.GetQueueResponseAsync();
 
         // first name is read from JWT claim — set during sign-in or after profile updates
         Microsoft.AspNetCore.Components.Authorization.AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
@@ -344,6 +342,10 @@ else
         _onboardingComplete = _userServices.Count > 0;
 
         if (!_onboardingComplete) return;
+
+        // onboarded — settings + queue run in parallel; AI is fire-and-forget below
+        Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
+        Task<QueueResponse> queueTask = Api.GetQueueResponseAsync();
 
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;

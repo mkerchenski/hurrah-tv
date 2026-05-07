@@ -19,6 +19,7 @@ public class CurationCache : IDisposable
 
     private readonly QuickActionService _quickActions;
     private readonly IJSRuntime _js;
+    private readonly SemaphoreSlim _hydrateLock = new(1, 1);
     private CurationResponse? _value;
     private DateTime _storedAt;
     private bool _hydrated;
@@ -35,10 +36,23 @@ public class CurationCache : IDisposable
 
     public async Task<CurationResponse?> GetAsync()
     {
+        // serialize first-time hydration so two concurrent callers don't both run
+        // TryHydrateAsync (which would race on _value / _storedAt writes)
         if (!_hydrated)
         {
-            _hydrated = true;
-            await TryHydrateAsync();
+            await _hydrateLock.WaitAsync();
+            try
+            {
+                if (!_hydrated)
+                {
+                    await TryHydrateAsync();
+                    _hydrated = true;
+                }
+            }
+            finally
+            {
+                _hydrateLock.Release();
+            }
         }
         if (_value is null) return null;
         if (DateTime.UtcNow - _storedAt > Ttl)
@@ -116,5 +130,6 @@ public class CurationCache : IDisposable
     {
         _quickActions.OnItemUpdated -= OnInvalidate;
         _quickActions.OnEpisodeWatchedChanged -= OnEpisodeInvalidate;
+        _hydrateLock.Dispose();
     }
 }

@@ -737,19 +737,20 @@ public class DbService(IConfiguration config)
             return false;
         }
 
-        await db.ExecuteAsync("""
-            DELETE FROM QueueItems        WHERE UserId = @UserId;
-            DELETE FROM UserServices      WHERE UserId = @UserId;
-            DELETE FROM UserGenres        WHERE UserId = @UserId;
-            DELETE FROM UserSettings      WHERE UserId = @UserId;
-            DELETE FROM SeasonSentiments  WHERE UserId = @UserId;
-            DELETE FROM EpisodeSentiments WHERE UserId = @UserId;
-            DELETE FROM WatchedEpisodes   WHERE UserId = @UserId;
-            DELETE FROM AIUsage           WHERE UserId = @UserId;
-            DELETE FROM CurationCache     WHERE UserId = @UserId;
-            DELETE FROM OtpCodes          WHERE PhoneNumber = @Phone;
-            DELETE FROM Users             WHERE Id = @UserId;
-            """, new { UserId = userId, Phone = phone }, transaction: tx);
+        // one statement per ExecuteAsync — explicit, doesn't lean on multi-statement
+        // command behavior in any provider/version, easier to add per-table metrics later
+        object byUser = new { UserId = userId };
+        await db.ExecuteAsync("DELETE FROM QueueItems        WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM UserServices      WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM UserGenres        WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM UserSettings      WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM SeasonSentiments  WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM EpisodeSentiments WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM WatchedEpisodes   WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM AIUsage           WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM CurationCache     WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM OtpCodes          WHERE PhoneNumber = @Phone", new { Phone = phone }, tx);
+        await db.ExecuteAsync("DELETE FROM Users             WHERE Id = @UserId", byUser, tx);
 
         await tx.CommitAsync();
         return true;

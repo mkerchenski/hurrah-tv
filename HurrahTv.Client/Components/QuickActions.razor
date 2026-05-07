@@ -100,7 +100,7 @@
 @code {
     private bool _visible;
     private bool _busy;
-    private string? _pendingAction; // identifies which button is mid-API call so we can swap its icon for a spinner
+    private string? _pendingAction;
     private bool _disposed;
     private string _title = "";
     private string _posterUrl = "";
@@ -222,7 +222,8 @@
         // data not yet populated — skip; refresh will rehydrate and reopen will work
         if (!_hasEpisodeData) return;
 
-        bool target = !_episodeWatched;
+        bool previous = _episodeWatched;
+        bool target = !previous;
         int tmdbId = _episodeTmdbId;
         int season = _episodeSeason;
         int episode = _episodeNumber;
@@ -230,13 +231,22 @@
 
         RunAction("episode", async () =>
         {
-            if (target)
-                await Api.MarkEpisodeWatchedAsync(tmdbId, season, episode);
-            else
-                await Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode);
-
-            // targeted update — Home updates its watched-set in place, no /api/queue refetch needed
-            QuickActionSvc.NotifyEpisodeWatchedChanged(tmdbId, season, episode, target);
+            try
+            {
+                if (target)
+                    await Api.MarkEpisodeWatchedAsync(tmdbId, season, episode);
+                else
+                    await Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode);
+                // targeted update — Home updates its watched-set in place, no refetch needed
+                QuickActionSvc.NotifyEpisodeWatchedChanged(tmdbId, season, episode, target);
+            }
+            catch
+            {
+                // revert local state so the modal shows the truth on reopen; the broad
+                // NotifyChanged from ExecuteActionAsync's failure path also fires
+                _episodeWatched = previous;
+                throw;
+            }
         });
     }
 

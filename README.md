@@ -8,12 +8,15 @@ AI-curated streaming across all your services. One smart watchlist that learns w
 
 Hurrah.tv is an opinionated streaming platform that curates content across Netflix, Hulu, Disney+, Prime Video, Max, Peacock, Paramount+, and Apple TV+. It learns from your watch history and preferences to build a personalized home feed — like opening one app instead of eight.
 
-- **AI-powered curation** — Claude analyzes your taste to generate themed content rows ("High-Stakes Hospital Nights", "Slow-Burn Thrillers That Hook Fast")
+- **AI-powered curation** — Claude analyzes your taste (and addresses you by name) to generate themed content rows ("High-Stakes Hospital Nights", "Slow-Burn Thrillers That Hook Fast")
+- **Hero billboard** — Top of Home picks from your Continue Watching, latest aired this week, or top AI rec — whichever fits, with a Netflix-style backdrop and Resume / Watch / Add CTA
 - **Smart watchlists** — Track what you're watching, want to watch, and have watched. Separate sentiment system (thumbs up/down/favorite) lets you rate shows, seasons, and individual episodes independently from your list.
+- **Optimistic UI** — Marking watched, changing status, or rating closes the modal instantly and updates the watchlist row in place; the API call runs in the background
 - **New episode alerts** — Shows in your list with new or upcoming episodes are flagged automatically with "returning" indicators for shows you've finished
-- **Multi-step onboarding** — Pick services, genres, then at least 3 shows with sentiment so AI works from day one
+- **Multi-step onboarding** — Pick a name, services, genres, then at least 3 shows with sentiment so AI works from day one
 - **Balanced discovery** — Content is interleaved across your services so no single provider dominates your feed
 - **Language filter** — Option to show English originals only, hiding dubbed and subtitled content
+- **Admin views** — Owner-only `/admin` surface for users (with name + admin grant), AI usage and budget tracking, and onboarding funnel
 
 **Live at:** [hurrah.tv](https://hurrah.tv)
 
@@ -33,6 +36,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 
 | Row type | Source | Example |
 |----------|--------|---------|
+| Hero Billboard | Continue Watching / latest aired this week / top AI pick (self-gating) | Full-bleed backdrop with Resume / Watch latest / Add to list |
 | Continue Watching | User's "Watching" list + air dates | Most recently aired first with "Xd ago" badges |
 | Upcoming Episodes | All non-dismissed shows + TMDb air dates | Next 7 days, with "Returning" flag for finished shows |
 | AI-Curated | Claude AI + TMDb discover | "High-Stakes Hospital Nights" |
@@ -54,6 +58,8 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | `/api/shows` | Season and episode sentiment CRUD |
 | `/api/settings` | User preferences (English-only filter, etc.) |
 | `/api/auth` | Phone OTP login (SMS-based, no passwords) |
+| `/api/profile` | First-name capture for greetings + AI personalization |
+| `/api/admin` | Owner-only — users list, per-user detail, AI usage rollups, onboarding funnel, hard-delete |
 
 ## Getting Started
 
