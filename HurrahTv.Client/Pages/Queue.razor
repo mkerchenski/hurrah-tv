@@ -83,10 +83,12 @@ else
                     @if (_activeTab == WantToWatchTab)
                     {
                         bool reordering = _reorderingIds.Contains(item.Id);
-                        <button class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
-                                aria-label="Reorder @item.Title" tabindex="-1">
+                        // visual-only drag affordance; SortableJS owns the gesture. aria-hidden
+                        // because v1 is mouse/touch-only — keyboard reorder is a planned follow-on.
+                        <div class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
+                             aria-hidden="true">
                             <span class="icon-[heroicons--bars-3] w-5 h-5 block"></span>
-                        </button>
+                        </div>
                     }
 
                     <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0 relative">
@@ -206,6 +208,7 @@ else
     private DotNetObjectReference<Queue>? _dotNetRef;
     private string? _attachedTab;
     private readonly HashSet<int> _reorderingIds = [];
+    private int _reorderVersion;
     private bool _disposed;
 
     private static readonly (string key, string label)[] _tabs =
@@ -324,9 +327,18 @@ else
         {
             await DisposeSortableAsync();
             _dotNetRef ??= DotNetObjectReference.Create(this);
-            _sortableHandle = await JS.InvokeAsync<IJSObjectReference>(
-                "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder), null);
-            _attachedTab = _activeTab;
+            try
+            {
+                _sortableHandle = await JS.InvokeAsync<IJSObjectReference>(
+                    "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder), null);
+            }
+            catch
+            {
+                _sortableHandle = null;
+            }
+            // only mark attached on a successful handle — leaves _attachedTab null on failure
+            // so the next render can retry (e.g. CDN recovers, JS reloads on hot-reload)
+            if (_sortableHandle is not null) _attachedTab = _activeTab;
         }
         else if (!wantSortable && _attachedTab is not null)
         {
@@ -363,7 +375,10 @@ else
         // item out of the way. Net effect: dragged lands exactly where target used to be.
         int targetPos = target.Position;
 
-        // optimistic local rearrange so the UI doesn't snap back during the API call
+        // optimistic local rearrange so the UI doesn't snap back during the API call.
+        // _reorderVersion is captured per-call: a later drag bumps the version, so an
+        // older failure won't revert and clobber the newer drag's local mutation.
+        int version = ++_reorderVersion;
         List<QueueItem> snapshot = [.._items];
         _items.Remove(dragged);
         int targetInItems = _items.IndexOf(target);
@@ -373,17 +388,19 @@ else
         _reorderingIds.Add(itemId);
         await InvokeAsync(StateHasChanged);
 
+        bool shouldRevert = false;
         try
         {
             bool ok = await Api.UpdateQueuePositionAsync(itemId, targetPos);
-            if (!ok) _items = snapshot;
+            shouldRevert = !ok;
         }
         catch
         {
-            _items = snapshot;
+            shouldRevert = true;
         }
         finally
         {
+            if (shouldRevert && version == _reorderVersion) _items = snapshot;
             _reorderingIds.Remove(itemId);
             await InvokeAsync(StateHasChanged);
         }
