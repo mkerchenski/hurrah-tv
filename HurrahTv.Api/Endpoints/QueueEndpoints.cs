@@ -9,17 +9,16 @@ public static class QueueEndpoints
 {
     private static readonly TimeSpan EpisodeCheckStaleAfter = TimeSpan.FromHours(12);
     private static readonly TimeSpan ProviderCheckStaleAfter = TimeSpan.FromHours(24);
-    private static readonly TimeSpan StaleRefreshTimeout = TimeSpan.FromSeconds(3);
 
     public static void MapQueueEndpoints(this WebApplication app)
     {
         RouteGroupBuilder group = app.MapGroup("/api/queue").RequireAuthorization();
 
-        group.MapGet("", async (ClaimsPrincipal user, DbService db, TmdbService tmdb, ILogger<DbService> logger) =>
+        group.MapGet("", async (ClaimsPrincipal user, DbService db, IServiceScopeFactory scopeFactory) =>
         {
             string userId = user.GetUserId();
 
-            // start watched episodes + active services fetches — run in parallel with queue read and stale refresh
+            // run watched + services in parallel with the queue read so we don't pay them sequentially
             Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId);
             Task<List<int>> activeServicesTask = db.GetUserServicesAsync(userId);
 
@@ -32,60 +31,17 @@ public static class QueueEndpoints
                         || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter
                         || i.LatestEpisodeSeason == null))];
 
-            // refresh provider data too — hides items no longer on user's active services, un-hides ones that returned
             List<QueueItem> staleProviders = [.. items
                 .Where(i => i.AvailableOnCheckedAt == null
                     || DateTime.UtcNow - i.AvailableOnCheckedAt > ProviderCheckStaleAfter)];
 
+            // fire-and-forget the TMDb refresh — fresh episode/provider data shows up on the
+            // next /api/queue call, but the current request returns immediately. IsWatchableOn
+            // returns true for items with empty AvailableOnJson, so newly-added items are NOT
+            // hidden during the pre-refresh window.
             if (staleEpisodes.Count > 0 || staleProviders.Count > 0)
-            {
-                using CancellationTokenSource cts = new(StaleRefreshTimeout);
-                try
-                {
-                    Task episodeRefresh = Task.WhenAll(staleEpisodes.Take(10).Select(async item =>
-                    {
-                        try
-                        {
-                            (DateTime? lastAired, int? lastSeason, int? lastEp, DateTime? nextAir, int? nextSeason, int? nextEp)
-                                = await tmdb.GetEpisodeDatesAsync(item.TmdbId, cts.Token);
-                            await db.UpdateEpisodeDatesAsync(item.Id, lastAired, lastSeason, lastEp, nextAir, nextSeason, nextEp, cts.Token);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            logger.LogWarning(ex, "Failed to refresh episode dates for {TmdbId}", item.TmdbId);
-                        }
-                    }));
+                _ = RefreshStaleItemsInBackground(scopeFactory, staleEpisodes, staleProviders);
 
-                    Task providerRefresh = Task.WhenAll(staleProviders.Take(10).Select(async item =>
-                    {
-                        try
-                        {
-                            List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(item.TmdbId, item.MediaType, cts.Token);
-                            string json = JsonSerializer.Serialize(providers
-                                .Where(p => p.Type is ProviderType.Flatrate or ProviderType.Ads)
-                                .Select(p => p.ProviderId)
-                                .Distinct());
-                            await db.UpdateProvidersAsync(item.Id, json, cts.Token);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            logger.LogWarning(ex, "Failed to refresh providers for {TmdbId}", item.TmdbId);
-                        }
-                    }));
-
-                    await Task.WhenAll(episodeRefresh, providerRefresh);
-
-                    items = await db.GetQueueAsync(userId);
-                }
-                catch (OperationCanceledException)
-                {
-                    // timeout — return stale data
-                }
-            }
-
-            // hide items not watchable on any active service. the stale-refresh above keeps
-            // AvailableOnJson fresh on a 24h TTL; items beyond that window may be briefly
-            // mis-hidden until the next queue load picks them up.
             HashSet<int> activeServiceIds = [.. await activeServicesTask];
             if (activeServiceIds.Count > 0)
                 items = [.. items.Where(i => IsWatchableOn(i.AvailableOnJson, activeServiceIds))];
@@ -171,6 +127,61 @@ public static class QueueEndpoints
             return item != null ? Results.Ok(item) : Results.Problem("Ensure failed");
         });
 
+    }
+
+    // detached from the request scope so the response can return before this finishes.
+    // creates a fresh DI scope for transient services (e.g. TmdbService's HttpClient).
+    // exceptions are swallowed at the per-item level; the next request will retry the items
+    // that didn't get stamped with a fresh check timestamp.
+    private static async Task RefreshStaleItemsInBackground(
+        IServiceScopeFactory scopeFactory,
+        List<QueueItem> staleEpisodes,
+        List<QueueItem> staleProviders)
+    {
+        try
+        {
+            await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
+            DbService db = scope.ServiceProvider.GetRequiredService<DbService>();
+            TmdbService tmdb = scope.ServiceProvider.GetRequiredService<TmdbService>();
+            ILogger<DbService> logger = scope.ServiceProvider.GetRequiredService<ILogger<DbService>>();
+
+            Task episodeRefresh = Task.WhenAll(staleEpisodes.Take(10).Select(async item =>
+            {
+                try
+                {
+                    (DateTime? lastAired, int? lastSeason, int? lastEp, DateTime? nextAir, int? nextSeason, int? nextEp)
+                        = await tmdb.GetEpisodeDatesAsync(item.TmdbId);
+                    await db.UpdateEpisodeDatesAsync(item.Id, lastAired, lastSeason, lastEp, nextAir, nextSeason, nextEp);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Background refresh failed for episode dates {TmdbId}", item.TmdbId);
+                }
+            }));
+
+            Task providerRefresh = Task.WhenAll(staleProviders.Take(10).Select(async item =>
+            {
+                try
+                {
+                    List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(item.TmdbId, item.MediaType);
+                    string json = JsonSerializer.Serialize(providers
+                        .Where(p => p.Type is ProviderType.Flatrate or ProviderType.Ads)
+                        .Select(p => p.ProviderId)
+                        .Distinct());
+                    await db.UpdateProvidersAsync(item.Id, json);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Background refresh failed for providers {TmdbId}", item.TmdbId);
+                }
+            }));
+
+            await Task.WhenAll(episodeRefresh, providerRefresh);
+        }
+        catch
+        {
+            // top-level safety net — fire-and-forget tasks must never crash the host
+        }
     }
 
     private static bool IsWatchableOn(string availableOnJson, HashSet<int> activeServiceIds)
