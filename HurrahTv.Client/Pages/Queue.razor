@@ -80,7 +80,7 @@ else
                 <div @key="item.Id" data-item-id="@item.Id"
                      class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
 
-                    @if (_activeTab == "wanttowatch")
+                    @if (_activeTab == WantToWatchTab)
                     {
                         bool reordering = _reorderingIds.Contains(item.Id);
                         <button class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
@@ -197,11 +197,15 @@ else
     private string _activeTab = "all";
     private int? _expandedStatusId;
 
+    // drag-reorder is meaningful only on the WantToWatch tab — Position is the primary
+    // sort signal there; other tabs are sorted by recency / status. See Plans/issue-39.
+    private const string WantToWatchTab = "wanttowatch";
+
     private ElementReference _listEl;
     private IJSObjectReference? _sortableHandle;
     private DotNetObjectReference<Queue>? _dotNetRef;
-    private string? _attachedTab; // tracks which tab the sortable is currently bound to
-    private readonly HashSet<int> _reorderingIds = []; // items with an in-flight position update
+    private string? _attachedTab;
+    private readonly HashSet<int> _reorderingIds = [];
 
     private static readonly (string key, string label)[] _tabs =
     [
@@ -313,10 +317,7 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // attach SortableJS only when on the Want to Watch tab and there are visible rows;
-        // detach when switching to any other tab. Position is the primary sort signal only
-        // for WantToWatch (other tabs sort by recency / status), so drag is a no-op there.
-        bool wantSortable = _activeTab == "wanttowatch" && !_loading && FilteredItems.Any();
+        bool wantSortable = _activeTab == WantToWatchTab && !_loading && FilteredItems.Any();
 
         if (wantSortable && _attachedTab != _activeTab)
         {
