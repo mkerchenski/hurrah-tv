@@ -72,8 +72,8 @@ public static class QueueEndpoints
         group.MapPut("/{id:int}/status", async (int id, QueueStatusUpdate update, ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            bool updated = await db.UpdateStatusAsync(id, update.Status, userId);
-            return updated ? Results.Ok() : Results.NotFound();
+            QueueItem? updated = await db.UpdateStatusAsync(id, update.Status, userId);
+            return updated is not null ? Results.Ok(updated) : Results.NotFound();
         });
 
         group.MapPut("/{id:int}/position", async (int id, PositionUpdate update, ClaimsPrincipal user, DbService db) =>
@@ -89,15 +89,15 @@ public static class QueueEndpoints
                 return Results.BadRequest("Sentiment must be 1 (down), 2 (up), or 3 (favorite)");
 
             string userId = user.GetUserId();
-            bool updated = await db.UpdateSentimentAsync(id, update.Sentiment, userId);
-            return updated ? Results.Ok() : Results.NotFound();
+            QueueItem? updated = await db.UpdateSentimentAsync(id, update.Sentiment, userId);
+            return updated is not null ? Results.Ok(updated) : Results.NotFound();
         });
 
         group.MapPut("/{id:int}/progress", async (int id, ProgressUpdate update, ClaimsPrincipal user, DbService db) =>
         {
             string userId = user.GetUserId();
-            bool updated = await db.UpdateProgressAsync(id, update.Season, update.Episode, userId);
-            return updated ? Results.Ok() : Results.NotFound();
+            QueueItem? updated = await db.UpdateProgressAsync(id, update.Season, update.Episode, userId);
+            return updated is not null ? Results.Ok(updated) : Results.NotFound();
         });
 
         // "I've seen this" — adds as Finished or updates existing to Finished

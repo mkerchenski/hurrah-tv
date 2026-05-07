@@ -238,13 +238,12 @@ public class DbService(IConfiguration config)
         return affected > 0;
     }
 
-    public async Task<bool> UpdateStatusAsync(int id, QueueStatus status, string userId)
+    public async Task<QueueItem?> UpdateStatusAsync(int id, QueueStatus status, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
-        int affected = await db.ExecuteAsync(
-            "UPDATE QueueItems SET Status = @Status WHERE Id = @Id AND UserId = @UserId",
+        return await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "UPDATE QueueItems SET Status = @Status WHERE Id = @Id AND UserId = @UserId RETURNING *",
             new { Status = (int)status, Id = id, UserId = userId });
-        return affected > 0;
     }
 
     public async Task<bool> ReorderAsync(int id, int newPosition, string userId)
@@ -282,22 +281,20 @@ public class DbService(IConfiguration config)
         return true;
     }
 
-    public async Task<bool> UpdateSentimentAsync(int id, int? sentiment, string userId)
+    public async Task<QueueItem?> UpdateSentimentAsync(int id, int? sentiment, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
-        int affected = await db.ExecuteAsync(
-            "UPDATE QueueItems SET Sentiment = @Sentiment WHERE Id = @Id AND UserId = @UserId",
+        return await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "UPDATE QueueItems SET Sentiment = @Sentiment WHERE Id = @Id AND UserId = @UserId RETURNING *",
             new { Sentiment = sentiment, Id = id, UserId = userId });
-        return affected > 0;
     }
 
-    public async Task<bool> UpdateProgressAsync(int id, int? season, int? episode, string userId)
+    public async Task<QueueItem?> UpdateProgressAsync(int id, int? season, int? episode, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
-        int affected = await db.ExecuteAsync(
-            "UPDATE QueueItems SET LastSeasonWatched = @Season, LastEpisodeWatched = @Episode WHERE Id = @Id AND UserId = @UserId",
+        return await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "UPDATE QueueItems SET LastSeasonWatched = @Season, LastEpisodeWatched = @Episode WHERE Id = @Id AND UserId = @UserId RETURNING *",
             new { Season = season, Episode = episode, Id = id, UserId = userId });
-        return affected > 0;
     }
 
     public Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>

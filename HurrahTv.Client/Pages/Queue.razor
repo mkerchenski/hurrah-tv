@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject MediaFilterService MediaFilter
 @inject UserServicesCache UserServicesCache
+@inject QuickActionService QuickActionSvc
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -264,8 +265,19 @@ else
         _expandedStatusId = null;
         try
         {
-            await Api.UpdateStatusAsync(item.Id, status);
-            item.Status = status;
+            QueueItem? updated = await Api.UpdateStatusAsync(item.Id, status);
+            if (updated != null)
+            {
+                // splice the fresh server state into our list and notify listeners (e.g. Home,
+                // if it's still mounted) so they can update in place without a refetch
+                int idx = _items.IndexOf(item);
+                if (idx >= 0) _items[idx] = updated;
+                QuickActionSvc.NotifyItemUpdated(updated);
+            }
+            else
+            {
+                item.Status = status; // optimistic fallback
+            }
             UpdateCounts();
         }
         catch { }

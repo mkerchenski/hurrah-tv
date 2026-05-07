@@ -148,18 +148,24 @@
 
     private async Task ExecuteActionAsync(Func<Task> action)
     {
+        bool failed = false;
         try
         {
             await action();
         }
-        catch { }
+        catch
+        {
+            failed = true;
+        }
         finally
         {
             _busy = false;
             _pendingAction = null;
-            // notify so Home rehydrates from server state — if the API failed, the local
-            // optimistic update gets reverted on the next render
-            QuickActionSvc.NotifyChanged();
+            // success path dispatches targeted events from inside the action body (NotifyItemUpdated /
+            // NotifyEpisodeWatchedChanged) so Home can splice in place without a refetch.
+            // failure path falls back to NotifyChanged so Home reloads from server and reverts any
+            // optimistic local state.
+            if (failed) QuickActionSvc.NotifyChanged();
         }
     }
 
@@ -216,17 +222,22 @@
         // data not yet populated — skip; refresh will rehydrate and reopen will work
         if (!_hasEpisodeData) return;
 
-        // optimistic flip — if user reopens the modal before the API returns, it shows the new state.
-        // NotifyChanged after the API completes triggers a Home reload that confirms or reverts.
         bool target = !_episodeWatched;
         int tmdbId = _episodeTmdbId;
         int season = _episodeSeason;
         int episode = _episodeNumber;
         _episodeWatched = target;
 
-        RunAction("episode", () => target
-            ? Api.MarkEpisodeWatchedAsync(tmdbId, season, episode)
-            : Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode));
+        RunAction("episode", async () =>
+        {
+            if (target)
+                await Api.MarkEpisodeWatchedAsync(tmdbId, season, episode);
+            else
+                await Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode);
+
+            // targeted update — Home updates its watched-set in place, no /api/queue refetch needed
+            QuickActionSvc.NotifyEpisodeWatchedChanged(tmdbId, season, episode, target);
+        });
     }
 
     private void SetStatus(QueueStatus status)
@@ -238,7 +249,11 @@
         {
             int targetId = _queueId;
             _currentStatus = status;
-            RunAction($"status:{(int)status}", () => Api.UpdateStatusAsync(targetId, status));
+            RunAction($"status:{(int)status}", async () =>
+            {
+                QueueItem? updated = await Api.UpdateStatusAsync(targetId, status);
+                if (updated is not null) QuickActionSvc.NotifyItemUpdated(updated);
+            });
             return;
         }
 
@@ -249,8 +264,13 @@
         {
             QueueItem? ensured = await Api.EnsureQueueItemAsync(result);
             if (ensured == null) return;
-            if (ensured.Status == status) return;
-            await Api.UpdateStatusAsync(ensured.Id, status);
+            if (ensured.Status == status)
+            {
+                QuickActionSvc.NotifyItemUpdated(ensured);
+                return;
+            }
+            QueueItem? updated = await Api.UpdateStatusAsync(ensured.Id, status);
+            if (updated is not null) QuickActionSvc.NotifyItemUpdated(updated);
         });
     }
 
@@ -262,7 +282,11 @@
             int targetId = _queueId;
             int? newValue = _currentSentiment == sentiment ? null : sentiment; // toggle off when re-tapping
             _currentSentiment = newValue;
-            RunAction($"sentiment:{sentiment}", () => Api.UpdateSentimentAsync(targetId, newValue));
+            RunAction($"sentiment:{sentiment}", async () =>
+            {
+                QueueItem? updated = await Api.UpdateSentimentAsync(targetId, newValue);
+                if (updated is not null) QuickActionSvc.NotifyItemUpdated(updated);
+            });
             return;
         }
 
@@ -274,7 +298,8 @@
             QueueItem? ensured = await Api.EnsureQueueItemAsync(result);
             if (ensured == null) return;
             int? newValue = ensured.Sentiment == sentiment ? null : sentiment;
-            await Api.UpdateSentimentAsync(ensured.Id, newValue);
+            QueueItem? updated = await Api.UpdateSentimentAsync(ensured.Id, newValue);
+            if (updated is not null) QuickActionSvc.NotifyItemUpdated(updated);
         });
     }
 

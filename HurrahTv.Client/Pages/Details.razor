@@ -4,6 +4,7 @@
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@inject QuickActionService QuickActionSvc
 
 <PageTitle>@(_details?.Title ?? "Loading...") - Hurrah.tv</PageTitle>
 
@@ -357,8 +358,16 @@ else
         {
             if (_queueItem.Status == status)
                 return;
-            await Api.UpdateStatusAsync(_queueItem.Id, status);
-            _queueItem.Status = status;
+            QueueItem? updated = await Api.UpdateStatusAsync(_queueItem.Id, status);
+            if (updated != null)
+            {
+                _queueItem = updated;
+                QuickActionSvc.NotifyItemUpdated(updated);
+            }
+            else
+            {
+                _queueItem.Status = status; // optimistic fallback
+            }
         }
         else
         {
@@ -367,6 +376,8 @@ else
             _queueItem = await Api.AddToQueueAsync(item);
             if (_queueItem == null)
                 _queueItem = await FindQueueItemAsync();
+            if (_queueItem != null)
+                QuickActionSvc.NotifyItemUpdated(_queueItem);
         }
         StateHasChanged();
     }
@@ -384,8 +395,16 @@ else
         }
 
         int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
-        await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
-        _queueItem.Sentiment = newSentiment;
+        QueueItem? updated = await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
+        if (updated != null)
+        {
+            _queueItem = updated;
+            QuickActionSvc.NotifyItemUpdated(updated);
+        }
+        else
+        {
+            _queueItem.Sentiment = newSentiment; // optimistic fallback
+        }
         StateHasChanged();
     }
 

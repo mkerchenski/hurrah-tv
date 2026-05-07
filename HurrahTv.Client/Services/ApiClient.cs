@@ -87,14 +87,23 @@ public class ApiClient(HttpClient http)
     public async Task RemoveFromQueueAsync(int id) =>
         await _http.DeleteAsync($"api/queue/{id}");
 
-    public async Task UpdateStatusAsync(int id, QueueStatus status) =>
-        await _http.PutAsJsonAsync($"api/queue/{id}/status", new { Status = status });
+    public async Task<QueueItem?> UpdateStatusAsync(int id, QueueStatus status)
+    {
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/status", new { Status = status });
+        return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
+    }
 
-    public async Task UpdateSentimentAsync(int id, int? sentiment) =>
-        await _http.PutAsJsonAsync($"api/queue/{id}/sentiment", new { Sentiment = sentiment });
+    public async Task<QueueItem?> UpdateSentimentAsync(int id, int? sentiment)
+    {
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/sentiment", new { Sentiment = sentiment });
+        return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
+    }
 
-    public async Task UpdateProgressAsync(int id, int? season, int? episode) =>
-        await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
+    public async Task<QueueItem?> UpdateProgressAsync(int id, int? season, int? episode)
+    {
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
+        return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
+    }
 
     public Task<QueueItem?> MarkAsSeenAsync(SearchResult result) => PostStatusAsync("api/queue/seen", result);
 

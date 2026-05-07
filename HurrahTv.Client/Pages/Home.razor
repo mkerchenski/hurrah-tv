@@ -295,6 +295,10 @@ else
     private bool _onboardingComplete;
     private bool _queueLoaded;
 
+    // full queue cache — source for splicing in-place updates from QuickActions without a refetch.
+    // ApplyWatchlistFilters reads from this and produces the filtered _watchingItems / _upcomingItems / etc.
+    private List<QueueItem> _allItems = [];
+
     // watchlist rows
     private List<QueueItem> _watchingItems = [];
     private List<QueueItem> _upcomingItems = [];
@@ -317,6 +321,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
+        QuickActionSvc.OnItemUpdated += OnItemUpdated;
+        QuickActionSvc.OnEpisodeWatchedChanged += OnEpisodeWatchedChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
 
         // start the three independent fetches in parallel — services count gates onboarding
@@ -402,28 +408,60 @@ else
 
     private void ProcessQueueResponse(QueueResponse queueResponse)
     {
-        List<QueueItem> allItems = queueResponse.Items;
-
-        // build watched set for O(1) lookups during render
+        _allItems = queueResponse.Items;
         _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
-        _queuedTmdbIds = [.. allItems.Select(i => i.TmdbId).Distinct()];
+        StampWatchedFlags();
+        ReapplyDerivedState();
+        _queueLoaded = true;
+        StateHasChanged();
+    }
 
-        // stamp IsLatestEpisodeWatched — exact match on season/episode (API forces refresh when these are null)
-        foreach (QueueItem item in allItems)
+    // recomputes filtered rows + helper sets from _allItems. Called after any in-place mutation
+    // so we don't need a full /api/queue refetch to reflect single-item changes.
+    private void ReapplyDerivedState()
+    {
+        _queuedTmdbIds = [.. _allItems.Select(i => i.TmdbId).Distinct()];
+        _recSeeds = PickRecSeeds(_allItems, 3, MediaFilter.MediaType);
+        ApplyWatchlistFilters(_allItems);
+        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
+    }
+
+    private void StampWatchedFlags()
+    {
+        foreach (QueueItem item in _allItems)
         {
             if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
                 item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
         }
-
-        _recSeeds = PickRecSeeds(allItems, 3, MediaFilter.MediaType);
-
-        ApplyWatchlistFilters(allItems);
-
-        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
-
-        _queueLoaded = true;
-        StateHasChanged();
     }
+
+    private void OnItemUpdated(QueueItem updated) => InvokeAsync(() =>
+    {
+        // splice the updated item into _allItems by Id, recompute derived state, render
+        int idx = _allItems.FindIndex(i => i.Id == updated.Id);
+        if (idx >= 0)
+        {
+            // preserve IsLatestEpisodeWatched (server doesn't include the watched-set), restamp below
+            _allItems[idx] = updated;
+        }
+        else
+        {
+            _allItems.Add(updated);
+        }
+        StampWatchedFlags();
+        ReapplyDerivedState();
+        StateHasChanged();
+    });
+
+    private void OnEpisodeWatchedChanged(int tmdbId, int season, int episode, bool watched) => InvokeAsync(() =>
+    {
+        (int TmdbId, int Season, int Episode) key = (tmdbId, season, episode);
+        if (watched) _watchedSet.Add(key);
+        else _watchedSet.Remove(key);
+        StampWatchedFlags();
+        ReapplyDerivedState();
+        StateHasChanged();
+    });
 
     private async Task LoadWatchlistData()
     {
@@ -637,18 +675,10 @@ else
     private async Task ReloadWatchlist()
     {
         QueueResponse queueResponse = await Api.GetQueueResponseAsync();
-        List<QueueItem> allItems = queueResponse.Items;
-
+        _allItems = queueResponse.Items;
         _watchedSet = [.. queueResponse.WatchedEpisodes.Select(w => (w.TmdbId, w.Season, w.Episode))];
-        foreach (QueueItem item in allItems)
-        {
-            if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
-                item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
-        }
-
-        _recSeeds = PickRecSeeds(allItems, 3, MediaFilter.MediaType);
-        ApplyWatchlistFilters(allItems);
-        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
+        StampWatchedFlags();
+        ReapplyDerivedState();
         StateHasChanged();
     }
 
@@ -710,6 +740,8 @@ else
     public void Dispose()
     {
         QuickActionSvc.OnChanged -= OnQuickActionChanged;
+        QuickActionSvc.OnItemUpdated -= OnItemUpdated;
+        QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
     }
 }

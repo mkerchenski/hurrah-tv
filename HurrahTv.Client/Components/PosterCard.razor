@@ -226,7 +226,10 @@
     {
         QueueItem? added = await Api.AddToQueueAsync(Result.ToQueueItem());
         if (added != null)
+        {
+            QuickActionSvc.NotifyItemUpdated(added);
             await ShowTemporaryState(ActionState.Added);
+        }
     }
 
     private async Task MarkThumbsUp()
@@ -235,7 +238,8 @@
         QueueItem? item = await Api.MarkAsSeenAsync(Result);
         if (item != null)
         {
-            await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+            QueueItem? withSentiment = await Api.UpdateSentimentAsync(item.Id, SentimentLevel.Up);
+            QuickActionSvc.NotifyItemUpdated(withSentiment ?? item);
             await ShowTemporaryState(ActionState.ThumbsUp);
         }
     }
@@ -244,7 +248,10 @@
     {
         QueueItem? item = await Api.MarkAsSeenAsync(Result);
         if (item != null)
+        {
+            QuickActionSvc.NotifyItemUpdated(item);
             await ShowTemporaryState(ActionState.Seen);
+        }
     }
 
     private async Task ShowTemporaryState(ActionState state)
