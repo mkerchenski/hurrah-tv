@@ -24,10 +24,18 @@
                  not-yet-watched latest episode. Self-gated: no caller flag needed. -->
             @if (ShouldShowEpisodeWatched())
             {
-                <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50
                                @(_episodeWatched ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-300 hover:text-white")"
+                        disabled="@(_busy && _pendingAction != "episode")"
                         @onclick="ToggleEpisodeWatched" @onclick:stopPropagation="true">
-                    <span class="@(_episodeWatched ? "icon-[heroicons--check-circle-20-solid]" : "icon-[heroicons--check-circle]") w-4 h-4"></span>
+                    @if (_pendingAction == "episode")
+                    {
+                        <span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    }
+                    else
+                    {
+                        <span class="@(_episodeWatched ? "icon-[heroicons--check-circle-20-solid]" : "icon-[heroicons--check-circle]") w-4 h-4"></span>
+                    }
                     @(_episodeWatched ? "Episode Marked Watched" : "Episode Watched")
                 </button>
             }
@@ -41,10 +49,20 @@
                     bool isNfm = status == QueueStatus.NotForMe;
                     string activeCss = isNfm ? "bg-gray-600/80 text-white" : BadgeHelpers.StatusBg(status) + " text-white";
                     string inactiveCss = isNfm ? "bg-surface-200 text-gray-600 hover:text-gray-400" : "bg-surface-200 text-gray-400 hover:text-white";
-                    <button class="py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                    string actionKey = $"status:{(int)status}";
+                    bool isPending = _pendingAction == actionKey;
+                    <button class="py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 disabled:opacity-50
                                    @(active ? activeCss : inactiveCss)"
+                            disabled="@(_busy && !isPending)"
                             @onclick="() => SetStatus(status)" @onclick:stopPropagation="true">
-                        <span class="@BadgeHelpers.StatusIcon(status) w-3.5 h-3.5"></span>
+                        @if (isPending)
+                        {
+                            <span class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                        }
+                        else
+                        {
+                            <span class="@BadgeHelpers.StatusIcon(status) w-3.5 h-3.5"></span>
+                        }
                         <span>@BadgeHelpers.StatusShortLabel(status)</span>
                     </button>
                 }
@@ -55,10 +73,20 @@
                 @foreach ((int level, string activeCss, string inactiveCss, string icon, string label) in _sentimentOptions)
                 {
                     bool active = _queueId > 0 && _currentSentiment == level;
-                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1
+                    string actionKey = $"sentiment:{level}";
+                    bool isPending = _pendingAction == actionKey;
+                    <button class="flex-1 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1 disabled:opacity-50
                                    @(active ? activeCss : inactiveCss)"
+                            disabled="@(_busy && !isPending)"
                             @onclick="() => SetSentiment(level)" @onclick:stopPropagation="true">
-                        <span class="@icon w-3.5 h-3.5"></span>
+                        @if (isPending)
+                        {
+                            <span class="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                        }
+                        else
+                        {
+                            <span class="@icon w-3.5 h-3.5"></span>
+                        }
                         @label
                     </button>
                 }
@@ -72,6 +100,7 @@
 @code {
     private bool _visible;
     private bool _busy;
+    private string? _pendingAction; // identifies which button is mid-API call so we can swap its icon for a spinner
     private bool _disposed;
     private string _title = "";
     private string _posterUrl = "";
@@ -108,10 +137,17 @@
         return days >= 0 && days <= 7;
     }
 
-    private async Task RunAction(Func<Task> action)
+    private void RunAction(string actionKey, Func<Task> action)
     {
         if (_busy) return;
         _busy = true;
+        _pendingAction = actionKey;
+        Close(); // close immediately — the click feels instant, API runs in the background
+        _ = ExecuteActionAsync(action);
+    }
+
+    private async Task ExecuteActionAsync(Func<Task> action)
+    {
         try
         {
             await action();
@@ -120,9 +156,9 @@
         finally
         {
             _busy = false;
-            Close();
-            // always notify so a failed action refreshes the page; the server state
-            // is the source of truth — local changes are lost if the API call failed
+            _pendingAction = null;
+            // notify so Home rehydrates from server state — if the API failed, the local
+            // optimistic update gets reverted on the next render
             QuickActionSvc.NotifyChanged();
         }
     }
@@ -175,61 +211,72 @@
         StateHasChanged();
     }
 
-    private Task ToggleEpisodeWatched() => RunAction(async () =>
+    private void ToggleEpisodeWatched()
     {
-        // data not yet populated — skip API call; refresh will rehydrate and reopen will work
+        // data not yet populated — skip; refresh will rehydrate and reopen will work
         if (!_hasEpisodeData) return;
-        if (_episodeWatched)
-            await Api.UnmarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
-        else
-            await Api.MarkEpisodeWatchedAsync(_episodeTmdbId, _episodeSeason, _episodeNumber);
-        _episodeWatched = !_episodeWatched;
-    });
 
-    private Task SetStatus(QueueStatus status)
+        // optimistic flip — if user reopens the modal before the API returns, it shows the new state.
+        // NotifyChanged after the API completes triggers a Home reload that confirms or reverts.
+        bool target = !_episodeWatched;
+        int tmdbId = _episodeTmdbId;
+        int season = _episodeSeason;
+        int episode = _episodeNumber;
+        _episodeWatched = target;
+
+        RunAction("episode", () => target
+            ? Api.MarkEpisodeWatchedAsync(tmdbId, season, episode)
+            : Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode));
+    }
+
+    private void SetStatus(QueueStatus status)
     {
-        if (_queueId > 0 && status == _currentStatus) return Task.CompletedTask;
-        return RunAction(async () =>
+        if (_queueId > 0 && status == _currentStatus) return;
+
+        // queue surface: optimistic flip + single API call
+        if (_queueId > 0)
         {
             int targetId = _queueId;
-            if (targetId <= 0 && _searchResult != null)
-            {
-                // browse surface: the item may or may not be queued — resolve its id first
-                QueueItem? ensured = await Api.EnsureQueueItemAsync(_searchResult);
-                if (ensured == null) return;
-                targetId = ensured.Id;
-                _queueId = ensured.Id;
-                _currentStatus = ensured.Status;
-                if (ensured.Status == status) return; // already in the target state
-            }
-            if (targetId <= 0) return;
-            await Api.UpdateStatusAsync(targetId, status);
             _currentStatus = status;
+            RunAction($"status:{(int)status}", () => Api.UpdateStatusAsync(targetId, status));
+            return;
+        }
+
+        // browse surface: needs to ensure the queue item exists first, so we can't be fully optimistic
+        if (_searchResult is null) return;
+        SearchResult result = _searchResult;
+        RunAction($"status:{(int)status}", async () =>
+        {
+            QueueItem? ensured = await Api.EnsureQueueItemAsync(result);
+            if (ensured == null) return;
+            if (ensured.Status == status) return;
+            await Api.UpdateStatusAsync(ensured.Id, status);
         });
     }
 
-    private Task SetSentiment(int sentiment) => RunAction(async () =>
+    private void SetSentiment(int sentiment)
     {
-        int targetId = _queueId;
-        int? newValue = sentiment;
-        if (targetId > 0)
+        // queue surface: optimistic flip + single API call
+        if (_queueId > 0)
         {
-            // toggle off when tapping the currently-selected sentiment
-            newValue = _currentSentiment == sentiment ? null : sentiment;
+            int targetId = _queueId;
+            int? newValue = _currentSentiment == sentiment ? null : sentiment; // toggle off when re-tapping
+            _currentSentiment = newValue;
+            RunAction($"sentiment:{sentiment}", () => Api.UpdateSentimentAsync(targetId, newValue));
+            return;
         }
-        else if (_searchResult != null)
+
+        // browse surface: ensure first
+        if (_searchResult is null) return;
+        SearchResult result = _searchResult;
+        RunAction($"sentiment:{sentiment}", async () =>
         {
-            QueueItem? ensured = await Api.EnsureQueueItemAsync(_searchResult);
+            QueueItem? ensured = await Api.EnsureQueueItemAsync(result);
             if (ensured == null) return;
-            targetId = ensured.Id;
-            _queueId = ensured.Id;
-            _currentStatus = ensured.Status;
-            newValue = _currentSentiment == sentiment ? null : sentiment;
-        }
-        if (targetId <= 0) return;
-        await Api.UpdateSentimentAsync(targetId, newValue);
-        _currentSentiment = newValue;
-    });
+            int? newValue = ensured.Sentiment == sentiment ? null : sentiment;
+            await Api.UpdateSentimentAsync(ensured.Id, newValue);
+        });
+    }
 
     private void Close()
     {

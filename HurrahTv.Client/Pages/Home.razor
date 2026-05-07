@@ -138,7 +138,26 @@ else
                 (MediaFilter.MediaType != "movie" && _hasTvWatchlistContent)
                 || (MediaFilter.MediaType != "tv" && _hasMovieWatchlistContent);
         }
-        @if (hasWatchlistContent)
+        @if (!_queueLoaded)
+        {
+            <!-- skeleton: reserves vertical space matching a typical watchlist row so the
+                 page doesn't shift when the queue arrives. matches WatchlistRow card size. -->
+            <div class="mb-8">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
+                    <h2 class="text-lg md:text-xl font-bold text-white">My Watchlist</h2>
+                </div>
+                <div class="flex gap-3 overflow-hidden">
+                    @for (int i = 0; i < 6; i++)
+                    {
+                        <div class="flex-shrink-0 w-32 sm:w-32 md:w-36">
+                            <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (hasWatchlistContent)
         {
             <div class="mb-8">
                 <!-- section header — matches Curated for You pattern -->
@@ -274,6 +293,7 @@ else
     private int _onboardingStep = 1;
     private bool _servicesLoaded;
     private bool _onboardingComplete;
+    private bool _queueLoaded;
 
     // watchlist rows
     private List<QueueItem> _watchingItems = [];
@@ -298,20 +318,32 @@ else
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
-        _userServices = [.. await UserServicesCache.GetAsync()];
-        _servicesLoaded = true;
-        _onboardingComplete = _userServices.Count > 0;
+
+        // start the three independent fetches in parallel — services count gates onboarding
+        // vs content, but settings + queue can be in flight while services resolves. AI
+        // curation is fired below as fire-and-forget so it doesn't block first paint.
+        Task<IReadOnlyList<int>> servicesTask = UserServicesCache.GetAsync();
+        Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
+        Task<QueueResponse> queueTask = Api.GetQueueResponseAsync();
 
         // first name is read from JWT claim — set during sign-in or after profile updates
         Microsoft.AspNetCore.Components.Authorization.AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
         _firstName = state.User.FindFirst("firstname")?.Value;
 
-        if (_onboardingComplete)
-        {
-            _settings = await Api.GetUserSettingsAsync();
-            _watchlistSort = _settings.WatchlistSort;
-            await LoadWatchlistData();
-        }
+        _userServices = [.. await servicesTask];
+        _servicesLoaded = true;
+        _onboardingComplete = _userServices.Count > 0;
+
+        if (!_onboardingComplete) return;
+
+        _settings = await settingsTask;
+        _watchlistSort = _settings.WatchlistSort;
+
+        ProcessQueueResponse(await queueTask);
+
+        // AI is the slowest call (Claude API) and not needed for first paint — let it
+        // finish in the background and fill in the curated row when it returns
+        _ = LoadAICuration();
     }
 
     private async Task OnboardingNext()
@@ -368,9 +400,8 @@ else
         await LoadWatchlistData();
     }
 
-    private async Task LoadWatchlistData()
+    private void ProcessQueueResponse(QueueResponse queueResponse)
     {
-        QueueResponse queueResponse = await Api.GetQueueResponseAsync();
         List<QueueItem> allItems = queueResponse.Items;
 
         // build watched set for O(1) lookups during render
@@ -390,10 +421,17 @@ else
 
         _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
 
+        _queueLoaded = true;
         StateHasChanged();
+    }
 
-        // load AI curation (awaited so StateHasChanged works properly)
-        await LoadAICuration();
+    private async Task LoadWatchlistData()
+    {
+        QueueResponse queueResponse = await Api.GetQueueResponseAsync();
+        ProcessQueueResponse(queueResponse);
+
+        // AI curation is fire-and-forget — slow Claude call shouldn't block first paint
+        _ = LoadAICuration();
     }
 
     private bool IsStatusActive(QueueStatus status) => status switch
