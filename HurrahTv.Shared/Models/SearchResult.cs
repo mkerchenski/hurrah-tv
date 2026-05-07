@@ -38,6 +38,7 @@ public class SearchResult
         MediaType = MediaType,
         Title = Title,
         PosterPath = PosterPath,
+        BackdropPath = BackdropPath,
         AvailableOnJson = JsonSerializer.Serialize(AvailableOn.Select(s => s.ProviderId).ToList()),
     };
 }

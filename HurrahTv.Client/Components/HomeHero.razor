@@ -1,0 +1,112 @@
+@inject NavigationManager Nav
+@inject ApiClient Api
+@inject QuickActionService QuickActionSvc
+
+@if (Item is not null)
+{
+    <section class="relative -mx-4 md:-mx-6 mb-6 md:mb-10 overflow-hidden rounded-b-xl md:rounded-xl">
+        <!-- backdrop image — full bleed on mobile (escapes the page padding via -mx) -->
+        <div class="aspect-[3/4] sm:aspect-[16/9] md:aspect-[21/9] relative bg-surface-100">
+            @if (!string.IsNullOrEmpty(Item.BackdropUrl))
+            {
+                <img src="@Item.BackdropUrl" alt="" draggable="false"
+                     class="absolute inset-0 w-full h-full object-cover no-callout" />
+            }
+
+            <!-- gradient: dark at bottom for text legibility, fades to transparent at top -->
+            <div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/60 to-transparent"></div>
+            <!-- subtle side fade so the eyebrow doesn't disappear into a busy left edge -->
+            <div class="absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-bg/50 to-transparent hidden md:block"></div>
+
+            <!-- content -->
+            <div class="absolute inset-x-0 bottom-0 p-4 md:p-8">
+                <div class="text-[10px] md:text-xs uppercase tracking-widest text-accent font-semibold mb-1.5 md:mb-2">
+                    @Item.Eyebrow
+                </div>
+                <h1 class="text-2xl sm:text-3xl md:text-5xl font-bold text-white leading-tight max-w-2xl">
+                    @Item.Title
+                </h1>
+                @if (!string.IsNullOrEmpty(Item.Overview))
+                {
+                    <p class="hidden md:block text-sm md:text-base text-gray-200 mt-3 max-w-xl line-clamp-2 italic">
+                        &ldquo;@Item.Overview&rdquo;
+                    </p>
+                }
+
+                <div class="flex items-center gap-2 mt-3 md:mt-5">
+                    <button @onclick="OnPrimary"
+                            class="bg-white text-black hover:bg-gray-200 font-semibold px-5 md:px-7 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                        <span class="@PrimaryIcon w-4 h-4 md:w-5 md:h-5"></span>
+                        <span>@Item.PrimaryLabel</span>
+                    </button>
+                    <button @onclick="OnSecondary"
+                            class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                        <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
+                        <span class="hidden sm:inline">More info</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter, EditorRequired] public HeroItem? Item { get; set; }
+
+    private string PrimaryIcon => Item?.PrimaryAction switch
+    {
+        HeroAction.Resume => "icon-[heroicons--play-20-solid]",
+        HeroAction.Add => "icon-[heroicons--plus]",
+        _ => "icon-[heroicons--play-20-solid]"
+    };
+
+    private void OnPrimary()
+    {
+        if (Item is null) return;
+        switch (Item.PrimaryAction)
+        {
+            case HeroAction.Resume:
+                Nav.NavigateTo($"/details/{Item.MediaType}/{Item.TmdbId}");
+                break;
+            case HeroAction.Add:
+                _ = AddAndNotifyAsync();
+                break;
+        }
+    }
+
+    private void OnSecondary()
+    {
+        if (Item is null) return;
+        Nav.NavigateTo($"/details/{Item.MediaType}/{Item.TmdbId}");
+    }
+
+    private async Task AddAndNotifyAsync()
+    {
+        if (Item is null) return;
+        QueueItem stub = new()
+        {
+            TmdbId = Item.TmdbId,
+            MediaType = Item.MediaType,
+            Title = Item.Title,
+            PosterPath = Item.PosterPath,
+            BackdropPath = Item.BackdropPathRaw
+        };
+        QueueItem? added = await Api.AddToQueueAsync(stub);
+        if (added is not null) QuickActionSvc.NotifyItemUpdated(added);
+    }
+
+    public enum HeroAction { Resume, Add }
+
+    public record HeroItem(
+        string Eyebrow,
+        string Title,
+        string BackdropUrl,
+        string BackdropPathRaw,
+        string PosterPath,
+        string? Overview,
+        int TmdbId,
+        string MediaType,
+        string PrimaryLabel,
+        HeroAction PrimaryAction
+    );
+}

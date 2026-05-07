@@ -7,6 +7,7 @@ public class QueueItem
     public string MediaType { get; set; } = "";
     public string Title { get; set; } = "";
     public string PosterPath { get; set; } = "";
+    public string BackdropPath { get; set; } = ""; // 16:9 image for hero billboard rendering
     public int Position { get; set; }
     public QueueStatus Status { get; set; } = QueueStatus.WantToWatch;
     public int? Sentiment { get; set; } // null=no opinion, 1=down, 2=up, 3=favorite
@@ -29,6 +30,7 @@ public class QueueItem
     public bool IsLatestEpisodeWatched { get; set; }
 
     public string PosterUrl(string size = "w342") => TmdbImage.Url(PosterPath, size);
+    public string BackdropUrl(string size = "w1280") => TmdbImage.Url(BackdropPath, size);
 
     public bool HasNewEpisode => LatestEpisodeDate.HasValue
         && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-7);

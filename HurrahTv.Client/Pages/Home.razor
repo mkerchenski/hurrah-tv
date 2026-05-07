@@ -124,12 +124,10 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        @if (!string.IsNullOrWhiteSpace(_firstName))
-        {
-            <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">
-                @Greeting(), <span class="text-accent">@_firstName</span>
-            </h1>
-        }
+        <!-- hero billboard — replaces the standalone greeting; selection prefers Continue Watching,
+             then a recently-aired show, then the top AI pick. nothing renders if no candidate has a
+             backdrop yet (e.g. fresh user before any TMDb backfill landed). -->
+        <HomeHero Item="SelectHero()" />
 
         <!-- My Watchlist section — header with chips + all three rows grouped together -->
         @{
@@ -146,7 +144,7 @@ else
             <div class="mb-8">
                 <div class="flex items-center gap-2 mb-4">
                     <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
-                    <h2 class="text-lg md:text-xl font-bold text-white">My Watchlist</h2>
+                    <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
                 </div>
                 <div class="flex gap-3 overflow-hidden">
                     @for (int i = 0; i < 6; i++)
@@ -165,7 +163,7 @@ else
                 <div class="mb-4">
                     <div class="flex items-center gap-2 mb-1">
                         <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
-                        <h2 class="text-lg md:text-xl font-bold text-white">My Watchlist</h2>
+                        <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
                     </div>
                     <div class="flex items-center justify-between mt-3 gap-2">
                         @if (MediaFilter.MediaType != "movie")
@@ -733,16 +731,77 @@ else
         catch { }
     });
 
-    private static string Greeting()
+    // possessive form when we have a first name; "My" otherwise. used in section header
+    // (replaces the standalone "Good morning, X" greeting we used to render above).
+    private string WatchlistTitle => string.IsNullOrWhiteSpace(_firstName)
+        ? "My Watchlist"
+        : $"{_firstName}'s Watchlist";
+
+    // hero source priority. Continue Watching > Latest aired this week > top AI pick.
+    // returns null when nothing has a usable backdrop yet (fresh users before backfill).
+    private HomeHero.HeroItem? SelectHero()
     {
-        int hour = DateTime.Now.Hour;
-        return hour switch
+        // 1. an item the user is actively watching, with a backdrop available
+        QueueItem? watching = _watchingItems.FirstOrDefault(i =>
+            i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath));
+        if (watching is not null)
         {
-            < 5 => "Late night",
-            < 12 => "Good morning",
-            < 17 => "Good afternoon",
-            _ => "Good evening"
-        };
+            return new HomeHero.HeroItem(
+                Eyebrow: "Continue Watching",
+                Title: watching.Title,
+                BackdropUrl: watching.BackdropUrl(),
+                BackdropPathRaw: watching.BackdropPath,
+                PosterPath: watching.PosterPath,
+                Overview: null,
+                TmdbId: watching.TmdbId,
+                MediaType: watching.MediaType,
+                PrimaryLabel: "Resume",
+                PrimaryAction: HomeHero.HeroAction.Resume);
+        }
+
+        // 2. a TV show whose latest episode aired in the last 7 days (regardless of status)
+        QueueItem? recent = _allItems
+            .Where(i => i.MediaType == MediaTypes.Tv
+                && i.HasNewEpisode
+                && i.Status != QueueStatus.NotForMe
+                && !string.IsNullOrEmpty(i.BackdropPath))
+            .OrderByDescending(i => i.LatestEpisodeDate)
+            .FirstOrDefault();
+        if (recent is not null)
+        {
+            return new HomeHero.HeroItem(
+                Eyebrow: "New This Week",
+                Title: recent.Title,
+                BackdropUrl: recent.BackdropUrl(),
+                BackdropPathRaw: recent.BackdropPath,
+                PosterPath: recent.PosterPath,
+                Overview: null,
+                TmdbId: recent.TmdbId,
+                MediaType: recent.MediaType,
+                PrimaryLabel: "Watch latest",
+                PrimaryAction: HomeHero.HeroAction.Resume);
+        }
+
+        // 3. top AI curation pick that still matches the active media-type filter
+        CuratedItem? topAi = _curatedItems.FirstOrDefault(c =>
+            !string.IsNullOrEmpty(c.Result.BackdropPath)
+            && (MediaFilter.MediaType == "all" || c.Result.MediaType == MediaFilter.MediaType));
+        if (topAi is not null)
+        {
+            return new HomeHero.HeroItem(
+                Eyebrow: "Recommended for You",
+                Title: topAi.Result.Title,
+                BackdropUrl: topAi.Result.BackdropUrl("w1280"),
+                BackdropPathRaw: topAi.Result.BackdropPath,
+                PosterPath: topAi.Result.PosterPath,
+                Overview: topAi.Reason,
+                TmdbId: topAi.Result.TmdbId,
+                MediaType: topAi.Result.MediaType,
+                PrimaryLabel: "Add to list",
+                PrimaryAction: HomeHero.HeroAction.Add);
+        }
+
+        return null;
     }
 
     public void Dispose()

@@ -109,7 +109,7 @@ public static class QueueEndpoints
             string userId = user.GetUserId();
             QueueItem? item = await db.MarkAsSeenAsync(
                 request.TmdbId, request.MediaType, request.Title,
-                request.PosterPath, request.AvailableOnJson, userId);
+                request.PosterPath, request.BackdropPath, request.AvailableOnJson, userId);
             return Results.Ok(item);
         });
 
@@ -123,7 +123,7 @@ public static class QueueEndpoints
             string userId = user.GetUserId();
             QueueItem? item = await db.EnsureQueueItemAsync(
                 request.TmdbId, request.MediaType, request.Title,
-                request.PosterPath, request.AvailableOnJson, userId);
+                request.PosterPath, request.BackdropPath, request.AvailableOnJson, userId);
             return item != null ? Results.Ok(item) : Results.Problem("Ensure failed");
         });
 
@@ -204,5 +204,5 @@ public static class QueueEndpoints
     public record PositionUpdate(int Position);
     public record SentimentUpdate(int? Sentiment);
     public record ProgressUpdate(int? Season, int? Episode);
-    public record SeenRequest(int TmdbId, string MediaType, string Title, string PosterPath, string AvailableOnJson);
+    public record SeenRequest(int TmdbId, string MediaType, string Title, string PosterPath, string AvailableOnJson, string BackdropPath = "");
 }

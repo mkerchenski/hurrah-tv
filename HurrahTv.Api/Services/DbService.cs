@@ -157,6 +157,10 @@ public class DbService(IConfiguration config)
 
             -- optional first name — collected during onboarding for greetings + AI personalization
             ALTER TABLE Users ADD COLUMN IF NOT EXISTS FirstName VARCHAR(50) NULL;
+
+            -- backdrop image for hero billboard on Home; existing rows default to empty and
+            -- will get backfilled via TMDb on the next AddToQueue / EnsureQueueItem touch
+            ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS BackdropPath VARCHAR(500) NOT NULL DEFAULT '';
             """, transaction: tx);
 
         // bootstrap admins — runs on every startup, idempotent. Owner is always admin in every environment.
@@ -208,8 +212,8 @@ public class DbService(IConfiguration config)
         item.Position = maxPos + 1;
 
         int id = await db.QuerySingleAsync<int>("""
-            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, Sentiment, AvailableOnJson, AddedAt)
-            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @Sentiment, @AvailableOnJson, @AddedAt)
+            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, BackdropPath, Position, Status, Sentiment, AvailableOnJson, AddedAt)
+            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @BackdropPath, @Position, @Status, @Sentiment, @AvailableOnJson, @AddedAt)
             RETURNING Id
             """, new
         {
@@ -218,6 +222,7 @@ public class DbService(IConfiguration config)
             item.MediaType,
             item.Title,
             item.PosterPath,
+            item.BackdropPath,
             item.Position,
             Status = (int)item.Status,
             item.Sentiment,
@@ -297,20 +302,20 @@ public class DbService(IConfiguration config)
             new { Season = season, Episode = episode, Id = id, UserId = userId });
     }
 
-    public Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
-        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.Finished,
+    public Task<QueueItem?> MarkAsSeenAsync(int tmdbId, string mediaType, string title, string posterPath, string backdropPath, string availableOnJson, string userId) =>
+        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, backdropPath, availableOnJson, userId, QueueStatus.Finished,
             existing => existing is QueueStatus.WantToWatch or QueueStatus.Watching);
 
     // returns the queue item for this (user, tmdbId, mediaType), creating it as WantToWatch
     // if it doesn't exist. never modifies an existing row — use the targeted PUT endpoints
     // (/status, /sentiment) to mutate. used by QuickActions when the dialog opens from a
     // browse-result surface that can't know the item's current queue state.
-    public Task<QueueItem?> EnsureQueueItemAsync(int tmdbId, string mediaType, string title, string posterPath, string availableOnJson, string userId) =>
-        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, availableOnJson, userId, QueueStatus.WantToWatch,
+    public Task<QueueItem?> EnsureQueueItemAsync(int tmdbId, string mediaType, string title, string posterPath, string backdropPath, string availableOnJson, string userId) =>
+        UpsertWithStatusAsync(tmdbId, mediaType, title, posterPath, backdropPath, availableOnJson, userId, QueueStatus.WantToWatch,
             existing => false);
 
     private async Task<QueueItem?> UpsertWithStatusAsync(int tmdbId, string mediaType, string title, string posterPath,
-        string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
+        string backdropPath, string availableOnJson, string userId, QueueStatus targetStatus, Func<QueueStatus, bool>? shouldUpdate = null)
     {
         using NpgsqlConnection db = await OpenAsync();
 
@@ -320,12 +325,30 @@ public class DbService(IConfiguration config)
 
         if (existing != null)
         {
-            if (shouldUpdate == null || shouldUpdate(existing.Status))
+            // backfill backdrop on existing rows that pre-date the column — same row touch as status update
+            bool needsBackdropBackfill = string.IsNullOrEmpty(existing.BackdropPath) && !string.IsNullOrEmpty(backdropPath);
+            bool willUpdate = shouldUpdate == null || shouldUpdate(existing.Status);
+            if (willUpdate && needsBackdropBackfill)
+            {
+                await db.ExecuteAsync(
+                    "UPDATE QueueItems SET Status = @Status, BackdropPath = @BackdropPath WHERE Id = @Id",
+                    new { Status = (int)targetStatus, BackdropPath = backdropPath, existing.Id });
+                existing.Status = targetStatus;
+                existing.BackdropPath = backdropPath;
+            }
+            else if (willUpdate)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
                     new { Status = (int)targetStatus, existing.Id });
                 existing.Status = targetStatus;
+            }
+            else if (needsBackdropBackfill)
+            {
+                await db.ExecuteAsync(
+                    "UPDATE QueueItems SET BackdropPath = @BackdropPath WHERE Id = @Id",
+                    new { BackdropPath = backdropPath, existing.Id });
+                existing.BackdropPath = backdropPath;
             }
             return existing;
         }
@@ -335,8 +358,8 @@ public class DbService(IConfiguration config)
             new { UserId = userId });
 
         int id = await db.QuerySingleAsync<int>("""
-            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, Position, Status, AvailableOnJson, AddedAt)
-            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, BackdropPath, Position, Status, AvailableOnJson, AddedAt)
+            VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @BackdropPath, @Position, @Status, @AvailableOnJson, @AddedAt)
             RETURNING Id
             """, new
         {
@@ -345,6 +368,7 @@ public class DbService(IConfiguration config)
             MediaType = mediaType,
             Title = title,
             PosterPath = posterPath,
+            BackdropPath = backdropPath,
             Position = maxPos + 1,
             Status = (int)targetStatus,
             AvailableOnJson = availableOnJson,
@@ -358,6 +382,7 @@ public class DbService(IConfiguration config)
             MediaType = mediaType,
             Title = title,
             PosterPath = posterPath,
+            BackdropPath = backdropPath,
             Position = maxPos + 1,
             Status = targetStatus
         };

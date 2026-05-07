@@ -132,6 +132,7 @@ public class ApiClient(HttpClient http)
             result.MediaType,
             result.Title,
             result.PosterPath,
+            result.BackdropPath,
             qi.AvailableOnJson
         });
         if (response.IsSuccessStatusCode)
