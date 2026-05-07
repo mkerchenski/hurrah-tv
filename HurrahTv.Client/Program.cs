@@ -32,5 +32,6 @@ builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddScoped<MediaFilterService>();
+builder.Services.AddScoped<CurationCache>();
 
 await builder.Build().RunAsync();

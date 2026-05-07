@@ -7,6 +7,7 @@
 @inject UserServicesCache UserServicesCache
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
+@inject CurationCache CurationCache
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
@@ -551,6 +552,7 @@ else
         _aiError = null;
         _curatedItems = [];
         _aiLoading = true;
+        CurationCache.Invalidate(); // user explicitly asked for a refresh — bypass cache entirely
         StateHasChanged();
 
         try
@@ -559,13 +561,8 @@ else
             _aiLoading = false;
             if (fresh?.AiEnabled == true && fresh.Rows.Count > 0)
             {
-                _curatedItems = [.. fresh.Rows
-                    .SelectMany(row => row.Results
-                        .Select(r => new CuratedItem
-                        {
-                            Result = r,
-                            Reason = row.Reasons.TryGetValue(r.TmdbId, out string? reason) ? reason : ""
-                        }))];
+                CurationCache.Set(fresh);
+                _curatedItems = FlattenCuration(fresh);
             }
             else
             {
@@ -582,6 +579,18 @@ else
 
     private async Task LoadAICuration()
     {
+        // cache hit: render immediately, skip the HTTP round-trip entirely. server already
+        // caches by watchlist hash, but the network round-trip alone is ~100-300ms.
+        CurationResponse? cached = CurationCache.Get();
+        if (cached is { AiEnabled: true })
+        {
+            _curatedItems = FlattenCuration(cached);
+            _aiError = cached.Error;
+            _aiLoading = false;
+            StateHasChanged();
+            return;
+        }
+
         try
         {
             _aiLoading = true;
@@ -605,17 +614,8 @@ else
             }
 
             _aiError = curation.Error;
-
-            // flatten into a single ranked list
-            _curatedItems = [];
-            foreach (CuratedRowResponse row in curation.Rows)
-            {
-                foreach (SearchResult result in row.Results)
-                {
-                    string reason = row.Reasons.TryGetValue(result.TmdbId, out string? r) ? r : "";
-                    _curatedItems.Add(new CuratedItem { Result = result, Reason = reason });
-                }
-            }
+            CurationCache.Set(curation);
+            _curatedItems = FlattenCuration(curation);
 
             StateHasChanged();
         }
@@ -627,6 +627,13 @@ else
             StateHasChanged();
         }
     }
+
+    private static List<CuratedItem> FlattenCuration(CurationResponse response) =>
+        [.. response.Rows.SelectMany(row => row.Results.Select(r => new CuratedItem
+        {
+            Result = r,
+            Reason = row.Reasons.TryGetValue(r.TmdbId, out string? reason) ? reason : ""
+        }))];
 
     // content row data loaders — pass queued IDs so discovered items exclude already-queued shows
     private Task<List<SearchResult>> LoadTrendingTv() => Api.ForYouAsync("tv", _queuedTmdbIds);
