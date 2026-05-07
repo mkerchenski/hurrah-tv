@@ -62,6 +62,8 @@
             let timer = null, startX = 0, startY = 0, fired = false, activeEvent = null;
             const onStart = (e) => {
                 if (!e.touches.length) return;
+                // skip when the touch starts on a sortable drag handle — Sortable owns that gesture
+                if (e.target?.closest?.('.drag-handle')) return;
                 const t = e.touches[0];
                 startX = t.clientX; startY = t.clientY; fired = false;
                 activeEvent = e;
@@ -102,7 +104,33 @@
             if (handle.onContextMenu) handle.el.removeEventListener('contextmenu', handle.onContextMenu);
             handle.el.removeEventListener('click', handle.onClick, true);
         };
+        window.hurrahSortableInit = (el, dotNetRef, callbackName, options) => {
+            if (!el || !window.Sortable) return null;
+            const opts = Object.assign({
+                handle: '.drag-handle',
+                animation: 150,
+                delay: 0,
+                delayOnTouchOnly: true,
+                touchStartThreshold: 5,
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
+            }, options || {});
+            opts.onEnd = (evt) => {
+                if (evt.oldIndex === evt.newIndex) return;
+                const itemId = parseInt(evt.item?.dataset?.itemId, 10);
+                if (isNaN(itemId)) return;
+                dotNetRef.invokeMethodAsync(callbackName, itemId, evt.oldIndex, evt.newIndex);
+            };
+            const instance = Sortable.create(el, opts);
+            return { instance };
+        };
+        window.hurrahSortableDispose = (handle) => {
+            if (!handle?.instance) return;
+            try { handle.instance.destroy(); } catch {}
+        };
     </script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
 </body>
 
