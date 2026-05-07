@@ -82,7 +82,8 @@ else
 
                     @if (_activeTab == "wanttowatch")
                     {
-                        <button class="drag-handle flex-shrink-0 text-gray-600 hover:text-gray-300 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1"
+                        bool reordering = _reorderingIds.Contains(item.Id);
+                        <button class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
                                 aria-label="Reorder @item.Title" tabindex="-1">
                             <span class="icon-[heroicons--bars-3] w-5 h-5 block"></span>
                         </button>
@@ -200,6 +201,7 @@ else
     private IJSObjectReference? _sortableHandle;
     private DotNetObjectReference<Queue>? _dotNetRef;
     private string? _attachedTab; // tracks which tab the sortable is currently bound to
+    private readonly HashSet<int> _reorderingIds = []; // items with an in-flight position update
 
     private static readonly (string key, string label)[] _tabs =
     [
@@ -364,20 +366,21 @@ else
         if (targetInItems < 0) { _items = snapshot; return; }
         int insertAt = newIndex > oldIndex ? targetInItems + 1 : targetInItems;
         _items.Insert(insertAt, dragged);
+        _reorderingIds.Add(itemId);
         await InvokeAsync(StateHasChanged);
 
         try
         {
             bool ok = await Api.UpdateQueuePositionAsync(itemId, targetPos);
-            if (!ok)
-            {
-                _items = snapshot;
-                await InvokeAsync(StateHasChanged);
-            }
+            if (!ok) _items = snapshot;
         }
         catch
         {
             _items = snapshot;
+        }
+        finally
+        {
+            _reorderingIds.Remove(itemId);
             await InvokeAsync(StateHasChanged);
         }
     }
