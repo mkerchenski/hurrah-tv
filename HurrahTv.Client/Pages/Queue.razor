@@ -206,6 +206,7 @@ else
     private DotNetObjectReference<Queue>? _dotNetRef;
     private string? _attachedTab;
     private readonly HashSet<int> _reorderingIds = [];
+    private bool _disposed;
 
     private static readonly (string key, string label)[] _tabs =
     [
@@ -347,7 +348,9 @@ else
     [JSInvokable]
     public async Task OnReorder(int itemId, int oldIndex, int newIndex)
     {
-        if (oldIndex == newIndex) return;
+        // a drag in flight when the user navigates away can deliver onEnd after
+        // the component is gone — do not mutate state on a disposed component
+        if (_disposed || oldIndex == newIndex) return;
 
         List<QueueItem> visible = FilteredItems.ToList();
         if (newIndex < 0 || newIndex >= visible.Count) return;
@@ -388,6 +391,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
         UserServicesCache.Changed -= OnServicesChanged;
         await DisposeSortableAsync();

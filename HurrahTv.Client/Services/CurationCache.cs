@@ -131,5 +131,6 @@ public class CurationCache : IDisposable
         _quickActions.OnItemUpdated -= OnInvalidate;
         _quickActions.OnEpisodeWatchedChanged -= OnEpisodeInvalidate;
         _hydrateLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

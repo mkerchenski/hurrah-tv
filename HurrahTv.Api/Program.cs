@@ -30,7 +30,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 builder.Services.AddScoped<IAuthorizationHandler, AdminRequirementHandler>();
-builder.Services.AddAuthorization(options => options.AddPolicy("Admin", policy => policy.AddRequirements(new AdminRequirement())));
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("Admin", policy => policy.AddRequirements(new AdminRequirement()));
 
 string[] corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 if (builder.Environment.IsDevelopment())
