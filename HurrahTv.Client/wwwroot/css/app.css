@@ -683,8 +683,14 @@
   .fade-in {
     animation: fadeIn 0.3s ease-in;
   }
+  .cursor-grab {
+    cursor: grab;
+  }
   .cursor-pointer {
     cursor: pointer;
+  }
+  .touch-none {
+    touch-action: none;
   }
   .snap-x {
     scroll-snap-type: x var(--tw-scroll-snap-strictness);
@@ -1440,6 +1446,9 @@
   .opacity-0 {
     opacity: 0%;
   }
+  .opacity-30 {
+    opacity: 30%;
+  }
   .opacity-40 {
     opacity: 40%;
   }
@@ -1870,6 +1879,11 @@
     &:focus {
       --tw-outline-style: none;
       outline-style: none;
+    }
+  }
+  .active\:cursor-grabbing {
+    &:active {
+      cursor: grabbing;
     }
   }
   .disabled\:opacity-30 {

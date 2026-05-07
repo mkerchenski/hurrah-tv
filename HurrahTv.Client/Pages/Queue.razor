@@ -1,10 +1,11 @@
 @page "/queue"
 @attribute [Authorize]
-@implements IDisposable
+@implements IAsyncDisposable
 @inject ApiClient Api
 @inject MediaFilterService MediaFilter
 @inject UserServicesCache UserServicesCache
 @inject QuickActionService QuickActionSvc
+@inject IJSRuntime JS
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -73,10 +74,22 @@ else
     }
     else
     {
-        <div class="space-y-2 md:space-y-3 fade-in">
+        <div @ref="_listEl" class="space-y-2 md:space-y-3 fade-in">
             @foreach (QueueItem item in visible)
             {
-                <div class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
+                <div @key="item.Id" data-item-id="@item.Id"
+                     class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
+
+                    @if (_activeTab == WantToWatchTab)
+                    {
+                        bool reordering = _reorderingIds.Contains(item.Id);
+                        // visual-only drag affordance; SortableJS owns the gesture. aria-hidden
+                        // because v1 is mouse/touch-only — keyboard reorder is a planned follow-on.
+                        <div class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
+                             aria-hidden="true">
+                            <span class="icon-[heroicons--bars-3] w-5 h-5 block"></span>
+                        </div>
+                    }
 
                     <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0 relative">
                         @if (!string.IsNullOrEmpty(item.PosterUrl("w92")))
@@ -186,6 +199,18 @@ else
     private string _activeTab = "all";
     private int? _expandedStatusId;
 
+    // drag-reorder is meaningful only on the WantToWatch tab — Position is the primary
+    // sort signal there; other tabs are sorted by recency / status. See Plans/issue-39.
+    private const string WantToWatchTab = "wanttowatch";
+
+    private ElementReference _listEl;
+    private IJSObjectReference? _sortableHandle;
+    private DotNetObjectReference<Queue>? _dotNetRef;
+    private string? _attachedTab;
+    private readonly HashSet<int> _reorderingIds = [];
+    private int _reorderVersion;
+    private bool _disposed;
+
     private static readonly (string key, string label)[] _tabs =
     [
         ("all", "All"),
@@ -294,9 +319,100 @@ else
         catch { }
     }
 
-    public void Dispose()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        bool wantSortable = _activeTab == WantToWatchTab && !_loading && FilteredItems.Any();
+
+        if (wantSortable && _attachedTab != _activeTab)
+        {
+            await DisposeSortableAsync();
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            try
+            {
+                _sortableHandle = await JS.InvokeAsync<IJSObjectReference>(
+                    "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder), null);
+            }
+            catch
+            {
+                _sortableHandle = null;
+            }
+            // only mark attached on a successful handle — leaves _attachedTab null on failure
+            // so the next render can retry (e.g. CDN recovers, JS reloads on hot-reload)
+            if (_sortableHandle is not null) _attachedTab = _activeTab;
+        }
+        else if (!wantSortable && _attachedTab is not null)
+        {
+            await DisposeSortableAsync();
+        }
+    }
+
+    private async Task DisposeSortableAsync()
+    {
+        if (_sortableHandle is not null)
+        {
+            try { await JS.InvokeVoidAsync("hurrahSortableDispose", _sortableHandle); } catch { }
+            try { await _sortableHandle.DisposeAsync(); } catch { }
+            _sortableHandle = null;
+        }
+        _attachedTab = null;
+    }
+
+    [JSInvokable]
+    public async Task OnReorder(int itemId, int oldIndex, int newIndex)
+    {
+        // a drag in flight when the user navigates away can deliver onEnd after
+        // the component is gone — do not mutate state on a disposed component
+        if (_disposed || oldIndex == newIndex) return;
+
+        List<QueueItem> visible = FilteredItems.ToList();
+        if (newIndex < 0 || newIndex >= visible.Count) return;
+
+        QueueItem? dragged = visible.FirstOrDefault(i => i.Id == itemId);
+        QueueItem target = visible[newIndex];
+        if (dragged is null || ReferenceEquals(dragged, target)) return;
+
+        // ReorderAsync sets dragged.Position = target.Position and shifts the displaced
+        // item out of the way. Net effect: dragged lands exactly where target used to be.
+        int targetPos = target.Position;
+
+        // optimistic local rearrange so the UI doesn't snap back during the API call.
+        // _reorderVersion is captured per-call: a later drag bumps the version, so an
+        // older failure won't revert and clobber the newer drag's local mutation.
+        int version = ++_reorderVersion;
+        List<QueueItem> snapshot = [.._items];
+        _items.Remove(dragged);
+        int targetInItems = _items.IndexOf(target);
+        if (targetInItems < 0) { _items = snapshot; return; }
+        int insertAt = newIndex > oldIndex ? targetInItems + 1 : targetInItems;
+        _items.Insert(insertAt, dragged);
+        _reorderingIds.Add(itemId);
+        await InvokeAsync(StateHasChanged);
+
+        bool shouldRevert = false;
+        try
+        {
+            bool ok = await Api.UpdateQueuePositionAsync(itemId, targetPos);
+            shouldRevert = !ok;
+        }
+        catch
+        {
+            shouldRevert = true;
+        }
+        finally
+        {
+            if (shouldRevert && version == _reorderVersion) _items = snapshot;
+            _reorderingIds.Remove(itemId);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
         UserServicesCache.Changed -= OnServicesChanged;
+        await DisposeSortableAsync();
+        _dotNetRef?.Dispose();
+        _dotNetRef = null;
     }
 }

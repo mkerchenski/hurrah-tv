@@ -99,6 +99,12 @@ public class ApiClient(HttpClient http)
         return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
     }
 
+    public async Task<bool> UpdateQueuePositionAsync(int id, int position)
+    {
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/position", new { Position = position });
+        return res.IsSuccessStatusCode;
+    }
+
     public async Task<QueueItem?> UpdateProgressAsync(int id, int? season, int? episode)
     {
         HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });

@@ -861,7 +861,7 @@ public class DbService(IConfiguration config)
         int watched = await db.QuerySingleAsync<int>(
             "SELECT COUNT(*)::int FROM WatchedEpisodes WHERE UserId = @UserId", new { UserId = userId });
 
-        (decimal Cost, int RequestCount) ai = await db.QuerySingleAsync<(decimal Cost, int RequestCount)>(
+        (decimal aiCost, int aiRequestCount) = await db.QuerySingleAsync<(decimal Cost, int RequestCount)>(
             "SELECT COALESCE(SUM(EstimatedCostUsd), 0)::decimal AS Cost, COUNT(*)::int AS RequestCount FROM AIUsage WHERE UserId = @UserId",
             new { UserId = userId });
 
@@ -877,8 +877,8 @@ public class DbService(IConfiguration config)
             seasonSent,
             episodeSent,
             watched,
-            ai.Cost,
-            ai.RequestCount);
+            aiCost,
+            aiRequestCount);
     }
 
     public async Task<AdminAiUsageResponse> GetAdminAiUsageAsync()
