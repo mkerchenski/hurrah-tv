@@ -581,7 +581,8 @@ else
     {
         // cache hit: render immediately, skip the HTTP round-trip entirely. server already
         // caches by watchlist hash, but the network round-trip alone is ~100-300ms.
-        CurationResponse? cached = CurationCache.Get();
+        // first call hydrates from localStorage if available — survives a full page reload.
+        CurationResponse? cached = await CurationCache.GetAsync();
         if (cached is { AiEnabled: true })
         {
             _curatedItems = FlattenCuration(cached);
