@@ -336,8 +336,9 @@ Claude Code skills are slash-commands that encode specific workflows. Use these:
 
 | Skill | When to use |
 | --- | --- |
-| `/plan` | Before any non-trivial feature. Saves you from writing code you throw away. |
-| `/review` | Before opening a PR. Runs parallel reviewers on your changes and files follow-up issues for anything you don't fix. |
+| `/xplan` | Before any non-trivial feature. Saves you from writing code you throw away. |
+| `/xsimplify` | After every meaningful change, before committing. Catches duplication, dead code, and stuff that should move into `HurrahTv.Shared`. |
+| `/xreview` | Before opening a PR. Runs parallel reviewers on your changes and files follow-up issues for anything you don't fix. |
 | `/compound` | After fixing a tricky bug. Captures the learning into `Learnings/` so the next person (maybe you) finds it. |
 | `/design` | Any UI work. Applies the Netflix-inspired dark theme consistently. |
 | `/security-review` | If you ever touch auth, JWT, OTP, or secrets handling. |
