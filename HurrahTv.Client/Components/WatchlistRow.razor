@@ -202,33 +202,25 @@
 
     private string FormatAirBadge(QueueItem item)
     {
-        // episode dates come from Postgres TIMESTAMPTZ (Kind=Utc); compare in UTC calendar days
-        // for Kind-consistency. See Learnings/wasm-datetime-source-matters.md
         DateTime todayUtc = DateTime.UtcNow.Date;
 
         if (RowMode == "upcoming")
         {
-            if (!item.NextEpisodeDate.HasValue) return "";
-            int daysUntil = (int)(item.NextEpisodeDate.Value.Date - todayUtc).TotalDays;
-            // Home.razor's Upcoming filter guarantees daysUntil >= 0 — defensive clamp only.
-            if (daysUntil < 0) return "";
-            return daysUntil switch
+            return item.DaysUntilNextEpisode(todayUtc) switch
             {
-                0 => "today",
-                1 => "1d",
-                _ => $"{daysUntil}d"
+                null or < 0 => "",
+                0           => "today",
+                1           => "1d",
+                int d       => $"{d}d"
             };
         }
 
-        // watching mode: show how long ago the latest episode aired
-        if (!item.LatestEpisodeDate.HasValue) return "";
-        int daysAgo = (int)(todayUtc - item.LatestEpisodeDate.Value.Date).TotalDays;
-        if (daysAgo < 0 || daysAgo > 30) return "";
-        return daysAgo switch
+        return item.DaysSinceLatestEpisode(todayUtc) switch
         {
-            0 => "today",
-            1 => "1d ago",
-            _ => $"{daysAgo}d ago"
+            null or < 0 or > 30 => "",
+            0                   => "today",
+            1                   => "1d ago",
+            int d               => $"{d}d ago"
         };
     }
 }

@@ -17,6 +17,15 @@ public static class QueueItemExtensions
         }
     }
 
+    // UTC calendar-day diffs are load-bearing for episode date logic — Postgres TIMESTAMPTZ
+    // is Kind=Utc, so both operands must be UTC dates to avoid the Kind-mismatch drift that
+    // bit us in #49/#70. Centralized here so Home filters and WatchlistRow badges can't drift.
+    public static int? DaysUntilNextEpisode(this QueueItem item, DateTime todayUtc) =>
+        item.NextEpisodeDate is { } d ? (int)(d.Date - todayUtc.Date).TotalDays : null;
+
+    public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
+        item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
+
     // returns known streaming services the user subscribes to, in provider-ID order
     // from the QueueItem's stored list, capped at max. Unknown providers are skipped.
     public static List<StreamingService> VisibleServicesFor(

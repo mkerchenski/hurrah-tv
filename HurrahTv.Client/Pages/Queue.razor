@@ -15,20 +15,45 @@
 
 @if (!_loading && _items.Count > 0)
 {
-    <!-- filter tabs (scrollable on mobile) -->
-    <div class="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+    <!-- status tabs (scrollable on mobile) -->
+    <div class="flex gap-2 mb-3 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
         @foreach ((string key, string label) in _tabs)
         {
             int count = key == "all" ? _totalCount : _statusCounts.GetValueOrDefault(key, 0);
             bool active = _activeTab == key;
             <button class="@($"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(active ? "bg-surface-100 text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
-                    @onclick="() => { _activeTab = key; _expandedStatusId = null; }">
+                    @onclick="() => SelectTab(key)">
                 <span class="@TabIcon(key) w-3.5 h-3.5 @(active ? "opacity-90" : "opacity-50")"></span>
                 @label
                 <span class="@(active ? "opacity-60" : "opacity-40") text-xs">@count</span>
             </button>
         }
     </div>
+
+    @if (_userServices.Count > 1)
+    {
+        <!-- service filter (icon-only) -->
+        <div class="flex gap-2 mb-4 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+            <button class="@($"flex items-center justify-center px-3 py-1.5 rounded-full text-sm transition-all whitespace-nowrap {(_selectedServiceId is null ? "bg-surface-100 text-white" : "bg-surface-50 text-gray-400 hover:text-white")}")"
+                    @onclick="() => SelectService(null)"
+                    aria-pressed="@(_selectedServiceId is null ? "true" : "false")">
+                All
+            </button>
+            @foreach (int providerId in _userServices)
+            {
+                StreamingService? svc = StreamingService.ById.GetValueOrDefault(providerId);
+                if (svc is null) continue;
+                bool active = _selectedServiceId == providerId;
+                <button class="@($"flex items-center justify-center p-1.5 rounded-full transition-all flex-shrink-0 {(active ? "bg-surface-100 ring-2 ring-accent" : "bg-surface-50 hover:bg-surface-100 opacity-60 hover:opacity-100")}")"
+                        @onclick="() => SelectService(providerId)"
+                        title="@svc.Name"
+                        aria-label="@($"Filter by {svc.Name}")"
+                        aria-pressed="@(active ? "true" : "false")">
+                    <img src="@svc.LogoUrl("w45")" alt="" class="w-6 h-6 rounded" />
+                </button>
+            }
+        </div>
+    }
 }
 
 @if (_loading)
@@ -60,35 +85,40 @@ else if (_items.Count == 0)
         </a>
     </div>
 }
+else if (_visibleItems.Count == 0)
+{
+    <!-- filtered empty state -->
+    <div class="text-center py-12 fade-in">
+        <p class="text-gray-500 text-sm">Nothing here yet</p>
+        <p class="text-gray-600 text-xs mt-1">Items you mark as "@(_tabs.FirstOrDefault(t => t.key == _activeTab).label ?? _activeTab)" will show up here.</p>
+    </div>
+}
 else
 {
-    List<QueueItem> visible = FilteredItems.ToList();
-
-    @if (!visible.Any())
-    {
-        <!-- filtered empty state -->
-        <div class="text-center py-12 fade-in">
-            <p class="text-gray-500 text-sm">Nothing here yet</p>
-            <p class="text-gray-600 text-xs mt-1">Items you mark as "@(_tabs.FirstOrDefault(t => t.key == _activeTab).label ?? _activeTab)" will show up here.</p>
-        </div>
-    }
-    else
-    {
-        <div @ref="_listEl" class="space-y-2 md:space-y-3 fade-in">
-            @foreach (QueueItem item in visible)
-            {
+    <div @ref="_listEl" class="space-y-2 md:space-y-3 fade-in">
+        <div role="status" aria-live="polite" class="sr-only">@_reorderAnnouncement</div>
+        @foreach (QueueItem item in _visibleItems)
+        {
                 <div @key="item.Id" data-item-id="@item.Id"
                      class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
 
                     @if (_activeTab == WantToWatchTab)
                     {
                         bool reordering = _reorderingIds.Contains(item.Id);
-                        // visual-only drag affordance; SortableJS owns the gesture. aria-hidden
-                        // because v1 is mouse/touch-only — keyboard reorder is a planned follow-on.
-                        <div class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-1 -ml-1 transition-opacity {(reordering ? "opacity-30 pointer-events-none" : "text-gray-600 hover:text-gray-300")}")"
-                             aria-hidden="true">
+                        bool grabbed = _grabbedItemId == item.Id;
+                        string handleStateClass = reordering ? "opacity-30 pointer-events-none"
+                            : grabbed ? "text-accent ring-2 ring-accent"
+                            : "text-gray-600 hover:text-gray-300";
+                        // mobile padding hits the 44px tap-target minimum; desktop tightens
+                        <button type="button"
+                                class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-3 -ml-2 md:p-1 md:-ml-1 rounded transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-accent {handleStateClass}")"
+                                aria-label="@($"Reorder {item.Title}")"
+                                aria-pressed="@(grabbed ? "true" : "false")"
+                                @onkeydown="@(e => OnHandleKeyDownAsync(item, e))"
+                                @onkeydown:preventDefault="@grabbed"
+                                @onblur="@(() => OnHandleBlur(item.Id))">
                             <span class="icon-[heroicons--bars-3] w-5 h-5 block"></span>
-                        </div>
+                        </button>
                     }
 
                     <a href="/details/@item.MediaType/@item.TmdbId" class="flex-shrink-0 relative">
@@ -183,21 +213,23 @@ else
                             @onclick="() => Remove(item)" title="Remove from list">
                         <span class="icon-[heroicons--trash] w-4 h-4"></span>
                     </button>
-                </div>
-            }
-        </div>
-    }
+            </div>
+        }
+    </div>
 }
 
 @code {
     private List<QueueItem> _items = [];
+    private List<QueueItem> _visibleItems = [];
     private Dictionary<string, int> _statusCounts = [];
     private Dictionary<int, List<StreamingService>> _itemServices = [];
+    private Dictionary<int, HashSet<int>> _itemProviderIds = [];
     private IReadOnlyList<int> _userServices = [];
     private int _totalCount;
     private bool _loading = true;
     private string _activeTab = "all";
     private int? _expandedStatusId;
+    private int? _selectedServiceId;
 
     // drag-reorder is meaningful only on the WantToWatch tab — Position is the primary
     // sort signal there; other tabs are sorted by recency / status. See Plans/issue-39.
@@ -210,6 +242,9 @@ else
     private readonly HashSet<int> _reorderingIds = [];
     private int _reorderVersion;
     private bool _disposed;
+
+    private int? _grabbedItemId;
+    private string _reorderAnnouncement = "";
 
     private static readonly (string key, string label)[] _tabs =
     [
@@ -238,24 +273,41 @@ else
         _                       => "unknown"
     };
 
-    private IEnumerable<QueueItem> FilteredItems =>
-        (_activeTab == "all" ? _items : _items.Where(i => StatusKey(i.Status) == _activeTab))
-        .Where(i => MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType);
+    // call after any change to _items / _activeTab / MediaFilter / _selectedServiceId / _itemProviderIds
+    private void RecomputeVisible()
+    {
+        _visibleItems = [.. _items
+            .Where(i => _activeTab == "all" || StatusKey(i.Status) == _activeTab)
+            .Where(i => MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
+            .Where(i => _selectedServiceId is not int svcId || _itemProviderIds.GetValueOrDefault(i.Id)?.Contains(svcId) == true)];
+    }
 
     protected override async Task OnInitializedAsync()
     {
         MediaFilter.OnChanged += OnMediaFilterChanged;
         UserServicesCache.Changed += OnServicesChanged;
-        _userServices = await UserServicesCache.GetAsync();
-        await LoadQueue();
+        _loading = true;
+        Task<IReadOnlyList<int>> servicesTask = UserServicesCache.GetAsync();
+        Task<List<QueueItem>> queueTask = Api.GetQueueAsync();
+        await Task.WhenAll(servicesTask, queueTask);
+        _userServices = servicesTask.Result;
+        _items = queueTask.Result;
+        _loading = false;
+        UpdateItemServices();
+        UpdateCounts();
+        RecomputeVisible();
     }
 
-    private void OnMediaFilterChanged() => InvokeAsync(() => { UpdateCounts(); StateHasChanged(); });
+    private void OnMediaFilterChanged() => InvokeAsync(() => { UpdateCounts(); RecomputeVisible(); StateHasChanged(); });
 
     private void OnServicesChanged()
     {
         _userServices = UserServicesCache.TryGetCached();
+        // selected service may have just been removed from the user's active set
+        if (_selectedServiceId is int svcId && !_userServices.Contains(svcId)) _selectedServiceId = null;
         UpdateItemServices();
+        UpdateCounts();
+        RecomputeVisible();
         InvokeAsync(StateHasChanged);
     }
 
@@ -264,24 +316,68 @@ else
         _loading = true;
         _items = await Api.GetQueueAsync();
         _loading = false;
-        UpdateCounts();
         UpdateItemServices();
+        UpdateCounts();
+        RecomputeVisible();
+    }
+
+    private void SelectTab(string key)
+    {
+        if (_activeTab == key) return;
+        _activeTab = key;
+        _expandedStatusId = null;
+        _grabbedItemId = null;
+        RecomputeVisible();
     }
 
     private void UpdateItemServices()
     {
-        _itemServices = _items.ToDictionary(i => i.Id, i => i.VisibleServicesFor(_userServices));
+        // single parse of AvailableOnJson per item drives both the full provider-id set
+        // (filter predicate) and the user-visible badge list (capped at 2)
+        HashSet<int> userSet = [.. _userServices];
+        Dictionary<int, List<StreamingService>> itemServices = new(_items.Count);
+        Dictionary<int, HashSet<int>> itemProviderIds = new(_items.Count);
+        foreach (QueueItem item in _items)
+        {
+            List<int> parsed = item.ParseAvailableOnProviderIds();
+            itemProviderIds[item.Id] = [.. parsed];
+
+            List<StreamingService> visible = [];
+            if (userSet.Count > 0)
+            {
+                foreach (int id in parsed)
+                {
+                    if (visible.Count >= 2) break;
+                    if (!userSet.Contains(id)) continue;
+                    if (!StreamingService.ById.TryGetValue(id, out StreamingService? svc)) continue;
+                    visible.Add(svc);
+                }
+            }
+            itemServices[item.Id] = visible;
+        }
+        _itemServices = itemServices;
+        _itemProviderIds = itemProviderIds;
     }
 
     private void UpdateCounts()
     {
-        IEnumerable<QueueItem> scoped = MediaFilter.MediaType == "all"
-            ? _items
-            : _items.Where(i => i.MediaType == MediaFilter.MediaType);
-        _totalCount = scoped.Count();
-        _statusCounts = scoped
+        IEnumerable<QueueItem> scoped = _items
+            .Where(i => MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
+            .Where(i => _selectedServiceId is not int svcId || _itemProviderIds.GetValueOrDefault(i.Id)?.Contains(svcId) == true);
+        List<QueueItem> scopedList = [.. scoped];
+        _totalCount = scopedList.Count;
+        _statusCounts = scopedList
             .GroupBy(i => StatusKey(i.Status))
             .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private void SelectService(int? providerId)
+    {
+        if (_selectedServiceId == providerId) return;
+        _selectedServiceId = providerId;
+        _expandedStatusId = null;
+        UpdateCounts();
+        RecomputeVisible();
     }
 
     private async Task SelectStatus(QueueItem item, QueueStatus status)
@@ -293,8 +389,7 @@ else
             QueueItem? updated = await Api.UpdateStatusAsync(item.Id, status);
             if (updated != null)
             {
-                // splice the fresh server state into our list and notify listeners (e.g. Home,
-                // if it's still mounted) so they can update in place without a refetch
+                // splice the fresh server state in so Home (if mounted) can update without a refetch
                 int idx = _items.IndexOf(item);
                 if (idx >= 0) _items[idx] = updated;
                 QuickActionSvc.NotifyItemUpdated(updated);
@@ -304,6 +399,7 @@ else
                 item.Status = status; // optimistic fallback
             }
             UpdateCounts();
+            RecomputeVisible();
         }
         catch { }
     }
@@ -315,13 +411,14 @@ else
             await Api.RemoveFromQueueAsync(item.Id);
             _items.Remove(item);
             UpdateCounts();
+            RecomputeVisible();
         }
         catch { }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        bool wantSortable = _activeTab == WantToWatchTab && !_loading && FilteredItems.Any();
+        bool wantSortable = _activeTab == WantToWatchTab && !_loading && _visibleItems.Count > 0;
 
         if (wantSortable && _attachedTab != _activeTab)
         {
@@ -357,41 +454,102 @@ else
         _attachedTab = null;
     }
 
-    [JSInvokable]
-    public async Task OnReorder(int itemId, int oldIndex, int newIndex)
+    private async Task OnHandleKeyDownAsync(QueueItem item, KeyboardEventArgs e)
     {
-        // a drag in flight when the user navigates away can deliver onEnd after
-        // the component is gone — do not mutate state on a disposed component
-        if (_disposed || oldIndex == newIndex) return;
+        if (_activeTab != WantToWatchTab) return;
 
-        List<QueueItem> visible = FilteredItems.ToList();
-        if (newIndex < 0 || newIndex >= visible.Count) return;
+        if (e.Key is " " or "Enter")
+        {
+            if (_grabbedItemId == item.Id)
+            {
+                _grabbedItemId = null;
+                _reorderAnnouncement = $"Dropped {item.Title}.";
+            }
+            else
+            {
+                _grabbedItemId = item.Id;
+                int idx = _visibleItems.IndexOf(item);
+                _reorderAnnouncement = $"Picked up {item.Title}. Position {idx + 1} of {_visibleItems.Count}. Use arrow keys to move, space to drop.";
+            }
+            return;
+        }
 
-        QueueItem? dragged = visible.FirstOrDefault(i => i.Id == itemId);
-        QueueItem target = visible[newIndex];
-        if (dragged is null || ReferenceEquals(dragged, target)) return;
+        if (_grabbedItemId != item.Id) return;
 
-        // ReorderAsync sets dragged.Position = target.Position and shifts the displaced
-        // item out of the way. Net effect: dragged lands exactly where target used to be.
+        if (e.Key == "Escape")
+        {
+            _grabbedItemId = null;
+            _reorderAnnouncement = "Exited reorder mode.";
+            return;
+        }
+
+        int delta = e.Key switch
+        {
+            "ArrowUp"   => -1,
+            "ArrowDown" => +1,
+            _           => 0
+        };
+        if (delta == 0) return;
+
+        int oldIdx = _visibleItems.IndexOf(item);
+        int newIdx = oldIdx + delta;
+        if (oldIdx < 0 || newIdx < 0 || newIdx >= _visibleItems.Count) return;
+
+        QueueItem target = _visibleItems[newIdx];
+        await MoveItemAsync(item, target);
+        _reorderAnnouncement = $"Moved {item.Title} to position {newIdx + 1} of {_visibleItems.Count}.";
+    }
+
+    private void OnHandleBlur(int itemId)
+    {
+        // focus leaving the handle while grabbed = abandon — keeps state from leaking
+        // across the page (e.g. user Tabs to a status button mid-reorder)
+        if (_grabbedItemId == itemId)
+        {
+            _grabbedItemId = null;
+            _reorderAnnouncement = "Exited reorder mode.";
+        }
+    }
+
+    [JSInvokable]
+    public Task OnReorder(int itemId, int oldIndex, int newIndex)
+    {
+        if (_disposed || oldIndex == newIndex) return Task.CompletedTask;
+        if (newIndex < 0 || newIndex >= _visibleItems.Count) return Task.CompletedTask;
+        QueueItem? dragged = _visibleItems.FirstOrDefault(i => i.Id == itemId);
+        return dragged is null ? Task.CompletedTask : MoveItemAsync(dragged, _visibleItems[newIndex]);
+    }
+
+    private async Task MoveItemAsync(QueueItem dragged, QueueItem target)
+    {
+        // a drag in flight when the user navigates away can deliver onEnd post-dispose
+        if (_disposed || ReferenceEquals(dragged, target)) return;
+
+        // ReorderAsync on the server sets dragged.Position = target.Position and shifts the
+        // displaced item out of the way. Net effect: dragged lands exactly where target was.
         int targetPos = target.Position;
 
-        // optimistic local rearrange so the UI doesn't snap back during the API call.
-        // _reorderVersion is captured per-call: a later drag bumps the version, so an
-        // older failure won't revert and clobber the newer drag's local mutation.
+        int draggedIdx = _items.IndexOf(dragged);
+        int targetIdx = _items.IndexOf(target);
+        if (draggedIdx < 0 || targetIdx < 0) return;
+        bool movingDown = draggedIdx < targetIdx;
+
+        // _reorderVersion guards against an in-flight reorder's failure clobbering a newer one:
+        // a later move bumps the version so older failure-paths see a mismatch and skip revert.
         int version = ++_reorderVersion;
         List<QueueItem> snapshot = [.._items];
         _items.Remove(dragged);
         int targetInItems = _items.IndexOf(target);
         if (targetInItems < 0) { _items = snapshot; return; }
-        int insertAt = newIndex > oldIndex ? targetInItems + 1 : targetInItems;
-        _items.Insert(insertAt, dragged);
-        _reorderingIds.Add(itemId);
+        _items.Insert(movingDown ? targetInItems + 1 : targetInItems, dragged);
+        _reorderingIds.Add(dragged.Id);
+        RecomputeVisible();
         await InvokeAsync(StateHasChanged);
 
         bool shouldRevert = false;
         try
         {
-            bool ok = await Api.UpdateQueuePositionAsync(itemId, targetPos);
+            bool ok = await Api.UpdateQueuePositionAsync(dragged.Id, targetPos);
             shouldRevert = !ok;
         }
         catch
@@ -400,8 +558,12 @@ else
         }
         finally
         {
-            if (shouldRevert && version == _reorderVersion) _items = snapshot;
-            _reorderingIds.Remove(itemId);
+            if (shouldRevert && version == _reorderVersion)
+            {
+                _items = snapshot;
+                RecomputeVisible();
+            }
+            _reorderingIds.Remove(dragged.Id);
             await InvokeAsync(StateHasChanged);
         }
     }
