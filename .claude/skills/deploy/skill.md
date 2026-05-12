@@ -36,7 +36,18 @@ Single App Service serves both the Blazor WASM client (static files) and the .NE
    ```bash
    curl -sk https://hurrahtv-api.azurewebsites.net/api/health
    ```
-4. Report status in a table.
+4. **List active issues** so the user can see what's currently in-flight before swapping. Hurrah.Tv is label-driven (see CLAUDE.md "Issue Tracking"), so use `phase:now` as the In Progress proxy:
+   ```bash
+   gh issue list --repo mkerchenski/hurrah-tv --label "phase:now" --state open --limit 20
+   ```
+   Display alongside the health table:
+   ```
+   In flight (phase:now):
+     #66 Queue keyboard support for drag-reorder (a11y)
+     #67 Add share button on Details view
+   ```
+   This is **read-only** — do not mutate any labels from this skill. The user reviews and decides whether the swap is safe.
+5. Report status in a table.
 
 **`/deploy now`**
 1. Check staging health first. If unhealthy, warn and stop.

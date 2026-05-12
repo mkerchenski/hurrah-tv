@@ -76,6 +76,13 @@ Also gather:
 - `git diff --name-only [range]` for changed files
 - The CLAUDE.md content
 - Any `Learnings/*.md` in scope of the diff
+- **Linked GitHub issues** (only when scope is `--unpushed` or includes commits): parse commit messages for `#NNN` references and pull each issue's body so reviewer agents can compare the diff against acceptance criteria. Hurrah.Tv conventionally uses `closes #NN` / `fixes #NN` to auto-close on merge:
+  ```bash
+  git log <range> --format=%B | grep -oE '#[0-9]+' | sort -u
+  # for each match:
+  gh issue view <num> --repo mkerchenski/hurrah-tv --json title,body,labels,state
+  ```
+  Treat any issue's "Acceptance criteria" checklist as a hard checklist for the diff. If a commit says `closes #NN` but the diff doesn't appear to satisfy the criteria, that's a high-severity finding.
 
 #### 2. Run dotnet format (auto-fix at info severity)
 
@@ -259,6 +266,22 @@ Verify `README.md` accurately reflects the current state:
 - Architecture diagram/table matches current project layout
 
 If out of date, flag as an issue (count toward the score-50+ list) and offer to update.
+
+#### 7a. Linked-issue comment (optional, opt-in only)
+
+Skip entirely if no `#NNN` references were found in step 1's commit-message scan. Otherwise, after the README check and before the Fix prompt, offer to post a one-line comment on each linked issue summarizing the review state. **Default = no.** Per Output Rule "NEVER post to GitHub automatically," this requires explicit confirmation.
+
+Use `AskUserQuestion` with three options:
+- **Comment on all linked issues**
+- **Pick which to comment on**
+- **Skip** (Recommended default for routine reviews)
+
+If picked, format per issue:
+```bash
+gh issue comment <num> --repo mkerchenski/hurrah-tv --body "/xreview ($(date +%Y-%m-%d), <range>): <one-line state>. Findings: <N issues at score ≥ 50, or 'clean'>."
+```
+
+If a linked issue's commit said `closes #NN` but the diff doesn't satisfy the issue's acceptance criteria (a reviewer agent flagged this), do NOT post automatically — surface to the user as a high-severity finding and let them decide whether to comment, fix the diff, or rewrite the issue body.
 
 #### 8. Fix
 
