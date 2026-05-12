@@ -111,6 +111,7 @@ else
                             : "text-gray-600 hover:text-gray-300";
                         // mobile padding hits the 44px tap-target minimum; desktop tightens
                         <button type="button"
+                                disabled="@reordering"
                                 class="@($"drag-handle flex-shrink-0 cursor-grab active:cursor-grabbing touch-none p-3 -ml-2 md:p-1 md:-ml-1 rounded transition-opacity outline-none focus-visible:ring-2 focus-visible:ring-accent {handleStateClass}")"
                                 aria-label="@($"Reorder {item.Title}")"
                                 aria-pressed="@(grabbed ? "true" : "false")"
@@ -426,8 +427,11 @@ else
             _dotNetRef ??= DotNetObjectReference.Create(this);
             try
             {
+                // limit draggable to data-item-id rows so the aria-live region (a sibling
+                // direct child of _listEl) doesn't shift evt.oldIndex/newIndex by 1
                 _sortableHandle = await JS.InvokeAsync<IJSObjectReference>(
-                    "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder), null);
+                    "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder),
+                    new { draggable = "[data-item-id]" });
             }
             catch
             {
@@ -496,8 +500,10 @@ else
         if (oldIdx < 0 || newIdx < 0 || newIdx >= _visibleItems.Count) return;
 
         QueueItem target = _visibleItems[newIdx];
-        await MoveItemAsync(item, target);
-        _reorderAnnouncement = $"Moved {item.Title} to position {newIdx + 1} of {_visibleItems.Count}.";
+        bool ok = await MoveItemAsync(item, target);
+        _reorderAnnouncement = ok
+            ? $"Moved {item.Title} to position {newIdx + 1} of {_visibleItems.Count}."
+            : $"Move failed. {item.Title} returned to position {oldIdx + 1} of {_visibleItems.Count}.";
     }
 
     private void OnHandleBlur(int itemId)
@@ -520,10 +526,10 @@ else
         return dragged is null ? Task.CompletedTask : MoveItemAsync(dragged, _visibleItems[newIndex]);
     }
 
-    private async Task MoveItemAsync(QueueItem dragged, QueueItem target)
+    private async Task<bool> MoveItemAsync(QueueItem dragged, QueueItem target)
     {
         // a drag in flight when the user navigates away can deliver onEnd post-dispose
-        if (_disposed || ReferenceEquals(dragged, target)) return;
+        if (_disposed || ReferenceEquals(dragged, target)) return false;
 
         // ReorderAsync on the server sets dragged.Position = target.Position and shifts the
         // displaced item out of the way. Net effect: dragged lands exactly where target was.
@@ -531,7 +537,7 @@ else
 
         int draggedIdx = _items.IndexOf(dragged);
         int targetIdx = _items.IndexOf(target);
-        if (draggedIdx < 0 || targetIdx < 0) return;
+        if (draggedIdx < 0 || targetIdx < 0) return false;
         bool movingDown = draggedIdx < targetIdx;
 
         // _reorderVersion guards against an in-flight reorder's failure clobbering a newer one:
@@ -540,7 +546,7 @@ else
         List<QueueItem> snapshot = [.._items];
         _items.Remove(dragged);
         int targetInItems = _items.IndexOf(target);
-        if (targetInItems < 0) { _items = snapshot; return; }
+        if (targetInItems < 0) { _items = snapshot; return false; }
         _items.Insert(movingDown ? targetInItems + 1 : targetInItems, dragged);
         _reorderingIds.Add(dragged.Id);
         RecomputeVisible();
@@ -549,8 +555,8 @@ else
         bool shouldRevert = false;
         try
         {
-            bool ok = await Api.UpdateQueuePositionAsync(dragged.Id, targetPos);
-            shouldRevert = !ok;
+            bool apiOk = await Api.UpdateQueuePositionAsync(dragged.Id, targetPos);
+            shouldRevert = !apiOk;
         }
         catch
         {
@@ -566,6 +572,7 @@ else
             _reorderingIds.Remove(dragged.Id);
             await InvokeAsync(StateHasChanged);
         }
+        return !shouldRevert;
     }
 
     public async ValueTask DisposeAsync()
