@@ -210,9 +210,14 @@
         {
             if (!item.NextEpisodeDate.HasValue) return "";
             int daysUntil = (int)(item.NextEpisodeDate.Value.Date - todayUtc).TotalDays;
-            // Home.razor's Upcoming filter guarantees daysUntil >= 1 — defensive clamp only.
-            if (daysUntil < 1) return "";
-            return daysUntil == 1 ? "1d" : $"{daysUntil}d";
+            // Home.razor's Upcoming filter guarantees daysUntil >= 0 — defensive clamp only.
+            if (daysUntil < 0) return "";
+            return daysUntil switch
+            {
+                0 => "today",
+                1 => "1d",
+                _ => $"{daysUntil}d"
+            };
         }
 
         // watching mode: show how long ago the latest episode aired

@@ -520,7 +520,8 @@ else
 
         // continue watching: Watching always shows; WantToWatch/Finished need date activity
         // Finished: recently aired only (7d window) — upcoming Finished go to Upcoming row
-        // WantToWatch: recently aired OR upcoming in the next 14 days
+        // WantToWatch: recently aired OR upcoming in the next 14 days. Airs-today items go to
+        // Upcoming (not here) so streaming-service badges sit alongside the "today" label.
         IEnumerable<QueueItem> watching = allItems
             .Where(i => IsStatusActive(i.Status)
                 && i.Status != QueueStatus.NotForMe
@@ -535,16 +536,16 @@ else
 
         _watchingItems = SortWatching(watching);
 
-        // Upcoming: strictly future NextEpisodeDate within the next 14 days. A past NextEpisodeDate
-        // can briefly occur between airtime and the next TMDb refresh — excluding it here keeps
-        // stale items from leaking in with a blank/negative badge, and Watching-status items are
-        // already surfaced by Continue Watching.
+        // upcoming: NextEpisodeDate from today through 14d ahead. `>= todayUtc` (not `>`) so
+        // airs-today shows surface here with a "today" badge; the lower bound still excludes a
+        // briefly-past NextEpisodeDate (between airtime and the next TMDb refresh) so no "-1d"
+        // leaks back — see #49/#70.
         IEnumerable<QueueItem> upcoming = allItems
             .Where(i => i.MediaType == "tv"
                 && i.Status != QueueStatus.NotForMe
                 && IsStatusActive(i.Status)
                 && i.NextEpisodeDate.HasValue
-                && i.NextEpisodeDate.Value.Date > todayUtc
+                && i.NextEpisodeDate.Value.Date >= todayUtc
                 && i.NextEpisodeDate.Value.Date <= fourteenDaysAheadUtc);
 
         _upcomingItems = SortUpcoming(upcoming);
