@@ -34,6 +34,7 @@ Format each learning file:
 
 > **Area:** WASM | API | Data | TMDb | Auth | UI | Deployment
 > **Date:** YYYY-MM-DD
+> **Resolves:** mkerchenski/hurrah-tv#NN  (only when an issue triggered this learning — see below)
 
 ## Context
 [What situation led to this discovery]
@@ -44,6 +45,14 @@ Format each learning file:
 ## Example
 [Code snippet or concrete example if applicable]
 ```
+
+**Cross-reference resolved issues** — when a learning came out of debugging or implementing a tracked issue, link it from the frontmatter so future readers can trace context. Scan recent commits for issue references:
+
+```bash
+git log --grep='#' -20 --oneline
+```
+
+If a recent commit closed/fixed an issue and that issue surfaced this learning, add the `> **Resolves:** mkerchenski/hurrah-tv#NN` line. Opt-in only — don't fabricate links.
 
 ### Step 5: Deduplicate
 Before writing, check:

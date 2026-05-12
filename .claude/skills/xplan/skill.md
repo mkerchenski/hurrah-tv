@@ -55,9 +55,17 @@ Run these in parallel:
 
 1. **Scan learnings** — `Glob Learnings/**/*.md` then read any whose title bears on the feature area (Blazor lifecycle, WASM datetime, TMDb, AI curation, Postgres, etc.).
 2. **Check existing plans** — `Glob Plans/*.md`. **If a plan in the same area already exists, prefer updating it over creating a new one.** Note related plans for the system plan skill to reference.
-3. **Read CLAUDE.md** at the repo root for architectural constraints.
-4. **Check Memory** — read relevant memory files for project context, user preferences, and past learnings.
-5. **Identify affected projects** — which of `HurrahTv.Api`, `HurrahTv.Client`, `HurrahTv.Shared` does this touch?
+3. **Check existing GitHub issues** — query `mkerchenski/hurrah-tv` so the plan can link to or replace already-tracked work:
+   ```bash
+   # broad keyword search
+   gh issue list --repo mkerchenski/hurrah-tv --state open --search "<feature keyword>"
+   # narrow by area when known (api/client/auth/ai-curation/tmdb/design/docs/infra)
+   gh issue list --repo mkerchenski/hurrah-tv --label "area:<slice>" --state open
+   ```
+   If a tracking issue already exists, capture `mkerchenski/hurrah-tv#<num>` for the plan's front-matter `Tracking issue:` line. If multiple matches, surface them so the user can pick.
+4. **Read CLAUDE.md** at the repo root for architectural constraints.
+5. **Check Memory** — read relevant memory files for project context, user preferences, and past learnings.
+6. **Identify affected projects** — which of `HurrahTv.Api`, `HurrahTv.Client`, `HurrahTv.Shared` does this touch?
 
 #### 1.2 Propose via plan mode
 
@@ -120,11 +128,46 @@ After plan mode exits (user approved), append these Hurrah.tv-specific sections 
 - After landing: invoke `/compound` to capture non-obvious learnings
 - After AI prompt changes: clear `CurationCache` server-side or just bump the cache key
 
-#### 1.4 Save
+#### 1.4 Decide on a tracking issue
 
-Save the augmented plan to `Plans/<feature-name>.md`. The approval already happened inside plan mode — this step writes the durable artifact (referenceable across sessions).
+Before saving, decide whether the plan needs a GitHub tracking issue. Use `AskUserQuestion` to present three options:
 
-Tell the user: "Plan saved to `Plans/{feature-name}.md`. Start Phase 1 now, or revisit later?" — don't auto-start; multi-phase work often picks up in a future session.
+1. **Link to an existing issue** — paste `mkerchenski/hurrah-tv#<num>` (typically one surfaced during pre-research step 3). The plan's front matter `Tracking issue:` line gets that value.
+2. **Create a new tracking issue** — for plans large enough to span sessions. Show the user the proposed title / body / labels BEFORE creating. On approval:
+   ```bash
+   gh issue create --repo mkerchenski/hurrah-tv \
+     --title "<plan title — typically matches the plan filename>" \
+     --body "$(cat <<'EOF'
+   ## Plan
+   See \`Plans/<feature-name>.md\` for the phased breakdown.
+
+   ## Why
+   <1-2 sentences from the plan's Context section>
+
+   ## Acceptance criteria
+   - [ ] All phases shipped per the plan
+   - [ ] Verification steps from the plan completed
+
+   Surfaced by: /xplan on $(date +%Y-%m-%d)
+   EOF
+   )" \
+     --label "type:<feature|enhancement|refactor|chore>,area:<api|client|auth|ai-curation|tmdb|design|docs|infra>,phase:next,difficulty:<starter|intermediate|advanced>"
+   ```
+   No project-board step — Hurrah.Tv is label-driven (per CLAUDE.md "Issue Tracking" section). `phase:next` is the default; bump to `phase:now` only when about to start.
+3. **Skip** — for internal-only plans (e.g., research notes that won't produce a deliverable). Front-matter line stays as `Tracking issue: (none — internal plan)`.
+
+The plan's front matter must end up with one of these three forms:
+```markdown
+> **Tracking issue:** mkerchenski/hurrah-tv#69
+> **Tracking issue:** (none — internal plan)
+> **Tracking issue:** mkerchenski/hurrah-tv#69 (created via /xplan on YYYY-MM-DD)
+```
+
+#### 1.5 Save
+
+Save the augmented plan to `Plans/<feature-name>.md` with the tracking-issue front-matter line populated. The approval already happened inside plan mode — this step writes the durable artifact (referenceable across sessions, surfaced from the GitHub issue when one was created or linked).
+
+Tell the user: "Plan saved to `Plans/{feature-name}.md`. Tracking: `{issue ref or 'none'}`. Start Phase 1 now, or revisit later?" — don't auto-start; multi-phase work often picks up in a future session.
 
 ---
 

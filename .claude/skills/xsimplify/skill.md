@@ -86,6 +86,32 @@ Subfolder placement matches the existing organization in `HurrahTv.Shared/Models
 
 Wait for confirmation before moving anything.
 
+If a candidate's migration shape is **"fresh extraction"** OR it touches **both Api and Client** in non-trivial ways, the elevation is multi-day work — offer to file a `type:refactor` issue on `mkerchenski/hurrah-tv` so the work is tracked across sessions. Show the user the proposed body before running:
+
+```bash
+gh issue create --repo mkerchenski/hurrah-tv \
+  --title "Promote <component> from <Api|Client> to HurrahTv.Shared" \
+  --body "## What
+<one-line summary lifted from the candidate>
+
+## Why
+Both sides of the wire need to agree on this shape (or pure helper used in both).
+
+## Migration shape
+<fresh extraction | move + thin reference>
+
+## Acceptance criteria
+- [ ] Code moved to \`HurrahTv.Shared/Models/<file>\`
+- [ ] Original Api/Client call sites updated (or thin forwarder kept)
+- [ ] Build clean across all three projects
+- [ ] No platform-specific dependencies leaked into Shared
+
+Surfaced by: /xsimplify on $(date +%Y-%m-%d)" \
+  --label "type:refactor,area:<api or client>,phase:next,difficulty:<intermediate|advanced>"
+```
+
+Single-file, in-place simplifications stay inline — they're the system simplify skill's domain, not worth an issue.
+
 ## When to use
 
 - **After every meaningful change, before committing.** The default cadence — runs cheap, catches most simplification opportunities while the code is still warm.
