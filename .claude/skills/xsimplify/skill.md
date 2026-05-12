@@ -20,7 +20,38 @@ Skill(skill="simplify")
 
 Let it complete its full review-and-fix workflow on the recently-changed code before continuing. This skill adds an elevation lens on top — it does not replace simplify's reuse / quality / efficiency review.
 
-### Step 2 — Determine the diff scope
+### Step 2 — Surface skipped findings as tracking issues
+
+The system simplify pass deliberately skips findings that don't justify inline cleanup — refactor-scoped items that would balloon scope, scope-creep across the rest of the file/module, low-severity micro-optimizations, and "out of scope for this branch" judgement calls. Those skipped items are exactly what tends to get lost.
+
+Before continuing to the Shared elevation pass, look back at what Step 1 reported but did *not* fix, and ask the user whether any deserve a tracking issue. Show the proposed title / body / labels before running. Issue body follows the CLAUDE.md "Issue body shape":
+
+```bash
+gh issue create --repo mkerchenski/hurrah-tv \
+  --title "<short, imperative title naming the smell>" \
+  --body "## What
+<one-line summary of the smell lifted from the simplify finding>
+
+## Why
+<reviewer agent's reasoning + file:line that surfaced it>
+
+## Acceptance criteria
+- [ ] <concrete fix>
+- [ ] Build clean, smoke-test affected surface
+
+Surfaced by: /xsimplify on $(date +%Y-%m-%d)" \
+  --label "type:refactor,area:<api|client|auth|ai-curation|tmdb|design|docs|infra>,phase:next,difficulty:<intermediate|advanced>"
+```
+
+Default to `phase:next` (per CLAUDE.md Issue Tracking section). Use `type:refactor` for code-quality smells, `type:enhancement` for performance wins, `type:bug` only if the skipped item was a latent correctness issue.
+
+**Skip filing when:**
+
+- The smell is trivial (a comment trim, a one-line rename — just do it inline, don't file)
+- An existing open issue already covers it (search first: `gh issue list --repo mkerchenski/hurrah-tv --search "<keywords>" --state open`)
+- It's a generic micro-optimization with no measurable impact
+
+### Step 3 — Determine the diff scope
 
 Same as `/xreview` — branch-agnostic so it works on main too:
 
@@ -31,11 +62,11 @@ git diff HEAD                  # working tree (unstaged + staged)
 
 Union of those two = the elevation surface. If both empty → "No changes to elevate" and stop.
 
-### Step 3 — Scan relevant learnings
+### Step 4 — Scan relevant learnings
 
 Before deciding on elevation, glob `Learnings/**/*.md` for any past discoveries that bear on what should or shouldn't live in Shared. Read anything related to DTO contracts, JSON serialization, WASM datetime handling, or app-specific patterns that turned out to be deliberately non-shared. If a learning warns against promoting a shape, respect it.
 
-### Step 4 — HurrahTv.Shared elevation pass
+### Step 5 — HurrahTv.Shared elevation pass
 
 For each piece of changed code in `HurrahTv.Api/` or `HurrahTv.Client/`, ask:
 
@@ -63,7 +94,7 @@ Subfolder placement matches the existing organization in `HurrahTv.Shared/Models
 - Captures HTTP request state or DB connection state
 - Single call-site with no plausible second consumer on the other side of the wire
 
-### Step 5 — Apply hurrah-tv-specific constraints
+### Step 6 — Apply hurrah-tv-specific constraints
 
 - **Shared is a netstandard-friendly contract layer.** Both Api (.NET 10 / ASP.NET) and Client (Blazor WASM) reference it. Anything platform-specific breaks one side.
 - **Public-API stability isn't critical** since Shared isn't a published NuGet — it's a project reference. Renames are fine if you update both consumers in the same commit.
@@ -71,7 +102,7 @@ Subfolder placement matches the existing organization in `HurrahTv.Shared/Models
 - **JSON serialization round-trips.** Anything Shared crosses the wire as JSON; nullable fields, default values, and enum representations all matter. Avoid `ref` / `out` parameters in DTOs.
 - **No DI in Shared.** Shared types are POCOs / static helpers; if you need a service, it lives in the consuming project.
 
-### Step 6 — Report findings, await confirmation
+### Step 7 — Report findings, await confirmation
 
 ```
 ## HurrahTv.Shared Elevation Candidates
