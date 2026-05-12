@@ -89,25 +89,25 @@ public class ApiClient(HttpClient http)
 
     public async Task<QueueItem?> UpdateStatusAsync(int id, QueueStatus status)
     {
-        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/status", new { Status = status });
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/status", new QueueStatusUpdate(status));
         return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
     }
 
     public async Task<QueueItem?> UpdateSentimentAsync(int id, int? sentiment)
     {
-        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/sentiment", new { Sentiment = sentiment });
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/sentiment", new SentimentUpdate(sentiment));
         return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
     }
 
     public async Task<bool> UpdateQueuePositionAsync(int id, int position)
     {
-        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/position", new { Position = position });
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/position", new PositionUpdate(position));
         return res.IsSuccessStatusCode;
     }
 
     public async Task<QueueItem?> UpdateProgressAsync(int id, int? season, int? episode)
     {
-        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/progress", new { Season = season, Episode = episode });
+        HttpResponseMessage res = await _http.PutAsJsonAsync($"api/queue/{id}/progress", new ProgressUpdate(season, episode));
         return res.IsSuccessStatusCode ? await res.Content.ReadFromJsonAsync<QueueItem>() : null;
     }
 
@@ -132,15 +132,8 @@ public class ApiClient(HttpClient http)
     private async Task<QueueItem?> PostStatusAsync(string endpoint, SearchResult result)
     {
         QueueItem qi = result.ToQueueItem();
-        HttpResponseMessage response = await _http.PostAsJsonAsync(endpoint, new
-        {
-            result.TmdbId,
-            result.MediaType,
-            result.Title,
-            result.PosterPath,
-            result.BackdropPath,
-            qi.AvailableOnJson
-        });
+        SeenRequest request = new(result.TmdbId, result.MediaType, result.Title, result.PosterPath, qi.AvailableOnJson, result.BackdropPath);
+        HttpResponseMessage response = await _http.PostAsJsonAsync(endpoint, request);
         if (response.IsSuccessStatusCode)
             return await response.Content.ReadFromJsonAsync<QueueItem>();
         return null;
