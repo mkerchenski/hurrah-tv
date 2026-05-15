@@ -55,9 +55,9 @@
 
     private string PrimaryIcon => Item?.PrimaryAction switch
     {
-        HeroAction.Resume => "icon-[heroicons--play-20-solid]",
+        HeroAction.Resume => "icon-[heroicons--chevron-right]",
         HeroAction.Add => "icon-[heroicons--plus]",
-        _ => "icon-[heroicons--play-20-solid]"
+        _ => "icon-[heroicons--chevron-right]"
     };
 
     private void OnPrimary()
