@@ -26,6 +26,19 @@ public static class QueueItemExtensions
     public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
         item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
 
+    // boolean form of VisibleServicesFor — short-circuits on first match without allocating
+    // a result list. Use in filter predicates where only "streamable y/n" matters.
+    public static bool IsStreamableOn(this QueueItem item, IReadOnlyList<int> userServices)
+    {
+        if (userServices.Count == 0) return false;
+        foreach (int id in item.ParseAvailableOnProviderIds())
+        {
+            if (userServices.Contains(id) && StreamingService.ById.ContainsKey(id))
+                return true;
+        }
+        return false;
+    }
+
     // returns known streaming services the user subscribes to, in provider-ID order
     // from the QueueItem's stored list, capped at max. Unknown providers are skipped.
     public static List<StreamingService> VisibleServicesFor(

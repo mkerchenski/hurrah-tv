@@ -116,7 +116,7 @@
     [Parameter] public string EmptyMessage { get; set; } = "Nothing here yet";
     [Parameter, EditorRequired] public List<QueueItem> Items { get; set; } = [];
     [Parameter] public bool ShowAirDates { get; set; }
-    [Parameter] public string RowMode { get; set; } = "watching"; // "watching" or "upcoming"
+    [Parameter] public string RowMode { get; set; } = "now"; // "now" (already-aired) or "later" (upcoming)
     [Parameter] public bool ShowStatusBadge { get; set; } = true;
 
     [Inject] QuickActionService QuickActionSvc { get; set; } = null!;
@@ -204,17 +204,21 @@
     {
         DateTime todayUtc = DateTime.UtcNow.Date;
 
-        if (RowMode == "upcoming")
+        // "later" badge: strictly-future episode within the window. Negative/zero results
+        // collapse to no badge — those rows belong to "now", not "later", and the partition
+        // already filters them out (defensive guard against stale TMDb stamps).
+        if (RowMode == "later")
         {
             return item.DaysUntilNextEpisode(todayUtc) switch
             {
-                null or < 0 => "",
-                0           => "today",
-                1           => "1d",
-                int d       => $"{d}d"
+                null or <= 0 => "",
+                1            => "Tomorrow",
+                int d        => $"in {d}d"
             };
         }
 
+        // "now" badge: when the latest episode aired. Anything older than 30d collapses
+        // to no badge so a long-tail streamable show doesn't carry a misleading "200d ago".
         return item.DaysSinceLatestEpisode(todayUtc) switch
         {
             null or < 0 or > 30 => "",
