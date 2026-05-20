@@ -48,4 +48,53 @@ public class QueueItemDatePredicatesTests
         QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-8) };
         Assert.False(item.HasNewEpisode);
     }
+
+    [Fact]
+    public void HasUpcomingThisWeek_IsTrue_WhenNextEpisodeDateIsWithinWindow()
+    {
+        QueueItem item = new() { NextEpisodeDate = DateTime.UtcNow.AddDays(3) };
+        Assert.True(item.HasUpcomingThisWeek);
+    }
+
+    [Fact]
+    public void HasUpcomingThisWeek_IsFalse_WhenNextEpisodeDateIsBeyondWindow()
+    {
+        QueueItem item = new() { NextEpisodeDate = DateTime.UtcNow.AddDays(8) };
+        Assert.False(item.HasUpcomingThisWeek);
+    }
+
+    [Fact]
+    public void HasUpcomingThisWeek_IsFalse_WhenNextEpisodeDateIsInThePast()
+    {
+        QueueItem item = new() { NextEpisodeDate = DateTime.UtcNow.AddDays(-1) };
+        Assert.False(item.HasUpcomingThisWeek);
+    }
+
+    [Fact]
+    public void HasUpcomingThisWeek_IsFalse_WhenNextEpisodeDateIsNull()
+    {
+        QueueItem item = new() { NextEpisodeDate = null };
+        Assert.False(item.HasUpcomingThisWeek);
+    }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsTrue_WhenLatestEpisodeDateIsWithin30Days()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-20) };
+        Assert.True(item.HasEpisodeThisMonth);
+    }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsOlderThan30Days()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-31) };
+        Assert.False(item.HasEpisodeThisMonth);
+    }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsNull()
+    {
+        QueueItem item = new() { LatestEpisodeDate = null };
+        Assert.False(item.HasEpisodeThisMonth);
+    }
 }
