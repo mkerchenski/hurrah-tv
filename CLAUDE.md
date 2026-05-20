@@ -100,6 +100,31 @@ PostgreSQL via Dapper (Npgsql). All tables created on startup via `DbService.Ini
 - Prefer `Type variableName` over `var` when type isn't complex
 - Pre-compute per-status/per-tab counts with `GroupBy().ToDictionary()` after data mutations — never run `Count()` per tab inside a render loop (O(N×tabs) per render)
 
+## Testing
+
+`dotnet test` runs via `HurrahTv.slnx`. New test projects must be referenced there. Current coverage lives in `HurrahTv.Shared.Tests/`.
+
+**When tests are required:**
+- New or changed pure logic in `HurrahTv.Shared` — predicates, filters, sort keys, parsers, extension methods. This is where the worst bugs hide (#49 was a stale-date leak caught only at runtime). One named regression test per bug fix, referencing the issue number (e.g. `AvailableLater_Excludes_NextEpisode_In_The_Past` // pins #49/#70).
+
+**When tests are NOT required:**
+- Blazor components, CSS, page wiring, service-DI scaffolding. Verify these in the browser per the system rule for UI changes — tests for these surfaces cost more than they pay back.
+
+**Factor for testability:**
+When a feature mixes pure logic with Blazor state, extract the pure piece into `HurrahTv.Shared` first, then test. Reference pattern: `HurrahTv.Shared/Filters/WatchlistFilters.cs` was extracted from `Home.razor`'s inline filter logic. The helper accepts `DateTime todayUtc` so tests don't drift across midnight UTC, and `Func<QueueStatus, bool> isStatusActive` so callers compose the chip-state rule.
+
+**TDD bias:**
+Lean test-first when the rules are spec-able from the issue (date windows, filter rules). Write the test after for exploratory UI/UX work where the right shape isn't clear yet.
+
+**Style:**
+- No mocking frameworks. Plain `Assert` calls, no fluent-assertion libraries.
+- Test helpers (`TvItem`, local builder methods) live inside the test class — no shared test-base machinery.
+- Inject time via parameter for extracted static helpers and pipelines (see `WatchlistFilters.Apply` accepting `DateTime todayUtc`). Computed properties on model DTOs (e.g. `QueueItem.HasNewEpisode`) can't take parameters and use `DateTime.UtcNow` inline — that's acceptable for full-day windows where microsecond drift between the test's `UtcNow` and the predicate's `UtcNow` can't cross a boundary; refactor to methods only if you need to test the exact fence.
+- Prefer direct `DateTime` comparisons over signed day-diff integers in predicates (see `Learnings/date-predicates-prefer-typed-comparisons.md`) — a wrong-sign value silently passes `is <= 7`.
+
+**Plans:**
+`/xplan` output for any feature touching `HurrahTv.Shared` should include a **Tests** bullet per phase. Phases that only touch Razor/CSS may skip it.
+
 ## Context Management
 
 - Use subagents for research, exploration, and parallel analysis
