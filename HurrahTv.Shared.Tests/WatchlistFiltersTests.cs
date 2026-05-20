@@ -196,8 +196,10 @@ public class WatchlistFiltersTests
     {
         QueueItem movie = new()
         {
-            Id = 1, MediaType = MediaTypes.Movie,
-            Status = QueueStatus.WantToWatch, AvailableOnJson = $"[{Netflix}]"
+            Id = 1,
+            MediaType = MediaTypes.Movie,
+            Status = QueueStatus.WantToWatch,
+            AvailableOnJson = $"[{Netflix}]"
         };
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [movie], Today, MediaTypes.Tv, AllStatusesActive, UserHasNetflix);
@@ -210,8 +212,10 @@ public class WatchlistFiltersTests
     {
         QueueItem movie = new()
         {
-            Id = 1, MediaType = MediaTypes.Movie,
-            Status = QueueStatus.WantToWatch, AvailableOnJson = $"[{Netflix}]"
+            Id = 1,
+            MediaType = MediaTypes.Movie,
+            Status = QueueStatus.WantToWatch,
+            AvailableOnJson = $"[{Netflix}]"
         };
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [movie], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
@@ -229,8 +233,10 @@ public class WatchlistFiltersTests
         QueueItem tv = TvItem(latestEpisode: Today.AddDays(-2));
         QueueItem movie = new()
         {
-            Id = 2, MediaType = MediaTypes.Movie,
-            Status = QueueStatus.WantToWatch, AvailableOnJson = $"[{Netflix}]"
+            Id = 2,
+            MediaType = MediaTypes.Movie,
+            Status = QueueStatus.WantToWatch,
+            AvailableOnJson = $"[{Netflix}]"
         };
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [tv, movie], Today, MediaTypes.Tv, AllStatusesActive, UserHasNetflix);
