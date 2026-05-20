@@ -8,6 +8,7 @@
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
 @inject CurationCache CurationCache
+@using HurrahTv.Shared.Filters
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
 
@@ -208,20 +209,20 @@ else
 
                 @{
                     bool hasVisibleRows =
-                        (MediaFilter.MediaType != "movie" && (_watchingItems.Count > 0 || _upcomingItems.Count > 0))
+                        (MediaFilter.MediaType != "movie" && (_availableNowItems.Count > 0 || _availableLaterItems.Count > 0))
                         || (MediaFilter.MediaType != "tv" && _wantToWatchMovies.Count > 0
                             && (MediaFilter.MediaType == "movie" || _settings.ShowWantToWatch));
                 }
 
                 @if (MediaFilter.MediaType != "movie")
                 {
-                    @if (_watchingItems.Count > 0)
+                    @if (_availableNowItems.Count > 0)
                     {
-                        <WatchlistRow Title="Continue Watching" Items="_watchingItems" ShowAirDates="true" RowMode="watching" />
+                        <WatchlistRow Title="Available Now" Subtitle="Streaming today" Items="_availableNowItems" ShowAirDates="true" RowMode="now" />
                     }
-                    @if (_upcomingItems.Count > 0)
+                    @if (_availableLaterItems.Count > 0)
                     {
-                        <WatchlistRow Title="Upcoming Episodes" Subtitle="Airing soon" Items="_upcomingItems" ShowAirDates="true" RowMode="upcoming" />
+                        <WatchlistRow Title="Available Later" Subtitle="Coming this week" Items="_availableLaterItems" ShowAirDates="true" RowMode="later" />
                     }
                 }
 
@@ -283,7 +284,7 @@ else
 }
 
 @code {
-    private List<int> _userServices = [];
+    private IReadOnlyList<int> _userServices = [];
     private List<int> _pendingServices = [];
     private List<int> _pendingGenres = [];
     private string _pendingFirstName = "";
@@ -295,12 +296,12 @@ else
     private bool _queueLoaded;
 
     // full queue cache — source for splicing in-place updates from QuickActions without a refetch.
-    // ApplyWatchlistFilters reads from this and produces the filtered _watchingItems / _upcomingItems / etc.
+    // ApplyWatchlistFilters reads from this and produces the filtered _availableNowItems / _availableLaterItems / etc.
     private List<QueueItem> _allItems = [];
 
     // watchlist rows
-    private List<QueueItem> _watchingItems = [];
-    private List<QueueItem> _upcomingItems = [];
+    private List<QueueItem> _availableNowItems = [];
+    private List<QueueItem> _availableLaterItems = [];
     private List<QueueItem> _wantToWatchMovies = [];
     // pre-filter existence flags — keep section visible even when chips filter everything out
     private bool _hasTvWatchlistContent;
@@ -327,6 +328,7 @@ else
         QuickActionSvc.OnItemUpdated += OnItemUpdated;
         QuickActionSvc.OnEpisodeWatchedChanged += OnEpisodeWatchedChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
+        UserServicesCache.Changed += OnUserServicesChanged;
 
         // services-count is the onboarding gate — resolve it before firing settings/queue,
         // so a non-onboarded user doesn't waste two authenticated round-trips on results
@@ -337,7 +339,7 @@ else
         Microsoft.AspNetCore.Components.Authorization.AuthenticationState state = await AuthState.GetAuthenticationStateAsync();
         _firstName = state.User.FindFirst("firstname")?.Value;
 
-        _userServices = [.. await servicesTask];
+        _userServices = await servicesTask;
         _servicesLoaded = true;
         _onboardingComplete = _userServices.Count > 0;
 
@@ -428,7 +430,7 @@ else
         _queuedTmdbIds = [.. _allItems.Select(i => i.TmdbId).Distinct()];
         _recSeeds = PickRecSeeds(_allItems, 3, MediaFilter.MediaType);
         ApplyWatchlistFilters(_allItems);
-        _newEpisodeTmdbIds = [.. _watchingItems.Concat(_upcomingItems).Select(i => i.TmdbId)];
+        _newEpisodeTmdbIds = [.. _availableNowItems.Concat(_availableLaterItems).Select(i => i.TmdbId)];
         _hero = SelectHero();
     }
 
@@ -507,38 +509,21 @@ else
 
     private void ApplyWatchlistFilters(List<QueueItem> allItems)
     {
-        DateTime todayUtc = DateTime.UtcNow.Date;
+        // Available Now (streamable today) and Available Later (streamable in next 14 days)
+        // are derived by a pure partition in HurrahTv.Shared — see WatchlistFilters.
+        WatchlistFilters.Partition partition = WatchlistFilters.Apply(
+            allItems,
+            DateTime.UtcNow,
+            MediaFilter.MediaType,
+            IsStatusActive,
+            _userServices);
 
-        // pre-filter existence: section header stays visible even when chips filter everything out
-        _hasTvWatchlistContent = allItems.Any(i => i.MediaType == "tv" && i.Status != QueueStatus.NotForMe);
-        _hasMovieWatchlistContent = allItems.Any(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch);
+        _hasTvWatchlistContent = partition.HasTvContent;
+        _hasMovieWatchlistContent = partition.HasMovieContent;
 
-        // continue watching: Watching always shows; WantToWatch/Finished need date activity.
-        // Airs-today items route to Upcoming (not here) so streaming-service badges sit
-        // alongside the "today" label — keep strict > today on the NextEpisodeDate branch.
-        IEnumerable<QueueItem> watching = allItems
-            .Where(i => IsStatusActive(i.Status)
-                && i.Status != QueueStatus.NotForMe
-                && !i.IsLatestEpisodeWatched
-                && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
-                && (i.Status == QueueStatus.Watching
-                    || i.DaysSinceLatestEpisode(todayUtc) is <= 7
-                    || (i.Status != QueueStatus.Finished && i.DaysUntilNextEpisode(todayUtc) is >= 1 and <= 14)));
-
-        _watchingItems = SortWatching(watching);
-
-        // upcoming: 0..14 days out. Lower bound is 0 (not 1) so airs-today surfaces here with a
-        // "today" badge; a briefly-past NextEpisodeDate between airtime and the next TMDb refresh
-        // still gets excluded — see #49/#70.
-        IEnumerable<QueueItem> upcoming = allItems
-            .Where(i => i.MediaType == "tv"
-                && i.Status != QueueStatus.NotForMe
-                && IsStatusActive(i.Status)
-                && i.DaysUntilNextEpisode(todayUtc) is >= 0 and <= 14);
-
-        _upcomingItems = SortUpcoming(upcoming);
-
-        _wantToWatchMovies = SortMovies(allItems.Where(i => i.MediaType == "movie" && i.Status == QueueStatus.WantToWatch));
+        _availableNowItems = SortWatching(partition.AvailableNow);
+        _availableLaterItems = SortUpcoming(partition.AvailableLater);
+        _wantToWatchMovies = SortMovies(partition.Movies);
     }
 
     private async Task RefreshCuration()
@@ -685,8 +670,8 @@ else
         _watchlistSort = mode;
         _settings.WatchlistSort = mode;
         _ = Api.SetUserSettingsAsync(_settings);
-        _watchingItems = SortWatching(_watchingItems);
-        _upcomingItems = SortUpcoming(_upcomingItems);
+        _availableNowItems = SortWatching(_availableNowItems);
+        _availableLaterItems = SortUpcoming(_availableLaterItems);
         _wantToWatchMovies = SortMovies(_wantToWatchMovies);
         StateHasChanged();
     }
@@ -723,6 +708,18 @@ else
         catch { }
     });
 
+    // user changed services in Settings — refresh the cached list and re-run the partition
+    // (no /api/queue refetch needed; the filter is a pure function of services + items).
+    private void OnUserServicesChanged() => InvokeAsync(() =>
+    {
+        _userServices = UserServicesCache.TryGetCached();
+        if (_queueLoaded)
+        {
+            ReapplyDerivedState();
+            StateHasChanged();
+        }
+    });
+
     // possessive form when we have a first name; "My" otherwise. used in section header
     // (replaces the standalone "Good morning, X" greeting we used to render above).
     private string WatchlistTitle => string.IsNullOrWhiteSpace(_firstName)
@@ -734,7 +731,7 @@ else
     private HomeHero.HeroItem? SelectHero()
     {
         // 1. an item the user is actively watching, with a backdrop available
-        QueueItem? watching = _watchingItems.FirstOrDefault(i =>
+        QueueItem? watching = _availableNowItems.FirstOrDefault(i =>
             i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath));
         if (watching is not null)
         {
@@ -802,5 +799,6 @@ else
         QuickActionSvc.OnItemUpdated -= OnItemUpdated;
         QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
+        UserServicesCache.Changed -= OnUserServicesChanged;
     }
 }

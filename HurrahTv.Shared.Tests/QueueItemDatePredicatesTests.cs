@@ -48,4 +48,25 @@ public class QueueItemDatePredicatesTests
         QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-8) };
         Assert.False(item.HasNewEpisode);
     }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsTrue_WhenLatestEpisodeDateIsWithin30Days()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-20) };
+        Assert.True(item.HasEpisodeThisMonth);
+    }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsOlderThan30Days()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(-31) };
+        Assert.False(item.HasEpisodeThisMonth);
+    }
+
+    [Fact]
+    public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsNull()
+    {
+        QueueItem item = new() { LatestEpisodeDate = null };
+        Assert.False(item.HasEpisodeThisMonth);
+    }
 }
