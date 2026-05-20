@@ -42,11 +42,6 @@ public class QueueItem
     // latest episode aired within the last 30 days
     public bool HasEpisodeThisMonth => LatestEpisodeDate.HasValue
         && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-30);
-
-    // upcoming episode within next 7 days
-    public bool HasUpcomingThisWeek => NextEpisodeDate.HasValue
-        && NextEpisodeDate.Value <= DateTime.UtcNow.AddDays(7)
-        && NextEpisodeDate.Value > DateTime.UtcNow;
 }
 
 public enum QueueStatus

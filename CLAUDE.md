@@ -119,7 +119,7 @@ Lean test-first when the rules are spec-able from the issue (date windows, filte
 **Style:**
 - No mocking frameworks. Plain `Assert` calls, no fluent-assertion libraries.
 - Test helpers (`TvItem`, local builder methods) live inside the test class — no shared test-base machinery.
-- Inject time via parameter — never call `DateTime.UtcNow` inside a helper that's tested by date-sensitive specs.
+- Inject time via parameter for extracted static helpers and pipelines (see `WatchlistFilters.Apply` accepting `DateTime todayUtc`). Computed properties on model DTOs (e.g. `QueueItem.HasNewEpisode`) can't take parameters and use `DateTime.UtcNow` inline — that's acceptable for full-day windows where microsecond drift between the test's `UtcNow` and the predicate's `UtcNow` can't cross a boundary; refactor to methods only if you need to test the exact fence.
 - Prefer direct `DateTime` comparisons over signed day-diff integers in predicates (see `Learnings/date-predicates-prefer-typed-comparisons.md`) — a wrong-sign value silently passes `is <= 7`.
 
 **Plans:**
