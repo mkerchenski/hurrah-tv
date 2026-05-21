@@ -29,10 +29,10 @@ public class SentimentHelpersTests
     public void Color_ReturnsExpectedColor_ForEverySentimentLevel(int sentiment, string expected)
         => Assert.Equal(expected, SentimentHelpers.Color(sentiment));
 
-    // SentimentLevel is `static class const int` rather than an enum, so
+    // since SentimentLevel is `static class const int` rather than an enum,
     // Enum.GetValues can't enumerate it — reflection over the public static
     // const fields fills the same role as AllStatuses_CoversEveryEnumValue
-    // does for QueueStatus. Adding `SentimentLevel.Loathe = 4` without
+    // does for QueueStatus. adding `SentimentLevel.Loathe = 4` without
     // updating the helpers fails this test instead of silently shipping a
     // missing icon/color.
     [Fact]
