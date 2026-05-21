@@ -1,3 +1,4 @@
+using System.Reflection;
 using HurrahTv.Client.Helpers;
 using HurrahTv.Shared.Models;
 
@@ -5,34 +6,48 @@ namespace HurrahTv.Client.Tests;
 
 public class SentimentHelpersTests
 {
-    // sentiment 0 is the unset case — no badge should render.
+    // helper signature is `Icon(int sentiment)` not `int?` — callers gate on
+    // `Sentiment.HasValue` before invoking, so the "null" case from issue #83's
+    // spec maps to sentinel 0 (the switch's default arm).
     [Fact]
-    public void Icon_Unset_ReturnsEmpty()
-    {
-        Assert.Equal("", SentimentHelpers.Icon(0));
-    }
+    public void Icon_DefaultCase_ReturnsEmpty() => Assert.Equal("", SentimentHelpers.Icon(0));
 
     [Theory]
     [InlineData(SentimentLevel.Down, "icon-[heroicons--hand-thumb-down-20-solid]")]
     [InlineData(SentimentLevel.Up, "icon-[heroicons--hand-thumb-up-20-solid]")]
     [InlineData(SentimentLevel.Favorite, "icon-[heroicons--heart-20-solid]")]
     public void Icon_ReturnsExpectedIcon_ForEverySentimentLevel(int sentiment, string expected)
-    {
-        Assert.Equal(expected, SentimentHelpers.Icon(sentiment));
-    }
+        => Assert.Equal(expected, SentimentHelpers.Icon(sentiment));
 
     [Fact]
-    public void Color_Unset_ReturnsEmpty()
-    {
-        Assert.Equal("", SentimentHelpers.Color(0));
-    }
+    public void Color_DefaultCase_ReturnsEmpty() => Assert.Equal("", SentimentHelpers.Color(0));
 
     [Theory]
     [InlineData(SentimentLevel.Down, "text-red-400")]
     [InlineData(SentimentLevel.Up, "text-green-400")]
     [InlineData(SentimentLevel.Favorite, "text-pink-400")]
     public void Color_ReturnsExpectedColor_ForEverySentimentLevel(int sentiment, string expected)
+        => Assert.Equal(expected, SentimentHelpers.Color(sentiment));
+
+    // SentimentLevel is `static class const int` rather than an enum, so
+    // Enum.GetValues can't enumerate it — reflection over the public static
+    // const fields fills the same role as AllStatuses_CoversEveryEnumValue
+    // does for QueueStatus. Adding `SentimentLevel.Loathe = 4` without
+    // updating the helpers fails this test instead of silently shipping a
+    // missing icon/color.
+    [Fact]
+    public void Helpers_CoverEverySentimentLevelConstant()
     {
-        Assert.Equal(expected, SentimentHelpers.Color(sentiment));
+        int[] levels = [.. typeof(SentimentLevel)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(int))
+            .Select(f => (int)f.GetRawConstantValue()!)];
+
+        Assert.NotEmpty(levels);
+        foreach (int level in levels)
+        {
+            Assert.NotEqual("", SentimentHelpers.Icon(level));
+            Assert.NotEqual("", SentimentHelpers.Color(level));
+        }
     }
 }

@@ -11,9 +11,7 @@ public class BadgeHelpersTests
     [InlineData(QueueStatus.Finished, "icon-[heroicons--check-20-solid]")]
     [InlineData(QueueStatus.NotForMe, "icon-[heroicons--no-symbol-20-solid]")]
     public void StatusIcon_ReturnsExpectedIcon_ForEveryStatus(QueueStatus status, string expected)
-    {
-        Assert.Equal(expected, BadgeHelpers.StatusIcon(status));
-    }
+        => Assert.Equal(expected, BadgeHelpers.StatusIcon(status));
 
     // AllStatuses is the source of truth for status ordering across Queue.razor
     // and QuickActions. A silent reorder would ship a broken UI — pin the exact
@@ -40,7 +38,7 @@ public class BadgeHelpersTests
         QueueStatus[] enumValues = Enum.GetValues<QueueStatus>();
         Assert.Equal(enumValues.Length, BadgeHelpers.AllStatuses.Count);
         Assert.Equal(
-            enumValues.OrderBy(s => s).ToArray(),
-            BadgeHelpers.AllStatuses.OrderBy(s => s).ToArray());
+            [.. enumValues.OrderBy(s => s)],
+            [.. BadgeHelpers.AllStatuses.OrderBy(s => s)]);
     }
 }
