@@ -6,13 +6,18 @@ namespace HurrahTv.Shared.Models;
 // readability; its comment references this type so a grep on either name finds both.
 public static class QueueStatusOrdering
 {
-    public static readonly IReadOnlyList<QueueStatus> DisplayOrder =
+    // Array.AsReadOnly returns a ReadOnlyCollection<T> whose runtime type is NOT the
+    // underlying array — a down-cast to QueueStatus[] throws, so callers can't mutate
+    // even via reflection-free casts. Required in long-lived Blazor WASM processes
+    // where a corrupted static persists for the entire browser session.
+    // See: Learnings/blazor-wasm-static-mutable-arrays.md
+    public static readonly IReadOnlyList<QueueStatus> DisplayOrder = Array.AsReadOnly<QueueStatus>(
     [
         QueueStatus.Watching,
         QueueStatus.WantToWatch,
         QueueStatus.Finished,
         QueueStatus.NotForMe
-    ];
+    ]);
 
     // SortPriority is derived from DisplayOrder so the list is the only place the rule
     // is written down — reordering DisplayOrder automatically reorders the sort keys.

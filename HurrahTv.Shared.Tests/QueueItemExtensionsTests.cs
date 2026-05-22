@@ -134,6 +134,6 @@ public class QueueItemExtensionsTests
         QueueItem item = new() { AvailableOnJson = "[9,8]" };
         List<StreamingService> visible = item.VisibleServicesFor([8, 9]);
         int[] actualIds = [.. visible.Select(s => s.TmdbProviderId)];
-        Assert.Equal(new[] { 9, 8 }, actualIds);
+        Assert.Equal([9, 8], actualIds);
     }
 }
