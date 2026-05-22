@@ -177,6 +177,8 @@ public class DbService(IConfiguration config)
     public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
+        // canonical status ordering: see HurrahTv.Shared.Models.QueueStatusOrdering.DisplayOrder
+        // — Client UI sorts share the same rule via QueueStatusOrdering.SortPriority
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
             SELECT * FROM QueueItems WHERE UserId = @UserId
             ORDER BY

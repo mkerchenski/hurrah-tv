@@ -43,7 +43,7 @@
             <!-- list status -->
             <div class="text-gray-500 text-[10px] font-medium uppercase tracking-wider mb-2">List Status</div>
             <div class="grid grid-cols-4 gap-2 mb-4">
-                @foreach (QueueStatus status in BadgeHelpers.AllStatuses)
+                @foreach (QueueStatus status in QueueStatusOrdering.DisplayOrder)
                 {
                     bool active = _queueId > 0 && _currentStatus == status;
                     bool isNfm = status == QueueStatus.NotForMe;

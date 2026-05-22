@@ -633,14 +633,6 @@ else
         _                       => -1
     };
 
-    // Watching→0, WantToWatch→1, Finished→2 (status list order)
-    private static int StatusSortKey(QueueStatus status) => status switch
-    {
-        QueueStatus.Watching    => 0,
-        QueueStatus.WantToWatch => 1,
-        QueueStatus.Finished    => 2,
-        _                       => 3
-    };
 
     private static List<QueueItem> PickRecSeeds(List<QueueItem> allItems, int count, string mediaType = "all")
     {
@@ -679,14 +671,14 @@ else
     private List<QueueItem> SortWatching(IEnumerable<QueueItem> items) => _watchlistSort switch
     {
         "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
-        "queue"     => [.. items.OrderBy(i => StatusSortKey(i.Status)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
+        "queue"     => [.. items.OrderBy(i => QueueStatusOrdering.SortPriority(i.Status)).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue)],
         _           => [.. items.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
     };
 
     private List<QueueItem> SortUpcoming(IEnumerable<QueueItem> items) => _watchlistSort switch
     {
         "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-        "queue"     => [.. items.OrderBy(i => StatusSortKey(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
+        "queue"     => [.. items.OrderBy(i => QueueStatusOrdering.SortPriority(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
         _           => [.. items.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
     };
 
