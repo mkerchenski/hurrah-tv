@@ -30,6 +30,7 @@ builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddScoped<MediaFilterService>();
+builder.Services.AddScoped<ShareService>();
 // singleton — matches QuickActionService it subscribes to; one in-memory cache per app session
 builder.Services.AddSingleton<CurationCache>();
 
