@@ -4,6 +4,7 @@ using HurrahTv.Api.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
@@ -93,6 +94,9 @@ public class PostgresFixture : IAsyncLifetime
 
     // truncate user-scoped tables so each test starts from a clean slate.
     // RESTART IDENTITY resets the QueueItems serial so ids are deterministic.
+    // re-applies the admin bootstrap after the truncate so the fixture mirrors
+    // prod startup (DbService.InitializeAsync runs bootstrap on every host build,
+    // but the host is only built once per fixture). pins #92.
     public async Task ResetAsync()
     {
         using NpgsqlConnection db = new(ConnectionString);
@@ -104,6 +108,23 @@ public class PostgresFixture : IAsyncLifetime
                 AIUsage, CurationCache, Users
             RESTART IDENTITY CASCADE
             """);
+        await SeedAdminAsync();
+    }
+
+    // mirrors the admin bootstrap in DbService.InitializeAsync. idempotent UPDATE that
+    // flips IsAdmin on existing Users rows whose phone matches the owner phone or any
+    // entry in Admin:BootstrapPhones. prod runs this on every startup; tests with
+    // admin-aware flows call it after inserting users to mimic that step. if the
+    // bootstrap rule changes in DbService.InitializeAsync, mirror the change here.
+    public async Task SeedAdminAsync()
+    {
+        IConfiguration config = Factory.Services.GetRequiredService<IConfiguration>();
+        string[] bootstrapPhones = ["4406228711", .. config.GetSection("Admin:BootstrapPhones").Get<string[]>() ?? []];
+        using NpgsqlConnection db = new(ConnectionString);
+        await db.OpenAsync();
+        await db.ExecuteAsync(
+            "UPDATE Users SET IsAdmin = TRUE WHERE PhoneNumber = ANY(@Phones) AND IsAdmin = FALSE",
+            new { Phones = bootstrapPhones });
     }
 
     // null-guard Factory in case InitializeAsync threw before Factory was assigned

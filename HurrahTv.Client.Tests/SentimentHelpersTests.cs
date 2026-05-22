@@ -50,4 +50,26 @@ public class SentimentHelpersTests
             Assert.NotEqual("", SentimentHelpers.Color(level));
         }
     }
+
+    // pins the long-form labels surfaced in the Queue page filter chips and the
+    // sentiment dialog header. "Watched" (not "Finished") and "Not For Me"
+    // (not "NotForMe") are deliberate UI translations of the enum names.
+    [Theory]
+    [InlineData(QueueStatus.WantToWatch, "Want to Watch")]
+    [InlineData(QueueStatus.Watching, "Watching")]
+    [InlineData(QueueStatus.Finished, "Watched")]
+    [InlineData(QueueStatus.NotForMe, "Not For Me")]
+    public void StatusLabel_ReturnsExpectedLabel_ForEveryStatus(QueueStatus status, string expected)
+        => Assert.Equal(expected, SentimentHelpers.StatusLabel(status));
+
+    // StatusLabel defaults to "" — same broken-UI failure mode as
+    // BadgeHelpers.StatusShortLabel. force a label decision on new enum values.
+    [Fact]
+    public void StatusLabel_HasNonEmptyMapping_ForEveryQueueStatus()
+    {
+        foreach (QueueStatus status in Enum.GetValues<QueueStatus>())
+        {
+            Assert.NotEqual("", SentimentHelpers.StatusLabel(status));
+        }
+    }
 }
