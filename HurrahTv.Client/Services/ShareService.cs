@@ -17,11 +17,11 @@ public sealed class ShareService(IJSRuntime js) : IAsyncDisposable
             ShareResult result = await _module.InvokeAsync<ShareResult>("shareOrCopy", new { title, text, url });
             return result.Outcome switch
             {
-                "shared"      => ShareOutcome.Shared,
-                "copied"      => ShareOutcome.Copied,
-                "cancelled"   => ShareOutcome.Cancelled,
+                "shared" => ShareOutcome.Shared,
+                "copied" => ShareOutcome.Copied,
+                "cancelled" => ShareOutcome.Cancelled,
                 "unsupported" => ShareOutcome.Unsupported,
-                _             => ShareOutcome.Error
+                _ => ShareOutcome.Error
             };
         }
         catch (TaskCanceledException) { return ShareOutcome.Cancelled; }
