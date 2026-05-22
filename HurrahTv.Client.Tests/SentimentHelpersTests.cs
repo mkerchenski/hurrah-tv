@@ -7,8 +7,8 @@ namespace HurrahTv.Client.Tests;
 public class SentimentHelpersTests
 {
     // helper signature is `Icon(int sentiment)` not `int?` — callers gate on
-    // `Sentiment.HasValue` before invoking, so the "null" case from issue #83's
-    // spec maps to sentinel 0 (the switch's default arm).
+    // `Sentiment.HasValue` before invoking, so this covers invalid/unexpected
+    // values that hit the switch's default arm.
     [Fact]
     public void Icon_DefaultCase_ReturnsEmpty() => Assert.Equal("", SentimentHelpers.Icon(0));
 
