@@ -17,7 +17,9 @@ public class SmsService
         _fromNumber = config["Twilio:FromNumber"];
         _logger = logger;
 
-        if (_accountSid != null && _authToken != null)
+        // IsNullOrEmpty (not != null) so the appsettings.json placeholder values
+        // are treated as "not configured" — same guard runs in SendCodeAsync below.
+        if (!string.IsNullOrEmpty(_accountSid) && !string.IsNullOrEmpty(_authToken))
         {
             TwilioClient.Init(_accountSid, _authToken);
         }
@@ -25,7 +27,7 @@ public class SmsService
 
     public async Task SendCodeAsync(string phoneNumber, string code)
     {
-        if (_accountSid == null)
+        if (string.IsNullOrEmpty(_accountSid))
         {
             _logger.LogWarning("Twilio not configured — OTP for {Phone}: {Code}", phoneNumber, code);
             return;

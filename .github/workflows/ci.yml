@@ -18,6 +18,22 @@ jobs:
     name: build
     runs-on: ubuntu-latest
 
+    # Postgres service container for HurrahTv.Api.Tests (WebApplicationFactory + real DB).
+    # Trust auth keeps the test connection string identical to the local-dev default,
+    # so the test fixture's default `Host=localhost;Username=postgres` works in both places.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - uses: actions/checkout@v6
 
