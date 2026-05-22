@@ -171,7 +171,7 @@
         ShareOutcome outcome = await Share.ShareOrCopyAsync(
             title: "Hurrah.tv",
             text: "One smart watchlist across all your streaming services.",
-            url: Nav.BaseUri);
+            relativePath: "/");
         string? notice = outcome switch
         {
             ShareOutcome.Copied      => "Link copied",

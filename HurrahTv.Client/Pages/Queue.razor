@@ -411,21 +411,28 @@ else
 
     private void ClearAllFilters()
     {
-        bool anyChanged = false;
-        if (_activeTab != "all") { _activeTab = "all"; anyChanged = true; }
-        if (_selectedServiceId is not null) { _selectedServiceId = null; anyChanged = true; }
-        if (MediaFilter.MediaType != MediaTypes.All)
-        {
-            // page-local clear: don't write 'all' through to the user's persisted preference
-            MediaFilter.Set(MediaTypes.All, persist: false);
-            anyChanged = true;
-        }
-        if (!anyChanged) return;
+        bool tabOrServiceChanged = false;
+        if (_activeTab != "all") { _activeTab = "all"; tabOrServiceChanged = true; }
+        if (_selectedServiceId is not null) { _selectedServiceId = null; tabOrServiceChanged = true; }
+        bool mediaChanged = MediaFilter.MediaType != MediaTypes.All;
+
+        if (!tabOrServiceChanged && !mediaChanged) return;
+
         _expandedStatusId = null;
         _grabbedItemId = null;
-        UpdateCounts();
-        RecomputeVisible();
-        UpdateUrl();
+
+        if (mediaChanged)
+        {
+            // OnMediaFilterChanged will recompute counts/visible items and call UpdateUrl
+            // after Set fires OnChanged — don't double-fire the same trio synchronously.
+            MediaFilter.Set(MediaTypes.All, persist: false);
+        }
+        else
+        {
+            UpdateCounts();
+            RecomputeVisible();
+            UpdateUrl();
+        }
     }
 
     private void OnMediaFilterChanged() => InvokeAsync(() =>

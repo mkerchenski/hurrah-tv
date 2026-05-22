@@ -3,19 +3,29 @@
 // This is the first JS module under wwwroot/js/; the broader migration off the
 // inline <script> globals in index.html is tracked in issue #87.
 
+// per issue #67 acceptance criteria: native share sheet on mobile, clipboard fallback elsewhere.
+// navigator.share exists on desktop Chrome/Edge too, but we route those to clipboard so the
+// 'tell a friend' flow on desktop drops a URL ready to paste into the user's chat of choice
+// instead of opening the OS-level share UI that desktop users don't expect.
+function isMobile() {
+    if (navigator.userAgentData?.mobile !== undefined) return navigator.userAgentData.mobile;
+    return /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 export async function shareOrCopy({ title, text, url }) {
-    const data = { title, text, url };
-    if (navigator.share) {
+    if (navigator.share && isMobile()) {
         try {
-            await navigator.share(data);
+            await navigator.share({ title, text, url });
             return { outcome: 'shared' };
         } catch (e) {
-            // any share rejection means the user already saw the sheet (or the API
-            // refused mid-flight on iOS Safari with NotAllowedError, etc.) — DON'T
-            // surprise them by silently overwriting their clipboard. Treat every
-            // share-API rejection as cancelled. Clipboard fallback only kicks in
-            // when navigator.share isn't present at all (e.g. desktop Chrome).
-            return { outcome: 'cancelled' };
+            // AbortError = user dismissed the sheet; NotAllowedError = iOS Safari's dismiss
+            // path on some flows — both are silent cancellations, not failures. Anything else
+            // (TypeError from bad payload shape, real permission failure) is a real error and
+            // surfaces to the user via the caller's toast.
+            if (e?.name === 'AbortError' || e?.name === 'NotAllowedError') {
+                return { outcome: 'cancelled' };
+            }
+            return { outcome: 'error' };
         }
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {

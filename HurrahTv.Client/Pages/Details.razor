@@ -380,7 +380,8 @@ else
     {
         if (_details is null) return;
         string text = !string.IsNullOrEmpty(_details.Tagline) ? _details.Tagline! : "Check this out on Hurrah.tv";
-        ShareOutcome outcome = await Share.ShareOrCopyAsync(_details.Title, text, Nav.Uri);
+        // share the canonical production URL, not Nav.Uri (which is localhost in dev, staging.hurrah.tv from staging)
+        ShareOutcome outcome = await Share.ShareOrCopyAsync(_details.Title, text, $"/details/{MediaType}/{TmdbId}");
         string? notice = outcome switch
         {
             ShareOutcome.Copied      => "Link copied",
