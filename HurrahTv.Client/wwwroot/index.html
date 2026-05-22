@@ -6,6 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Hurrah.tv</title>
     <base href="/" />
+
+    <!-- site-wide meta + Open Graph + Twitter Card. Blazor WASM doesn't SSR, so iOS Safari
+         / iMessage / Twitter link-preview bots only ever see what's in this static HTML.
+         Per-show OG (using TMDb backdrop + title for /details/{type}/{id}) needs a
+         server-side bot-detect path on the Api project — tracked separately. -->
+    <meta name="description" content="One smart watchlist across all your streaming services. Search what's available on Netflix, Hulu, Disney+ and more — keep one queue, no juggling." />
+    <meta name="theme-color" content="#E50914" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Hurrah.tv" />
+    <meta property="og:title" content="Hurrah.tv — one watchlist across every streaming service" />
+    <meta property="og:description" content="Search what's available on Netflix, Hulu, Disney+ and more. Keep one smart queue, no juggling." />
+    <meta property="og:url" content="https://hurrah.tv/" />
+    <meta property="og:image" content="https://hurrah.tv/icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Hurrah.tv — one watchlist across every streaming service" />
+    <meta name="twitter:description" content="Search what's available on Netflix, Hulu, Disney+ and more. Keep one smart queue, no juggling." />
+    <meta name="twitter:image" content="https://hurrah.tv/icon-512.png" />
+
     <link rel="preload" id="webassembly" />
     <link rel="stylesheet" href="css/app.css" />
     <link rel="stylesheet" href="css/icons.css" />
