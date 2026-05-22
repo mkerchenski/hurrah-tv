@@ -27,6 +27,7 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         // add a second item so position reorder has somewhere to move
         QueueItem second = NewQueueItem(tmdbId: 60625, title: "Rick and Morty");
         HttpResponseMessage addResp2 = await client.PostAsJsonAsync("/api/queue", second);
+        Assert.Equal(HttpStatusCode.Created, addResp2.StatusCode);
         QueueItem secondAdded = (await addResp2.Content.ReadFromJsonAsync<QueueItem>())!;
         Assert.True(secondAdded.Position > added.Position);
 
@@ -68,8 +69,10 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         HttpClient userA = TestAuth.CreateClient(fx, "user-A");
         HttpClient userB = TestAuth.CreateClient(fx, "user-B");
 
-        await userA.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1, title: "A's show"));
-        await userB.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 2, title: "B's show"));
+        HttpResponseMessage aPost = await userA.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1, title: "A's show"));
+        HttpResponseMessage bPost = await userB.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 2, title: "B's show"));
+        Assert.Equal(HttpStatusCode.Created, aPost.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, bPost.StatusCode);
 
         QueueResponse? aList = await userA.GetFromJsonAsync<QueueResponse>("/api/queue");
         QueueResponse? bList = await userB.GetFromJsonAsync<QueueResponse>("/api/queue");
@@ -87,6 +90,7 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         HttpClient userB = TestAuth.CreateClient(fx, "user-B");
 
         HttpResponseMessage addResp = await userB.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1, title: "B's show"));
+        Assert.Equal(HttpStatusCode.Created, addResp.StatusCode);
         QueueItem bItem = (await addResp.Content.ReadFromJsonAsync<QueueItem>())!;
 
         HttpResponseMessage attack = await userA.PutAsJsonAsync(
@@ -109,6 +113,7 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         HttpClient userB = TestAuth.CreateClient(fx, "user-B");
 
         HttpResponseMessage addResp = await userB.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1, title: "B's show"));
+        Assert.Equal(HttpStatusCode.Created, addResp.StatusCode);
         QueueItem bItem = (await addResp.Content.ReadFromJsonAsync<QueueItem>())!;
 
         HttpResponseMessage attack = await userA.DeleteAsync($"/api/queue/{bItem.Id}");
