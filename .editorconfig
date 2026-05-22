@@ -38,3 +38,10 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+# test projects — Assert.Equal(new[] { ... }, actual) is the canonical xUnit idiom;
+# CA1861's "hoist constant array arguments to static readonly fields" misapplies here
+# because [Fact] methods don't run in tight loops and per-test allocation is negligible.
+# Hoisting hurts readability (expected literal next to assertion is the whole point).
+[*Tests.cs]
+dotnet_diagnostic.CA1861.severity = none

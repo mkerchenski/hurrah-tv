@@ -31,14 +31,6 @@ public static class BadgeHelpers
         _ => ""
     };
 
-    public static readonly IReadOnlyList<QueueStatus> AllStatuses =
-    [
-        QueueStatus.Watching,
-        QueueStatus.WantToWatch,
-        QueueStatus.Finished,
-        QueueStatus.NotForMe
-    ];
-
     public static string StatusColor(QueueStatus status) => status switch
     {
         QueueStatus.WantToWatch => "text-accent",

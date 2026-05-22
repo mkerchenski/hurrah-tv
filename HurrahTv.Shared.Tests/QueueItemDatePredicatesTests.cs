@@ -49,6 +49,16 @@ public class QueueItemDatePredicatesTests
         Assert.False(item.HasNewEpisode);
     }
 
+    // pins #86 — wrong-sign LatestEpisodeDate (TMDb backfill quirk) must not pass the
+    // window. Home hero billboard (Home.razor:754) and Queue card badge (Queue.razor:137)
+    // both gate UI on this predicate; future-stamped items would feature unaired episodes.
+    [Fact]
+    public void HasNewEpisode_IsFalse_WhenLatestEpisodeDateIsInTheFuture()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(5) };
+        Assert.False(item.HasNewEpisode);
+    }
+
     [Fact]
     public void HasEpisodeThisMonth_IsTrue_WhenLatestEpisodeDateIsWithin30Days()
     {
@@ -67,6 +77,16 @@ public class QueueItemDatePredicatesTests
     public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsNull()
     {
         QueueItem item = new() { LatestEpisodeDate = null };
+        Assert.False(item.HasEpisodeThisMonth);
+    }
+
+    // pins #86 — Home.razor:683 uses HasEpisodeThisMonth as a sort key in the default
+    // watchlist sort; a future-stamped item without an upper bound would otherwise
+    // sort to the top alongside legitimate recent-episode items.
+    [Fact]
+    public void HasEpisodeThisMonth_IsFalse_WhenLatestEpisodeDateIsInTheFuture()
+    {
+        QueueItem item = new() { LatestEpisodeDate = DateTime.UtcNow.AddDays(10) };
         Assert.False(item.HasEpisodeThisMonth);
     }
 }

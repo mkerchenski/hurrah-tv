@@ -177,6 +177,11 @@ public class DbService(IConfiguration config)
     public async Task<List<QueueItem>> GetQueueAsync(string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
+        // canonical status ordering: see HurrahTv.Shared.Models.QueueStatusOrdering.DisplayOrder
+        // — Client UI sorts share the same rule via QueueStatusOrdering.SortPriority.
+        // ELSE 4 matches DisplayOrder.Count so unknown enum values sort after every known one.
+        // Freshness window's upper bound mirrors QueueItem.HasNewEpisode (#86) so a future-stamped
+        // LatestEpisodeDate (TMDb backfill quirk) doesn't sort into the recent bucket.
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
             SELECT * FROM QueueItems WHERE UserId = @UserId
             ORDER BY
@@ -185,8 +190,10 @@ public class DbService(IConfiguration config)
                     WHEN 0 THEN 1  -- WantToWatch second
                     WHEN 2 THEN 2  -- Finished third
                     WHEN 4 THEN 3  -- NotForMe last
+                    ELSE 4         -- unknown sorts last (matches QueueStatusOrdering.SortPriority)
                 END,
-                CASE WHEN LatestEpisodeDate >= NOW() - INTERVAL '7 days' THEN 0 ELSE 1 END,
+                CASE WHEN LatestEpisodeDate >= NOW() - INTERVAL '7 days'
+                      AND LatestEpisodeDate <= NOW() THEN 0 ELSE 1 END,
                 LatestEpisodeDate DESC,
                 Position
             """, new { UserId = userId });

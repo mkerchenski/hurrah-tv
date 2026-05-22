@@ -85,7 +85,7 @@ PostgreSQL via Dapper (Npgsql). All tables created on startup via `DbService.Ini
 - Auth: `HurrahAuthStateProvider` + `TokenService` (JWT in localStorage) + `AuthMessageHandler` (auto-injects Bearer token)
 - Key components: `PosterCard`, `PosterGrid`, `ContentRow`, `WatchlistRow`, `QuickActions`, `EpisodeBrowser`, `InstallBanner`, `UpdateBanner`
 - UI helpers: `BadgeHelpers.cs` (status colors/icons/labels), `SentimentHelpers.cs` (sentiment colors/icons)
-- `BadgeHelpers.AllStatuses` (`IReadOnlyList<QueueStatus>`) is the shared source of truth for status ordering — used in Queue page and QuickActions
+- `HurrahTv.Shared.Models.QueueStatusOrdering` is the canonical status-ordering rule — `DisplayOrder` (`IReadOnlyList<QueueStatus>`) drives Queue tabs / QuickActions / Home watchlist sort, and `SortPriority(status)` (derived from `DisplayOrder`) gives the C# sort key that matches the Api SQL `CASE` in `DbService.GetQueueAsync`
 - Dark theme, poster-grid layout inspired by Netflix. Mobile bottom tab bar, desktop top nav.
 - State lives on the server — client fetches on page load. No client-side state store.
 - Prefer **self-gating predicates** over caller-supplied visibility flags. If a control's "show me" rule can be expressed from the item's own data (e.g. `status == Watching && latestEpisodeDate within 7 days`), encode it inside the component rather than passing a `showX` boolean from every call site. Self-gating keeps the rule canonical, makes new surfaces safe by default, and makes the intent grep-able.
@@ -170,7 +170,7 @@ There's no `priority:*` scheme — `phase:*` does the work. There's no `effort:*
 Surfaced by: /<skill> on YYYY-MM-DD
 ```
 
-**Closing the loop:** commit messages use `closes #NN` / `fixes #NN` syntax — GitHub auto-closes the issue on merge to main. Don't manually close issues that the merge will close for you.
+**Closing the loop:** put `Closes #NN` / `Fixes #NN` keywords in the **PR description** (one per line at the bottom) — GitHub auto-closes the issue on merge to main. Squash-merge discards individual commit messages and replaces them with the PR title + body, so closes-keywords in commit bodies alone won't survive — the PR description is the canonical place. Don't manually close issues that the merge will close for you.
 
 ## Plans Directory
 

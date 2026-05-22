@@ -32,16 +32,20 @@ public class QueueItem
     public string PosterUrl(string size = "w342") => TmdbImage.Url(PosterPath, size);
     public string BackdropUrl(string size = "w1280") => TmdbImage.Url(BackdropPath, size);
 
+    // upper bound guards against TMDb backfill quirks that future-stamp LatestEpisodeDate;
+    // without it, an unaired episode would silently classify as "new" (#86).
     public bool HasNewEpisode => LatestEpisodeDate.HasValue
-        && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-7);
+        && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-7)
+        && LatestEpisodeDate.Value <= DateTime.UtcNow;
 
     public bool HasUpcomingEpisode => NextEpisodeDate.HasValue
         && NextEpisodeDate.Value <= DateTime.UtcNow.AddDays(7)
         && NextEpisodeDate.Value > DateTime.UtcNow;
 
-    // latest episode aired within the last 30 days
+    // latest episode aired within the last 30 days — upper bound mirrors HasNewEpisode (#86)
     public bool HasEpisodeThisMonth => LatestEpisodeDate.HasValue
-        && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-30);
+        && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-30)
+        && LatestEpisodeDate.Value <= DateTime.UtcNow;
 }
 
 public enum QueueStatus
