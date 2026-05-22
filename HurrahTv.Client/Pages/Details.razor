@@ -2,7 +2,6 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject ApiClient Api
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject QuickActionService QuickActionSvc
 @inject ShareService Share
@@ -380,7 +379,8 @@ else
     {
         if (_details is null) return;
         string text = !string.IsNullOrEmpty(_details.Tagline) ? _details.Tagline! : "Check this out on Hurrah.tv";
-        // share the canonical production URL, not Nav.Uri (which is localhost in dev, staging.hurrah.tv from staging)
+        // ShareService prepends the canonical production origin so the link is correct
+        // regardless of whether the user is on localhost, staging.hurrah.tv, or prod
         ShareOutcome outcome = await Share.ShareOrCopyAsync(_details.Title, text, $"/details/{MediaType}/{TmdbId}");
         string? notice = outcome switch
         {

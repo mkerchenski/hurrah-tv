@@ -31,9 +31,10 @@ public sealed class ShareService(IJSRuntime js, IConfiguration config) : IAsyncD
         try
         {
             _module ??= await js.InvokeAsync<IJSObjectReference>("import", _modulePath);
-            string url = relativePath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
-                ? relativePath
-                : PublicBaseUrl + (relativePath.StartsWith('/') ? relativePath : "/" + relativePath);
+            // always prepend the canonical production origin — no http(s) bypass. The service
+            // guarantees by construction that shared links point at hurrah.tv even from
+            // localhost/staging callers.
+            string url = PublicBaseUrl + (relativePath.StartsWith('/') ? relativePath : "/" + relativePath);
             ShareResult result = await _module.InvokeAsync<ShareResult>("shareOrCopy", new { title, text, url });
             return result.Outcome switch
             {
