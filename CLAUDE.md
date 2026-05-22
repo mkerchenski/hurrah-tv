@@ -102,7 +102,9 @@ PostgreSQL via Dapper (Npgsql). All tables created on startup via `DbService.Ini
 
 ## Testing
 
-`dotnet test` runs via `HurrahTv.slnx`. New test projects must be referenced there. Current coverage lives in `HurrahTv.Shared.Tests/`.
+`dotnet test` runs via `HurrahTv.slnx`. New test projects must be referenced there. Test projects: `HurrahTv.Shared.Tests/` (pure logic), `HurrahTv.Api.Tests/` (`WebApplicationFactory<Program>` + real Postgres).
+
+**Local setup for Api.Tests:** the fixture connects to local Postgres on `localhost:5432` as user `postgres` and auto-creates the `hurrahtv_test` database on first run. Override with `HURRAHTV_TEST_CONNECTION` env var if your local creds differ. CI uses a `postgres:16-alpine` service container with trust auth so the default works there too.
 
 **When tests are required:**
 - New or changed pure logic in `HurrahTv.Shared` — predicates, filters, sort keys, parsers, extension methods. This is where the worst bugs hide (#49 was a stale-date leak caught only at runtime). One named regression test per bug fix, referencing the issue number (e.g. `AvailableLater_Excludes_NextEpisode_In_The_Past` // pins #49/#70).
