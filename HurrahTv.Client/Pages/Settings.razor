@@ -1,9 +1,11 @@
 @page "/settings"
 @attribute [Authorize]
+@implements IDisposable
 @inject ApiClient Api
 @inject UserServicesCache UserServicesCache
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
+@inject ShareService Share
 
 <PageTitle>Settings - Hurrah.tv</PageTitle>
 
@@ -86,6 +88,16 @@
         </label>
     </div>
 
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">Tell a friend</h2>
+        <p class="text-gray-400 text-sm mb-4">Share Hurrah.tv with someone who's tired of juggling streaming queues.</p>
+        <button class="bg-accent hover:bg-accent-light text-white font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+                @onclick="ShareApp">
+            <span class="icon-[heroicons--arrow-up-tray] w-4 h-4"></span>
+            Share Hurrah.tv
+        </button>
+    </div>
+
     <div class="bg-surface-50 rounded-xl p-4 md:p-6">
         <h2 class="text-lg font-semibold mb-2">About Hurrah.tv</h2>
         <p class="text-gray-400 text-sm">
@@ -94,6 +106,14 @@
         </p>
     </div>
 </div>
+
+@if (!string.IsNullOrEmpty(_shareNotice))
+{
+    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-surface-200 text-white px-4 py-2 rounded-lg shadow-lg fade-in z-50 text-sm"
+         role="status" aria-live="polite">
+        @_shareNotice
+    </div>
+}
 
 @code {
     private List<int> _selectedServices = [];
@@ -105,6 +125,9 @@
     private bool _saved;
     private bool _savingName;
     private bool _savedName;
+    private string? _shareNotice;
+    private CancellationTokenSource? _shareToastCts;
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -140,6 +163,47 @@
             _savedName = false;
         }
         finally { _savingName = false; }
+    }
+
+    private async Task ShareApp()
+    {
+        ShareOutcome outcome = await Share.ShareOrCopyAsync(
+            title: "Hurrah.tv",
+            text: "One smart watchlist across all your streaming services.",
+            relativePath: "/");
+        string? notice = outcome switch
+        {
+            ShareOutcome.Copied      => "Link copied",
+            ShareOutcome.Unsupported => "Couldn't share — copy this page's URL",
+            ShareOutcome.Error       => "Couldn't share — try again",
+            _                        => null
+        };
+        if (notice is not null) await ShowShareToastAsync(notice);
+    }
+
+    private async Task ShowShareToastAsync(string message)
+    {
+        if (_disposed) return;
+        try { _shareToastCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _shareToastCts?.Dispose();
+        CancellationTokenSource cts = new();
+        _shareToastCts = cts;
+        _shareNotice = message;
+        StateHasChanged();
+        try { await Task.Delay(2500, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (cts == _shareToastCts && !_disposed)
+        {
+            _shareNotice = null;
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _shareToastCts?.Cancel();
+        _shareToastCts?.Dispose();
     }
 
     private async Task Save()

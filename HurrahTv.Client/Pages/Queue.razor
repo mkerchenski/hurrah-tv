@@ -5,12 +5,22 @@
 @inject MediaFilterService MediaFilter
 @inject UserServicesCache UserServicesCache
 @inject QuickActionService QuickActionSvc
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
 <div class="flex items-center justify-between mb-4 md:mb-6">
     <h1 class="text-xl md:text-2xl font-bold">My List</h1>
+    @if (HasActiveFilters)
+    {
+        <button @onclick="ClearAllFilters"
+                class="flex items-center gap-1 px-2.5 py-1 rounded-full bg-surface-50 hover:bg-surface-100 text-gray-400 hover:text-white text-xs transition-colors"
+                aria-label="Clear all filters">
+            <span class="icon-[heroicons--x-mark] w-3 h-3"></span>
+            Clear filters
+        </button>
+    }
 </div>
 
 @if (!_loading && _items.Count > 0)
@@ -220,6 +230,13 @@ else
 }
 
 @code {
+    // URL-bound filter params. The URL is the source of truth — no localStorage.
+    // _activeTab / _selectedServiceId / MediaFilter.MediaType mirror these; round-tripping
+    // happens via Nav.NavigateTo(..., replace: true) → SetParametersAsync → OnParametersSet.
+    [Parameter, SupplyParameterFromQuery(Name = "status")] public string? StatusQ { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "service")] public int? ServiceQ { get; set; }
+    [Parameter, SupplyParameterFromQuery(Name = "media")] public string? MediaQ { get; set; }
+
     private List<QueueItem> _items = [];
     private List<QueueItem> _visibleItems = [];
     private Dictionary<string, int> _statusCounts = [];
@@ -228,6 +245,7 @@ else
     private IReadOnlyList<int> _userServices = [];
     private int _totalCount;
     private bool _loading = true;
+    private bool _initialized;
     private string _activeTab = "all";
     private int? _expandedStatusId;
     private int? _selectedServiceId;
@@ -290,25 +308,153 @@ else
         _loading = true;
         Task<IReadOnlyList<int>> servicesTask = UserServicesCache.GetAsync();
         Task<List<QueueItem>> queueTask = Api.GetQueueAsync();
-        await Task.WhenAll(servicesTask, queueTask);
+        // await MediaFilter hydration before applying URL — otherwise a late settings-load
+        // can clobber a URL-supplied ?media value (URL wins for explicit-link navigations)
+        Task initTask = MediaFilter.InitializeAsync();
+        await Task.WhenAll(servicesTask, queueTask, initTask);
         _userServices = servicesTask.Result;
         _items = queueTask.Result;
         _loading = false;
         UpdateItemServices();
+        ApplyQueryToState();
+        _initialized = true;
         UpdateCounts();
         RecomputeVisible();
     }
 
-    private void OnMediaFilterChanged() => InvokeAsync(() => { UpdateCounts(); RecomputeVisible(); StateHasChanged(); });
+    protected override void OnParametersSet()
+    {
+        // OnInitializedAsync handles the first reconciliation (and gates _initialized so we
+        // don't fight MediaFilter hydration). After that, URL navigations land here.
+        if (!_initialized) return;
+        if (ApplyQueryToState())
+        {
+            UpdateCounts();
+            RecomputeVisible();
+        }
+    }
+
+    // returns true if any axis other than MediaFilter changed (media changes recompute
+    // via OnMediaFilterChanged, so callers don't need to recompute for that case)
+    private bool ApplyQueryToState()
+    {
+        string newTab = NormalizeStatus(StatusQ);
+        int? newService = NormalizeService(ServiceQ);
+        string? newMedia = NormalizeMedia(MediaQ);
+
+        bool changed = false;
+        if (_activeTab != newTab)
+        {
+            _activeTab = newTab;
+            _expandedStatusId = null;
+            _grabbedItemId = null;
+            changed = true;
+        }
+        if (_selectedServiceId != newService)
+        {
+            _selectedServiceId = newService;
+            _expandedStatusId = null;
+            changed = true;
+        }
+        // only override the global MediaFilter when the URL has an explicit valid value —
+        // missing/garbage ?media must NOT reset a user's persisted MediaType preference
+        if (newMedia is not null && MediaFilter.MediaType != newMedia)
+        {
+            MediaFilter.Set(newMedia, persist: false);
+        }
+        return changed;
+    }
+
+    private static string NormalizeStatus(string? key)
+    {
+        if (string.IsNullOrEmpty(key)) return "all";
+        foreach ((string k, _) in _tabs)
+        {
+            if (string.Equals(k, key, StringComparison.OrdinalIgnoreCase)) return k;
+        }
+        return "all";
+    }
+
+    private static int? NormalizeService(int? id) =>
+        id is int v && StreamingService.ById.ContainsKey(v) ? v : null;
+
+    // returns null for missing/invalid so ApplyQueryToState leaves the global filter alone
+    private static string? NormalizeMedia(string? type)
+    {
+        string normalized = (type ?? "").Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            MediaTypes.Tv    => MediaTypes.Tv,
+            MediaTypes.Movie => MediaTypes.Movie,
+            MediaTypes.All   => MediaTypes.All,
+            _                => null
+        };
+    }
+
+    private bool HasActiveFilters =>
+        _activeTab != "all" || _selectedServiceId is not null || MediaFilter.MediaType != MediaTypes.All;
+
+    private void UpdateUrl()
+    {
+        Dictionary<string, object?> qs = new()
+        {
+            ["status"] = _activeTab == "all" ? null : _activeTab,
+            ["service"] = _selectedServiceId,
+            ["media"] = MediaFilter.MediaType == MediaTypes.All ? null : MediaFilter.MediaType,
+        };
+        string newUri = Nav.GetUriWithQueryParameters(qs);
+        if (newUri != Nav.Uri)
+        {
+            Nav.NavigateTo(newUri, replace: true);
+        }
+    }
+
+    private void ClearAllFilters()
+    {
+        bool tabOrServiceChanged = false;
+        if (_activeTab != "all") { _activeTab = "all"; tabOrServiceChanged = true; }
+        if (_selectedServiceId is not null) { _selectedServiceId = null; tabOrServiceChanged = true; }
+        bool mediaChanged = MediaFilter.MediaType != MediaTypes.All;
+
+        if (!tabOrServiceChanged && !mediaChanged) return;
+
+        _expandedStatusId = null;
+        _grabbedItemId = null;
+
+        if (mediaChanged)
+        {
+            // OnMediaFilterChanged will recompute counts/visible items and call UpdateUrl
+            // after Set fires OnChanged — don't double-fire the same trio synchronously.
+            MediaFilter.Set(MediaTypes.All, persist: false);
+        }
+        else
+        {
+            UpdateCounts();
+            RecomputeVisible();
+            UpdateUrl();
+        }
+    }
+
+    private void OnMediaFilterChanged() => InvokeAsync(() =>
+    {
+        UpdateCounts();
+        RecomputeVisible();
+        if (_initialized) UpdateUrl();
+        StateHasChanged();
+    });
 
     private void OnServicesChanged()
     {
         _userServices = UserServicesCache.TryGetCached();
         // selected service may have just been removed from the user's active set
+        int? priorService = _selectedServiceId;
         if (_selectedServiceId is int svcId && !_userServices.Contains(svcId)) _selectedServiceId = null;
         UpdateItemServices();
         UpdateCounts();
         RecomputeVisible();
+        // if we just nulled out a now-invalid service, strip ?service=N from the URL
+        // so it doesn't snap back on the next OnParametersSet
+        if (_initialized && priorService != _selectedServiceId) UpdateUrl();
         InvokeAsync(StateHasChanged);
     }
 
@@ -329,6 +475,7 @@ else
         _expandedStatusId = null;
         _grabbedItemId = null;
         RecomputeVisible();
+        UpdateUrl();
     }
 
     private void UpdateItemServices()
@@ -379,6 +526,7 @@ else
         _expandedStatusId = null;
         UpdateCounts();
         RecomputeVisible();
+        UpdateUrl();
     }
 
     private async Task SelectStatus(QueueItem item, QueueStatus status)

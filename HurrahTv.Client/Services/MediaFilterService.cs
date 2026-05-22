@@ -38,12 +38,16 @@ public class MediaFilterService(ApiClient api)
         }
     }
 
-    public void Set(string type)
+    // persist=false is for URL-driven changes (e.g. Queue's ?media= deep links and the
+    // page-local Clear filters affordance) — the user didn't explicitly opt into changing
+    // their saved global preference, so we mutate the in-memory filter without writing
+    // through to UserSettings. MainLayout's nav toggle uses the default persist=true.
+    public void Set(string type, bool persist = true)
     {
         if (MediaType == type) return;
         MediaType = type;
         OnChanged?.Invoke();
-        _ = PersistAsync(type);
+        if (persist) _ = PersistAsync(type);
     }
 
     private async Task PersistAsync(string type)

@@ -71,10 +71,16 @@ jobs:
       - name: Stamp build version into appsettings
         run: |
           SHORT_SHA=${GITHUB_SHA::8}
-          # merge BuildVersion into existing appsettings.json
+          # merge BuildVersion into the API's appsettings.json
           jq --arg v "$SHORT_SHA" '. + {BuildVersion: $v}' api-output/appsettings.json > api-output/appsettings.tmp \
             && mv api-output/appsettings.tmp api-output/appsettings.json \
-            || { rm -f api-output/appsettings.tmp; echo "Failed to stamp build version"; exit 1; }
+            || { rm -f api-output/appsettings.tmp; echo "Failed to stamp api BuildVersion"; exit 1; }
+          # also stamp into the WASM client's appsettings.json — IConfiguration on the
+          # client reads from wwwroot/appsettings.json, not the API's, so without this
+          # step ShareService's cache-bust import (?v={sha}) silently no-ops in prod.
+          jq --arg v "$SHORT_SHA" '. + {BuildVersion: $v}' api-output/wwwroot/appsettings.json > api-output/wwwroot/appsettings.tmp \
+            && mv api-output/wwwroot/appsettings.tmp api-output/wwwroot/appsettings.json \
+            || { rm -f api-output/wwwroot/appsettings.tmp; echo "Failed to stamp client BuildVersion"; exit 1; }
 
       - name: Remove dev config from client output
         run: rm -f api-output/wwwroot/appsettings.Development.json

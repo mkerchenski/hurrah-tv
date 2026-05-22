@@ -2,9 +2,9 @@
 @attribute [Authorize]
 @implements IDisposable
 @inject ApiClient Api
-@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject QuickActionService QuickActionSvc
+@inject ShareService Share
 
 <PageTitle>@(_details?.Title ?? "Loading...") - Hurrah.tv</PageTitle>
 
@@ -28,16 +28,29 @@ else if (_details != null)
                     @onclick="GoBack" title="Go back">
                 <span class="icon-[heroicons--arrow-left] w-5 h-5"></span>
             </button>
+            <!-- share button mirrors the back button on the right -->
+            <button class="absolute top-3 right-3 md:top-4 md:right-4 bg-black/50 hover:bg-black/70 text-white
+                           rounded-full w-10 h-10 flex items-center justify-center transition-colors backdrop-blur-sm"
+                    @onclick="ShareDetails" title="Share" aria-label="Share">
+                <span class="icon-[heroicons--arrow-up-tray] w-5 h-5"></span>
+            </button>
         </div>
     }
     else
     {
-        <!-- back button when no backdrop -->
-        <button class="mb-3 text-gray-400 hover:text-white flex items-center gap-1.5 text-sm transition-colors"
-                @onclick="GoBack">
-            <span class="icon-[heroicons--arrow-left] w-4 h-4"></span>
-            Back
-        </button>
+        <!-- back + share when no backdrop -->
+        <div class="flex items-center justify-between mb-3">
+            <button class="text-gray-400 hover:text-white flex items-center gap-1.5 text-sm transition-colors"
+                    @onclick="GoBack">
+                <span class="icon-[heroicons--arrow-left] w-4 h-4"></span>
+                Back
+            </button>
+            <button class="text-gray-400 hover:text-white flex items-center gap-1.5 text-sm transition-colors"
+                    @onclick="ShareDetails" aria-label="Share">
+                <span class="icon-[heroicons--arrow-up-tray] w-4 h-4"></span>
+                Share
+            </button>
+        </div>
     }
 
     <div class="@(!string.IsNullOrEmpty(_details.BackdropUrl()) ? "-mt-24 md:-mt-32 relative z-10" : "") fade-in">
@@ -83,6 +96,14 @@ else if (_details != null)
 else
 {
     <div class="text-center py-20 text-gray-500">Content not found.</div>
+}
+
+@if (!string.IsNullOrEmpty(_shareNotice))
+{
+    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-surface-200 text-white px-4 py-2 rounded-lg shadow-lg fade-in z-50 text-sm"
+         role="status" aria-live="polite">
+        @_shareNotice
+    </div>
 }
 
 @{
@@ -297,6 +318,8 @@ else
     private bool _matchLoading;
     private bool _disposed;
     private CancellationTokenSource? _matchCts;
+    private string? _shareNotice;
+    private CancellationTokenSource? _shareToastCts;
 
     private static readonly (QueueStatus status, string label, string icon)[] _listOptions =
     [
@@ -311,6 +334,8 @@ else
         _disposed = true;
         _matchCts?.Cancel();
         _matchCts?.Dispose();
+        _shareToastCts?.Cancel();
+        _shareToastCts?.Dispose();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -349,6 +374,41 @@ else
     }
 
     private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
+
+    private async Task ShareDetails()
+    {
+        if (_details is null) return;
+        string text = !string.IsNullOrEmpty(_details.Tagline) ? _details.Tagline! : "Check this out on Hurrah.tv";
+        // ShareService prepends the canonical production origin so the link is correct
+        // regardless of whether the user is on localhost, staging.hurrah.tv, or prod
+        ShareOutcome outcome = await Share.ShareOrCopyAsync(_details.Title, text, $"/details/{MediaType}/{TmdbId}");
+        string? notice = outcome switch
+        {
+            ShareOutcome.Copied      => "Link copied",
+            ShareOutcome.Unsupported => "Couldn't share — copy the URL from the address bar",
+            ShareOutcome.Error       => "Couldn't share — try again",
+            _                        => null // shared / cancelled: stay silent
+        };
+        if (notice is not null) await ShowShareToastAsync(notice);
+    }
+
+    private async Task ShowShareToastAsync(string message)
+    {
+        if (_disposed) return;
+        try { _shareToastCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _shareToastCts?.Dispose();
+        CancellationTokenSource cts = new();
+        _shareToastCts = cts;
+        _shareNotice = message;
+        StateHasChanged();
+        try { await Task.Delay(2500, cts.Token); }
+        catch (TaskCanceledException) { return; }
+        if (cts == _shareToastCts && !_disposed)
+        {
+            _shareNotice = null;
+            StateHasChanged();
+        }
+    }
 
     private async Task SetListStatus(QueueStatus status)
     {
