@@ -170,7 +170,7 @@ There's no `priority:*` scheme — `phase:*` does the work. There's no `effort:*
 Surfaced by: /<skill> on YYYY-MM-DD
 ```
 
-**Closing the loop:** commit messages use `closes #NN` / `fixes #NN` syntax — GitHub auto-closes the issue on merge to main. Don't manually close issues that the merge will close for you.
+**Closing the loop:** put `Closes #NN` / `Fixes #NN` keywords in the **PR description** (one per line at the bottom) — GitHub auto-closes the issue on merge to main. Squash-merge discards individual commit messages and replaces them with the PR title + body, so closes-keywords in commit bodies alone won't survive — the PR description is the canonical place. Don't manually close issues that the merge will close for you.
 
 ## Plans Directory
 
