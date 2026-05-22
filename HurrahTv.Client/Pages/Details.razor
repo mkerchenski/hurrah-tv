@@ -393,7 +393,8 @@ else
 
     private async Task ShowShareToastAsync(string message)
     {
-        _shareToastCts?.Cancel();
+        if (_disposed) return;
+        try { _shareToastCts?.Cancel(); } catch (ObjectDisposedException) { }
         _shareToastCts?.Dispose();
         CancellationTokenSource cts = new();
         _shareToastCts = cts;

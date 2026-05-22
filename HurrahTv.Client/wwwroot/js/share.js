@@ -10,9 +10,12 @@ export async function shareOrCopy({ title, text, url }) {
             await navigator.share(data);
             return { outcome: 'shared' };
         } catch (e) {
-            // user dismissed the share sheet — not an error, just no-op
-            if (e && e.name === 'AbortError') return { outcome: 'cancelled' };
-            // any other share failure (permission, abort race) falls through to clipboard
+            // any share rejection means the user already saw the sheet (or the API
+            // refused mid-flight on iOS Safari with NotAllowedError, etc.) — DON'T
+            // surprise them by silently overwriting their clipboard. Treat every
+            // share-API rejection as cancelled. Clipboard fallback only kicks in
+            // when navigator.share isn't present at all (e.g. desktop Chrome).
+            return { outcome: 'cancelled' };
         }
     }
     if (navigator.clipboard && navigator.clipboard.writeText) {

@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
 
 namespace HurrahTv.Client.Services;
@@ -23,10 +24,8 @@ public sealed class ShareService(IJSRuntime js) : IAsyncDisposable
                 _             => ShareOutcome.Error
             };
         }
-        catch
-        {
-            return ShareOutcome.Error;
-        }
+        catch (TaskCanceledException) { return ShareOutcome.Cancelled; }
+        catch { return ShareOutcome.Error; }
     }
 
     public async ValueTask DisposeAsync()
@@ -38,7 +37,10 @@ public sealed class ShareService(IJSRuntime js) : IAsyncDisposable
         }
     }
 
-    private sealed record ShareResult(string Outcome);
+    // System.Text.Json's Web defaults handle camelCase today, but pinning the name
+    // with the attribute removes the coupling — one [JsonSerializerOptions] change
+    // elsewhere can't quietly break every share by falling through to ShareOutcome.Error
+    private sealed record ShareResult([property: JsonPropertyName("outcome")] string Outcome);
 }
 
 public enum ShareOutcome { Shared, Copied, Cancelled, Unsupported, Error }
