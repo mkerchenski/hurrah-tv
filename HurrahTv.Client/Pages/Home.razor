@@ -735,7 +735,7 @@ else
                 Overview: null,
                 TmdbId: watching.TmdbId,
                 MediaType: watching.MediaType,
-                PrimaryLabel: "Resume",
+                PrimaryLabel: watching.MediaType == MediaTypes.Tv ? "Go to show" : "Go to movie",
                 PrimaryAction: HomeHero.HeroAction.Resume);
         }
 
