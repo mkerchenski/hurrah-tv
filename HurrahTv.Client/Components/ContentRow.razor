@@ -1,5 +1,5 @@
 @inject ApiClient Api
-@inject IJSRuntime JS
+@inject ScrollService ScrollSvc
 
 @if (!ShouldHide)
 {
@@ -106,6 +106,6 @@
 
     private async Task Scroll(int direction)
     {
-        await JS.InvokeVoidAsync("hurrahScrollRow", _scrollContainer, direction * 480);
+        await ScrollSvc.ScrollRowAsync(_scrollContainer, direction * 480);
     }
 }

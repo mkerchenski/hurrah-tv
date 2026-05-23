@@ -6,7 +6,7 @@
 @inject UserServicesCache UserServicesCache
 @inject QuickActionService QuickActionSvc
 @inject NavigationManager Nav
-@inject IJSRuntime JS
+@inject SortableService SortableSvc
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -577,8 +577,7 @@ else
             {
                 // limit draggable to data-item-id rows so the aria-live region (a sibling
                 // direct child of _listEl) doesn't shift evt.oldIndex/newIndex by 1
-                _sortableHandle = await JS.InvokeAsync<IJSObjectReference>(
-                    "hurrahSortableInit", _listEl, _dotNetRef, nameof(OnReorder),
+                _sortableHandle = await SortableSvc.InitAsync(_listEl, _dotNetRef, nameof(OnReorder),
                     new { draggable = "[data-item-id]" });
             }
             catch
@@ -599,7 +598,7 @@ else
     {
         if (_sortableHandle is not null)
         {
-            try { await JS.InvokeVoidAsync("hurrahSortableDispose", _sortableHandle); } catch { }
+            await SortableSvc.DisposeHandleAsync(_sortableHandle);
             try { await _sortableHandle.DisposeAsync(); } catch { }
             _sortableHandle = null;
         }
@@ -705,6 +704,22 @@ else
         {
             bool apiOk = await Api.UpdateQueuePositionAsync(dragged.Id, targetPos);
             shouldRevert = !apiOk;
+
+            // refresh in-memory Position values from server. The local Remove+Insert
+            // above moved the QueueItem references into the new order, but each item's
+            // Position property still holds the value from the initial GET. The next
+            // drag would read those stale values into targetPos and ship a no-op PUT
+            // (newPosition == oldPosition on the server). Pins #101 client-side.
+            if (apiOk && version == _reorderVersion)
+            {
+                List<QueueItem> fresh = await Api.GetQueueAsync();
+                if (version == _reorderVersion)
+                {
+                    _items = fresh;
+                    UpdateCounts();
+                    RecomputeVisible();
+                }
+            }
         }
         catch
         {

@@ -5,6 +5,7 @@
 @inject IJSRuntime JS
 @inject QuickActionService QuickActionSvc
 @inject ShareService Share
+@inject ToastService Toast
 
 <PageTitle>@(_details?.Title ?? "Loading...") - Hurrah.tv</PageTitle>
 
@@ -96,14 +97,6 @@ else if (_details != null)
 else
 {
     <div class="text-center py-20 text-gray-500">Content not found.</div>
-}
-
-@if (!string.IsNullOrEmpty(_shareNotice))
-{
-    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-surface-200 text-white px-4 py-2 rounded-lg shadow-lg fade-in z-50 text-sm"
-         role="status" aria-live="polite">
-        @_shareNotice
-    </div>
 }
 
 @{
@@ -318,8 +311,6 @@ else
     private bool _matchLoading;
     private bool _disposed;
     private CancellationTokenSource? _matchCts;
-    private string? _shareNotice;
-    private CancellationTokenSource? _shareToastCts;
 
     private static readonly (QueueStatus status, string label, string icon)[] _listOptions =
     [
@@ -334,8 +325,6 @@ else
         _disposed = true;
         _matchCts?.Cancel();
         _matchCts?.Dispose();
-        _shareToastCts?.Cancel();
-        _shareToastCts?.Dispose();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -389,25 +378,7 @@ else
             ShareOutcome.Error       => "Couldn't share — try again",
             _                        => null // shared / cancelled: stay silent
         };
-        if (notice is not null) await ShowShareToastAsync(notice);
-    }
-
-    private async Task ShowShareToastAsync(string message)
-    {
-        if (_disposed) return;
-        try { _shareToastCts?.Cancel(); } catch (ObjectDisposedException) { }
-        _shareToastCts?.Dispose();
-        CancellationTokenSource cts = new();
-        _shareToastCts = cts;
-        _shareNotice = message;
-        StateHasChanged();
-        try { await Task.Delay(2500, cts.Token); }
-        catch (TaskCanceledException) { return; }
-        if (cts == _shareToastCts && !_disposed)
-        {
-            _shareNotice = null;
-            StateHasChanged();
-        }
+        if (notice is not null) _ = Toast.ShowAsync(notice);
     }
 
     private async Task SetListStatus(QueueStatus status)

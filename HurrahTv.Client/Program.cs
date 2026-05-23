@@ -31,6 +31,16 @@ builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddScoped<MediaFilterService>();
 builder.Services.AddScoped<ShareService>();
+// Singleton — explicit per #97 AC and matches the QuickActionService event-bus pattern.
+// In WASM scoped == singleton at runtime, but the explicit lifetime documents the intent
+// and avoids DI-scope-validator surprise if the project ever moves to Blazor Server.
+builder.Services.AddSingleton<ToastService>();
+builder.Services.AddScoped<ScrollService>();
+builder.Services.AddScoped<InstallBannerService>();
+builder.Services.AddScoped<VersionService>();
+builder.Services.AddScoped<LongPressService>();
+builder.Services.AddScoped<SortableService>();
+builder.Services.AddScoped<TitleService>();
 // singleton — matches QuickActionService it subscribes to; one in-memory cache per app session
 builder.Services.AddSingleton<CurationCache>();
 

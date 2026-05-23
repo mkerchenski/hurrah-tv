@@ -1,4 +1,4 @@
-@inject IJSRuntime JS
+@inject InstallBannerService InstallSvc
 
 @if (_show)
 {
@@ -24,7 +24,7 @@
 
         try
         {
-            bool shouldShow = await JS.InvokeAsync<bool>("hurrahShouldShowInstallBanner");
+            bool shouldShow = await InstallSvc.ShouldShowAsync();
             if (shouldShow)
             {
                 _show = true;
@@ -37,7 +37,7 @@
     private async Task Dismiss()
     {
         _show = false;
-        try { await JS.InvokeVoidAsync("hurrahDismissInstallBanner"); }
+        try { await InstallSvc.DismissAsync(); }
         catch (JSException) { }
     }
 }

@@ -1,0 +1,18 @@
+@implements IDisposable
+@inject ToastService Toast
+
+@if (!string.IsNullOrEmpty(Toast.Message))
+{
+    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-surface-200 text-white px-4 py-2 rounded-lg shadow-lg fade-in z-50 text-sm"
+         role="status" aria-live="polite">
+        @Toast.Message
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Toast.OnChanged += OnToastChanged;
+
+    private void OnToastChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Toast.OnChanged -= OnToastChanged;
+}

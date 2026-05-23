@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject NavigationManager Nav
-@inject IJSRuntime JS
+@inject ScrollService ScrollSvc
+@inject LongPressService LongPressSvc
 @inject UserServicesCache UserServicesCache
 
 <section class="mb-6 md:mb-8">
@@ -150,19 +151,21 @@
 
     private async Task Scroll(int direction)
     {
-        await JS.InvokeVoidAsync("hurrahScrollRow", _scrollContainer, direction * 480);
+        await ScrollSvc.ScrollRowAsync(_scrollContainer, direction * 480);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         _dotNetRef ??= DotNetObjectReference.Create(this);
 
-        // clean up handles for items no longer in the list
+        // clean up handles for items no longer in the list — JS-side cleanup then dispose
+        // the IJSObjectReference so its managed proxy is released
         List<int> staleIds = [.. _longPressHandles.Keys.Where(id => !_cardRefs.ContainsKey(id))];
         foreach (int id in staleIds)
         {
-            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", _longPressHandles[id]); }
-            catch { }
+            IJSObjectReference handle = _longPressHandles[id];
+            await LongPressSvc.DetachAsync(handle);
+            try { await handle.DisposeAsync(); } catch { }
             _longPressHandles.Remove(id);
         }
 
@@ -172,9 +175,8 @@
             if (_longPressHandles.ContainsKey(kvp.Key)) continue;
             try
             {
-                IJSObjectReference handle = await JS.InvokeAsync<IJSObjectReference>(
-                    "hurrahLongPress", kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
-                _longPressHandles[kvp.Key] = handle;
+                IJSObjectReference? handle = await LongPressSvc.AttachAsync(kvp.Value, _dotNetRef, nameof(OnLongPress), kvp.Key);
+                if (handle is not null) _longPressHandles[kvp.Key] = handle;
             }
             catch (JSException) { }
         }
@@ -193,8 +195,8 @@
         UserServicesCache.Changed -= OnServicesChanged;
         foreach (IJSObjectReference handle in _longPressHandles.Values)
         {
-            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", handle); }
-            catch { }
+            await LongPressSvc.DetachAsync(handle);
+            try { await handle.DisposeAsync(); } catch { }
         }
         _longPressHandles.Clear();
         _dotNetRef?.Dispose();

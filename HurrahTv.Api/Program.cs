@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using HurrahTv.Api.Authorization;
 using HurrahTv.Api.Endpoints;
+using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -68,6 +69,17 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Order matters here: this middleware MUST stay after UseAuthentication/UseAuthorization
+// and before UseBlazorFrameworkFiles / MapFallbackToFile.
+//   - After auth: so HttpContext.User is populated if we ever need it, and so expired-token
+//     real-user traffic still goes through the auth pipeline normally (bots have no JWT and
+//     short-circuit before any [Authorize] endpoint is hit, but a future endpoint move could
+//     trip on this if the middleware were promoted above auth).
+//   - Before fallback: so /details/{tv|movie}/{id} bot requests are intercepted before
+//     MapFallbackToFile serves index.html.
+// See issue #98. Do not move above UseAuthorization without re-auditing the auth implications.
+app.UseMiddleware<OgPreviewMiddleware>();
 
 // serve Blazor WASM client from wwwroot (handles all MIME types, compression, _framework)
 app.UseBlazorFrameworkFiles();

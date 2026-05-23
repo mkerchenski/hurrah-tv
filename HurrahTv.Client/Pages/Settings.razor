@@ -1,11 +1,11 @@
 @page "/settings"
 @attribute [Authorize]
-@implements IDisposable
 @inject ApiClient Api
 @inject UserServicesCache UserServicesCache
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
 @inject ShareService Share
+@inject ToastService Toast
 
 <PageTitle>Settings - Hurrah.tv</PageTitle>
 
@@ -59,20 +59,6 @@
         }
     </div>
 
-    @if (_loaded)
-    {
-        <div class="flex items-center gap-3 mb-4 md:mb-6">
-            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors disabled:opacity-40"
-                    @onclick="Save" disabled="@_saving">
-                Save
-            </button>
-            @if (_saved)
-            {
-                <span class="text-green-400 text-sm fade-in">Saved!</span>
-            }
-        </div>
-    }
-
     <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
         <h2 class="text-lg font-semibold mb-2">Content Filters</h2>
         <label class="flex items-center gap-3 cursor-pointer">
@@ -87,6 +73,20 @@
             </div>
         </label>
     </div>
+
+    @if (_loaded)
+    {
+        <div class="flex items-center gap-3 mb-4 md:mb-6">
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2 rounded-lg transition-colors disabled:opacity-40"
+                    @onclick="Save" disabled="@_saving">
+                Save
+            </button>
+            @if (_saved)
+            {
+                <span class="text-green-400 text-sm fade-in">Saved!</span>
+            }
+        </div>
+    }
 
     <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
         <h2 class="text-lg font-semibold mb-2">Tell a friend</h2>
@@ -107,14 +107,6 @@
     </div>
 </div>
 
-@if (!string.IsNullOrEmpty(_shareNotice))
-{
-    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 bg-surface-200 text-white px-4 py-2 rounded-lg shadow-lg fade-in z-50 text-sm"
-         role="status" aria-live="polite">
-        @_shareNotice
-    </div>
-}
-
 @code {
     private List<int> _selectedServices = [];
     private List<int> _selectedGenres = [];
@@ -125,9 +117,6 @@
     private bool _saved;
     private bool _savingName;
     private bool _savedName;
-    private string? _shareNotice;
-    private CancellationTokenSource? _shareToastCts;
-    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
@@ -178,32 +167,7 @@
             ShareOutcome.Error       => "Couldn't share — try again",
             _                        => null
         };
-        if (notice is not null) await ShowShareToastAsync(notice);
-    }
-
-    private async Task ShowShareToastAsync(string message)
-    {
-        if (_disposed) return;
-        try { _shareToastCts?.Cancel(); } catch (ObjectDisposedException) { }
-        _shareToastCts?.Dispose();
-        CancellationTokenSource cts = new();
-        _shareToastCts = cts;
-        _shareNotice = message;
-        StateHasChanged();
-        try { await Task.Delay(2500, cts.Token); }
-        catch (TaskCanceledException) { return; }
-        if (cts == _shareToastCts && !_disposed)
-        {
-            _shareNotice = null;
-            StateHasChanged();
-        }
-    }
-
-    public void Dispose()
-    {
-        _disposed = true;
-        _shareToastCts?.Cancel();
-        _shareToastCts?.Dispose();
+        if (notice is not null) _ = Toast.ShowAsync(notice);
     }
 
     private async Task Save()

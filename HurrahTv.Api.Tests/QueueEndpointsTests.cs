@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
+using Dapper;
 using HurrahTv.Shared.Models;
+using Npgsql;
 
 namespace HurrahTv.Api.Tests;
 
@@ -121,6 +123,81 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
 
         QueueResponse? bList = await userB.GetFromJsonAsync<QueueResponse>("/api/queue");
         Assert.Single(bList!.Items);
+    }
+
+    // pins #101 — recency sort (LatestEpisodeDate) was clobbering manual drag-reorder
+    // on Want to Watch. The GetQueueAsync ORDER BY now branches on Status so Want-to-Watch
+    // uses Position as its only secondary key; other statuses keep the recency-aware sort.
+    [Fact]
+    public async Task WantToWatch_OrdersByPosition_RegardlessOfLatestEpisodeDate()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-reorder");
+
+        QueueItem first = (await PostAsync(client, NewQueueItem(tmdbId: 100, title: "Oldest air date")))!;
+        QueueItem second = (await PostAsync(client, NewQueueItem(tmdbId: 200, title: "Newest air date")))!;
+        QueueItem third = (await PostAsync(client, NewQueueItem(tmdbId: 300, title: "Middle air date")))!;
+
+        // stamp LatestEpisodeDate directly — there's no API to set it, the server normally
+        // populates it via TMDb refresh. The OLD ORDER BY would have ranked these by
+        // LatestEpisodeDate DESC, ignoring Position. We set them deliberately mismatched
+        // to Position so a regression to date-first sorting surfaces immediately.
+        using NpgsqlConnection db = new(fx.ConnectionString);
+        await db.OpenAsync();
+        DateTime now = DateTime.UtcNow;
+        object[] updates =
+        [
+            new { first.Id,  D = now.AddDays(-30) }, // oldest
+            new { second.Id, D = now.AddDays(-1) },  // newest
+            new { third.Id,  D = now.AddDays(-15) }, // middle
+        ];
+        await db.ExecuteAsync("UPDATE QueueItems SET LatestEpisodeDate = @D WHERE Id = @Id", updates);
+
+        // move 'second' to where 'first' lives
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{second.Id}/position", new PositionUpdate(first.Position))).StatusCode);
+
+        QueueResponse? afterFirst = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        int[] firstOrder = [.. afterFirst!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([200, 100, 300], firstOrder);
+    }
+
+    // pins the client-side regression that surfaced after #101's SQL fix: a second
+    // drag-reorder ships the FRESH target Position from the post-refetch GET, not a
+    // stale value cached from the initial GET. If the client ever stops refetching
+    // after a successful PUT, this test will catch it because the second PUT here
+    // uses freshly-fetched positions — same as the fixed client does.
+    [Fact]
+    public async Task TwoConsecutiveReorders_BothPersist_WhenClientRefetchesBetween()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-reorder-twice");
+
+        QueueItem a = (await PostAsync(client, NewQueueItem(tmdbId: 100, title: "A")))!;
+        QueueItem b = (await PostAsync(client, NewQueueItem(tmdbId: 200, title: "B")))!;
+        QueueItem c = (await PostAsync(client, NewQueueItem(tmdbId: 300, title: "C")))!;
+
+        // first reorder: move B to where A is → order becomes B, A, C
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{b.Id}/position", new PositionUpdate(a.Position))).StatusCode);
+
+        QueueResponse? afterFirst = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        int[] firstOrder = [.. afterFirst!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([200, 100, 300], firstOrder);
+
+        // second reorder: move A (now sitting at the post-refetch position of the middle slot)
+        // to the top — needs the FRESH Position of the current top item, not a.Position from
+        // the initial POST response which is now stale on the server.
+        int targetPos = afterFirst.Items[0].Position; // current top = B
+        int aFreshId = afterFirst.Items.First(i => i.TmdbId == 100).Id;
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{aFreshId}/position", new PositionUpdate(targetPos))).StatusCode);
+
+        QueueResponse? afterSecond = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        int[] secondOrder = [.. afterSecond!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([100, 200, 300], secondOrder);
+    }
+
+    private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)
+    {
+        HttpResponseMessage resp = await client.PostAsJsonAsync("/api/queue", payload);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadFromJsonAsync<QueueItem>();
     }
 
     private static QueueItem NewQueueItem(int tmdbId, string title) => new()
