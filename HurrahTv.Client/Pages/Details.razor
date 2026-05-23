@@ -94,7 +94,9 @@ else if (_details != null)
              YouTube embeds with autoplay=1 and play audio twice. Keep this single. -->
         @if (_details.Trailers.Count > 0)
         {
-            TrailerDto active = _details.Trailers[Math.Clamp(_activeTrailerIndex, 0, _details.Trailers.Count - 1)];
+            int activeIdx = Math.Clamp(_activeTrailerIndex, 0, _details.Trailers.Count - 1);
+            TrailerDto active = _details.Trailers[activeIdx];
+            string activeLabel = TrailerLabel(active, activeIdx);
             <div class="mb-4 md:mb-6">
                 <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Trailer</h3>
                 <div class="relative aspect-video bg-black rounded-lg overflow-hidden">
@@ -102,7 +104,7 @@ else if (_details != null)
                     {
                         <iframe @key="active.Key" class="w-full h-full"
                                 src="@($"https://www.youtube-nocookie.com/embed/{Uri.EscapeDataString(active.Key)}?autoplay=1&rel=0")"
-                                title="@(string.IsNullOrEmpty(active.Name) ? "Trailer" : active.Name)"
+                                title="@activeLabel"
                                 referrerpolicy="strict-origin-when-cross-origin"
                                 allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
                                 allowfullscreen></iframe>
@@ -110,7 +112,7 @@ else if (_details != null)
                     else
                     {
                         <button type="button" class="group block w-full h-full cursor-pointer"
-                                @onclick="PlayTrailer" aria-label="@($"Play {(string.IsNullOrEmpty(active.Name) ? "trailer" : active.Name)}")">
+                                @onclick="PlayTrailer" aria-label="@($"Play {activeLabel}")">
                             <img src="@($"https://img.youtube.com/vi/{Uri.EscapeDataString(active.Key)}/hqdefault.jpg")"
                                  alt="" loading="lazy"
                                  class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
@@ -121,7 +123,7 @@ else if (_details != null)
                                 </div>
                             </div>
                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-                                <p class="text-sm md:text-base text-white font-medium truncate">@active.Name</p>
+                                <p class="text-sm md:text-base text-white font-medium truncate">@activeLabel</p>
                             </div>
                         </button>
                     }
@@ -134,10 +136,11 @@ else if (_details != null)
                             int idx = i;
                             TrailerDto t = _details.Trailers[idx];
                             bool isActive = idx == _activeTrailerIndex;
-                            <button type="button" aria-pressed="@isActive"
+                            string chipLabel = TrailerLabel(t, idx);
+                            <button type="button" aria-pressed="@isActive" aria-label="@chipLabel"
                                     class="@($"flex-shrink-0 text-left text-xs px-3 py-1.5 rounded-md transition-colors border {(isActive ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:text-gray-200 hover:border-gray-500")}")"
                                     @onclick="() => SelectTrailer(idx)">
-                                @t.Name
+                                @chipLabel
                             </button>
                         }
                     </div>
@@ -427,10 +430,14 @@ else
 
     private void PlayTrailer() => _trailerPlaying = true;
 
-    // do NOT force _trailerPlaying — preserve user intent. If they hadn't pressed
-    // play yet, switching tabs shouldn't autoplay; if they had, @key on the iframe
-    // remounts under the existing user-gesture context and the new src autoplays.
+    // preserves user intent — switching tabs without prior play shouldn't autoplay;
+    // if play was already on, @key on the iframe remounts and the new src autoplays.
     private void SelectTrailer(int index) => _activeTrailerIndex = index;
+
+    // TMDb occasionally returns empty Name (older / less-curated records).
+    // "Trailer N" keeps chips, iframe title, and aria-labels non-blank.
+    private static string TrailerLabel(TrailerDto t, int index) =>
+        string.IsNullOrWhiteSpace(t.Name) ? $"Trailer {index + 1}" : t.Name;
 
     private async Task ShareDetails()
     {
