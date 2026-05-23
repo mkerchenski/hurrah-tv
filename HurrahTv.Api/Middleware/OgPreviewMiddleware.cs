@@ -64,8 +64,11 @@ public sealed class OgPreviewMiddleware(RequestDelegate next)
     {
         if (string.IsNullOrEmpty(userAgent)) return false;
         foreach (string marker in BotUaMarkers)
+        {
             if (userAgent.Contains(marker, StringComparison.OrdinalIgnoreCase))
                 return true;
+        }
+
         return false;
     }
 
