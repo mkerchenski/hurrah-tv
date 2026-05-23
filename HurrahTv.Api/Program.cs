@@ -70,10 +70,15 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
-// before the static-files pipeline so /details/{tv|movie}/{id} requests from
-// link-preview bots (Twitterbot, facebookexternalhit on iMessage, Slackbot, etc.)
-// get a per-show OG card instead of the site-wide WASM bootstrap. Real users
-// pass through untouched. See issue #98.
+// Order matters here: this middleware MUST stay after UseAuthentication/UseAuthorization
+// and before UseBlazorFrameworkFiles / MapFallbackToFile.
+//   - After auth: so HttpContext.User is populated if we ever need it, and so expired-token
+//     real-user traffic still goes through the auth pipeline normally (bots have no JWT and
+//     short-circuit before any [Authorize] endpoint is hit, but a future endpoint move could
+//     trip on this if the middleware were promoted above auth).
+//   - Before fallback: so /details/{tv|movie}/{id} bot requests are intercepted before
+//     MapFallbackToFile serves index.html.
+// See issue #98. Do not move above UseAuthorization without re-auditing the auth implications.
 app.UseMiddleware<OgPreviewMiddleware>();
 
 // serve Blazor WASM client from wwwroot (handles all MIME types, compression, _framework)

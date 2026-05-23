@@ -90,7 +90,12 @@ public sealed class ShareService(IJSRuntime js, IConfiguration config) : IAsyncD
 
     private async Task TryReleaseModuleAsync()
     {
-        await _initLock.WaitAsync();
+        // a JSDisconnectedException during/after DisposeAsync can re-enter this method
+        // from ShareOrCopyAsync's catch block; if DisposeAsync has already torn down the
+        // semaphore, WaitAsync will throw ObjectDisposedException — treat as "nothing to
+        // release, already disposed" and bail.
+        try { await _initLock.WaitAsync(); }
+        catch (ObjectDisposedException) { return; }
         try
         {
             if (_module is not null)
@@ -101,7 +106,7 @@ public sealed class ShareService(IJSRuntime js, IConfiguration config) : IAsyncD
         }
         finally
         {
-            _initLock.Release();
+            try { _initLock.Release(); } catch (ObjectDisposedException) { }
         }
     }
 

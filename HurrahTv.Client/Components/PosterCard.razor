@@ -216,6 +216,7 @@
         if (_longPressHandle != null)
         {
             await LongPressSvc.DetachAsync(_longPressHandle);
+            try { await _longPressHandle.DisposeAsync(); } catch { }
         }
         _dotNetRef?.Dispose();
     }

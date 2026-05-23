@@ -3,7 +3,7 @@
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
 @inject AuthenticationStateProvider AuthProvider
-@inject IJSRuntime JS
+@inject TitleService TitleSvc
 @inject IWebAssemblyHostEnvironment HostEnv
 @inject NavigationManager Nav
 @inject MediaFilterService MediaFilter
@@ -169,7 +169,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && _envPrefix != null)
-            await JS.InvokeVoidAsync("eval", $"if(!document.title.startsWith('{_envPrefix}')) document.title='{_envPrefix}'+document.title");
+            await TitleSvc.ApplyEnvPrefixAsync(_envPrefix);
     }
 
     private string TabClass(string href)

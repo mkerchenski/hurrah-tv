@@ -114,6 +114,26 @@ public sealed class LongPressService(IJSRuntime js, IConfiguration config) : IAs
     }
 }
 
+public sealed class TitleService(IJSRuntime js, IConfiguration config) : IAsyncDisposable
+{
+    private readonly string _path = JsModulePath.For("./js/title.js", config);
+    private IJSObjectReference? _module;
+
+    public async Task ApplyEnvPrefixAsync(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix)) return;
+        _module ??= await js.InvokeAsync<IJSObjectReference>("import", _path);
+        await _module.InvokeVoidAsync("applyEnvPrefix", prefix);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); } catch { }
+        _module = null;
+    }
+}
+
 public sealed class SortableService(IJSRuntime js, IConfiguration config) : IAsyncDisposable
 {
     private readonly string _path = JsModulePath.For("./js/sortable.js", config);

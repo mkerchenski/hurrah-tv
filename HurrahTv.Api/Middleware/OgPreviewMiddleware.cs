@@ -57,6 +57,10 @@ public sealed class OgPreviewMiddleware(RequestDelegate next)
 
         ctx.Response.ContentType = "text/html; charset=utf-8";
         ctx.Response.Headers.CacheControl = "public, max-age=21600"; // 6h, matches TmdbService cache
+        // Vary by UA — same URL serves OG HTML to bots and the WASM bootstrap to real users.
+        // Without this a shared cache (Cloudflare, App Service CDN) could pin the bot HTML and
+        // serve it to a Chrome user who'd see a bare meta-tag page instead of the app.
+        ctx.Response.Headers.Vary = "User-Agent";
         await ctx.Response.WriteAsync(RenderOgHtml(details));
     }
 
@@ -99,11 +103,14 @@ public sealed class OgPreviewMiddleware(RequestDelegate next)
         // prefer backdrop (1280×720, matches summary_large_image card aspect) and fall
         // back to poster if a show has no backdrop. Final fallback is the site-wide
         // icon so we never emit an empty og:image.
-        string image = !string.IsNullOrEmpty(details.BackdropPath)
+        // TMDb path strings are HtmlEncode'd before going into the attribute value —
+        // they're well-formed in practice (`/abc123.jpg`) but the field is untyped, so
+        // a value containing `"` would otherwise break out of the content="…" attribute.
+        string image = HtmlEncode(!string.IsNullOrEmpty(details.BackdropPath)
             ? $"https://image.tmdb.org/t/p/w1280{details.BackdropPath}"
             : !string.IsNullOrEmpty(details.PosterPath)
                 ? $"https://image.tmdb.org/t/p/w500{details.PosterPath}"
-                : $"{PublicBaseUrl}/icon-512.png";
+                : $"{PublicBaseUrl}/icon-512.png");
 
         StringBuilder sb = new(2048);
         sb.Append("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\" />");

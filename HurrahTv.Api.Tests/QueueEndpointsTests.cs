@@ -144,19 +144,20 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         using NpgsqlConnection db = new(fx.ConnectionString);
         await db.OpenAsync();
         DateTime now = DateTime.UtcNow;
-        await db.ExecuteAsync("UPDATE QueueItems SET LatestEpisodeDate = @D WHERE Id = @Id",
-            new[]
-            {
-                new { first.Id,  D = now.AddDays(-30) }, // oldest
-                new { second.Id, D = now.AddDays(-1) },  // newest
-                new { third.Id,  D = now.AddDays(-15) }, // middle
-            });
+        object[] updates =
+        [
+            new { first.Id,  D = now.AddDays(-30) }, // oldest
+            new { second.Id, D = now.AddDays(-1) },  // newest
+            new { third.Id,  D = now.AddDays(-15) }, // middle
+        ];
+        await db.ExecuteAsync("UPDATE QueueItems SET LatestEpisodeDate = @D WHERE Id = @Id", updates);
 
         // move 'second' to where 'first' lives
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{second.Id}/position", new PositionUpdate(first.Position))).StatusCode);
 
         QueueResponse? afterFirst = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
-        Assert.Equal([200, 100, 300], afterFirst!.Items.Select(i => i.TmdbId).ToArray());
+        int[] firstOrder = [.. afterFirst!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([200, 100, 300], firstOrder);
     }
 
     // pins the client-side regression that surfaced after #101's SQL fix: a second
@@ -177,7 +178,8 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{b.Id}/position", new PositionUpdate(a.Position))).StatusCode);
 
         QueueResponse? afterFirst = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
-        Assert.Equal([200, 100, 300], afterFirst!.Items.Select(i => i.TmdbId).ToArray());
+        int[] firstOrder = [.. afterFirst!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([200, 100, 300], firstOrder);
 
         // second reorder: move A (now sitting at the post-refetch position of the middle slot)
         // to the top — needs the FRESH Position of the current top item, not a.Position from
@@ -187,7 +189,8 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/queue/{aFreshId}/position", new PositionUpdate(targetPos))).StatusCode);
 
         QueueResponse? afterSecond = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
-        Assert.Equal([100, 200, 300], afterSecond!.Items.Select(i => i.TmdbId).ToArray());
+        int[] secondOrder = [.. afterSecond!.Items.Select(i => i.TmdbId)];
+        Assert.Equal([100, 200, 300], secondOrder);
     }
 
     private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)

@@ -158,11 +158,14 @@
     {
         _dotNetRef ??= DotNetObjectReference.Create(this);
 
-        // clean up handles for items no longer in the list
+        // clean up handles for items no longer in the list — JS-side cleanup then dispose
+        // the IJSObjectReference so its managed proxy is released
         List<int> staleIds = [.. _longPressHandles.Keys.Where(id => !_cardRefs.ContainsKey(id))];
         foreach (int id in staleIds)
         {
-            await LongPressSvc.DetachAsync(_longPressHandles[id]);
+            IJSObjectReference handle = _longPressHandles[id];
+            await LongPressSvc.DetachAsync(handle);
+            try { await handle.DisposeAsync(); } catch { }
             _longPressHandles.Remove(id);
         }
 
@@ -193,6 +196,7 @@
         foreach (IJSObjectReference handle in _longPressHandles.Values)
         {
             await LongPressSvc.DetachAsync(handle);
+            try { await handle.DisposeAsync(); } catch { }
         }
         _longPressHandles.Clear();
         _dotNetRef?.Dispose();
