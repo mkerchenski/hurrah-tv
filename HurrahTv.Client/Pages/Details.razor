@@ -88,6 +88,66 @@ else if (_details != null)
             </div>
         </div>
 
+        <!-- trailer: rendered ONCE outside RenderMetadata. RenderMetadata is called
+             twice (desktop right-column + mobile-below-poster) and CSS hides one,
+             but display:none does NOT unload iframes — duplicating would mount two
+             YouTube embeds with autoplay=1 and play audio twice. Keep this single. -->
+        @if (_details.Trailers.Count > 0)
+        {
+            int activeIdx = Math.Clamp(_activeTrailerIndex, 0, _details.Trailers.Count - 1);
+            TrailerDto active = _details.Trailers[activeIdx];
+            string activeLabel = TrailerLabel(active, activeIdx);
+            <div class="mb-4 md:mb-6">
+                <h3 class="text-sm font-semibold text-gray-400 mb-2 uppercase tracking-wider">Trailer</h3>
+                <div class="relative aspect-video bg-black rounded-lg overflow-hidden">
+                    @if (_trailerPlaying)
+                    {
+                        <iframe @key="active.Key" class="w-full h-full"
+                                src="@($"https://www.youtube-nocookie.com/embed/{Uri.EscapeDataString(active.Key)}?autoplay=1&rel=0")"
+                                title="@activeLabel"
+                                referrerpolicy="strict-origin-when-cross-origin"
+                                allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+                                allowfullscreen></iframe>
+                    }
+                    else
+                    {
+                        <button type="button" class="group block w-full h-full cursor-pointer"
+                                @onclick="PlayTrailer" aria-label="@($"Play {activeLabel}")">
+                            <img src="@($"https://img.youtube.com/vi/{Uri.EscapeDataString(active.Key)}/hqdefault.jpg")"
+                                 alt="" loading="lazy"
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                            <div class="absolute inset-0 flex items-center justify-center">
+                                <div class="bg-black/60 group-hover:bg-accent rounded-full w-16 h-16 md:w-20 md:h-20
+                                            flex items-center justify-center transition-colors shadow-2xl">
+                                    <span class="icon-[heroicons--play-solid] w-8 h-8 md:w-10 md:h-10 text-white ml-1"></span>
+                                </div>
+                            </div>
+                            <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+                                <p class="text-sm md:text-base text-white font-medium truncate">@activeLabel</p>
+                            </div>
+                        </button>
+                    }
+                </div>
+                @if (_details.Trailers.Count > 1)
+                {
+                    <div class="flex gap-2 mt-2 overflow-x-auto pb-1">
+                        @for (int i = 0; i < _details.Trailers.Count; i++)
+                        {
+                            int idx = i;
+                            TrailerDto t = _details.Trailers[idx];
+                            bool isActive = idx == _activeTrailerIndex;
+                            string chipLabel = TrailerLabel(t, idx);
+                            <button type="button" aria-pressed="@isActive" aria-label="@chipLabel"
+                                    class="@($"flex-shrink-0 text-left text-xs px-3 py-1.5 rounded-md transition-colors border {(isActive ? "border-accent bg-accent/20 text-white" : "border-surface-200 bg-surface-50 text-gray-400 hover:text-gray-200 hover:border-gray-500")}")"
+                                    @onclick="() => SelectTrailer(idx)">
+                                @chipLabel
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         <!-- mobile: metadata below poster -->
         <div class="md:hidden">
             @{ RenderMetadata(); }
@@ -311,6 +371,8 @@ else
     private bool _matchLoading;
     private bool _disposed;
     private CancellationTokenSource? _matchCts;
+    private int _activeTrailerIndex;
+    private bool _trailerPlaying;
 
     private static readonly (QueueStatus status, string label, string icon)[] _listOptions =
     [
@@ -335,6 +397,8 @@ else
         _queueItem = null;
         _showMatch = null;
         _matchLoading = false;
+        _activeTrailerIndex = 0;
+        _trailerPlaying = false;
         _loading = true;
         StateHasChanged();
 
@@ -363,6 +427,17 @@ else
     }
 
     private async Task GoBack() => await JS.InvokeVoidAsync("history.back");
+
+    private void PlayTrailer() => _trailerPlaying = true;
+
+    // preserves user intent — switching tabs without prior play shouldn't autoplay;
+    // if play was already on, @key on the iframe remounts and the new src autoplays.
+    private void SelectTrailer(int index) => _activeTrailerIndex = index;
+
+    // TMDb occasionally returns empty Name (older / less-curated records).
+    // "Trailer N" keeps chips, iframe title, and aria-labels non-blank.
+    private static string TrailerLabel(TrailerDto t, int index) =>
+        string.IsNullOrWhiteSpace(t.Name) ? $"Trailer {index + 1}" : t.Name;
 
     private async Task ShareDetails()
     {
