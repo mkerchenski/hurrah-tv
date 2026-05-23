@@ -8,6 +8,7 @@ public class ShowDetails : SearchResult
     public int? Runtime { get; set; } // minutes — for movies
     public List<string> Genres { get; set; } = [];
     public List<SeasonInfo> Seasons { get; set; } = [];
+    public List<TrailerDto> Trailers { get; set; } = [];
     public string Status { get; set; } = ""; // "Returning Series", "Ended", "Released", etc.
 
     // latest episode info (TV only)
@@ -19,6 +20,16 @@ public class ShowDetails : SearchResult
     public string? NextEpisodeName { get; set; }
     public int? NextEpisodeSeason { get; set; }
     public int? NextEpisodeNumber { get; set; }
+}
+
+public class TrailerDto
+{
+    public string Key { get; set; } = "";        // youtube video id
+    public string Name { get; set; } = "";       // "Official Trailer", etc.
+    public string Site { get; set; } = "";       // "YouTube" — filter discards anything else
+    public string Type { get; set; } = "";       // "Trailer" — filter discards Teaser/Clip/Featurette
+    public bool Official { get; set; }
+    public DateTime? PublishedAt { get; set; }
 }
 
 public class SeasonInfo

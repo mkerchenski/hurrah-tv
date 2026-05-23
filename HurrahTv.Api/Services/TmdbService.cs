@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Caching.Memory;
+using HurrahTv.Shared.Filters;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
@@ -224,7 +226,7 @@ public class TmdbService
         if (_cache.TryGetValue(cacheKey, out ShowDetails? cached))
             return cached;
 
-        string url = $"{mediaType}/{tmdbId}?api_key={_apiKey}&append_to_response=watch/providers&language=en-US";
+        string url = $"{mediaType}/{tmdbId}?api_key={_apiKey}&append_to_response=watch/providers,videos&language=en-US";
         JsonElement? raw = await GetAsync<JsonElement?>(url);
         if (raw == null) return null;
 
@@ -301,6 +303,13 @@ public class TmdbService
             details.AvailableOn = ParseProviders(us);
         }
 
+        if (json.TryGetProperty("videos", out JsonElement videos) &&
+            videos.TryGetProperty("results", out JsonElement videoResults) &&
+            videoResults.ValueKind == JsonValueKind.Array)
+        {
+            details.Trailers = TrailerFilters.PickTop(ParseTrailers(videoResults));
+        }
+
         _cache.Set(cacheKey, details, TimeSpan.FromHours(6));
         return details;
     }
@@ -324,6 +333,34 @@ public class TmdbService
 
         _cache.Set(cacheKey, providers, TimeSpan.FromHours(12));
         return providers;
+    }
+
+    private static List<TrailerDto> ParseTrailers(JsonElement videoResults)
+    {
+        List<TrailerDto> trailers = [];
+        foreach (JsonElement v in videoResults.EnumerateArray())
+        {
+            DateTime? publishedAt = null;
+            // invariant culture + assume/adjust universal so the sort is deterministic
+            // regardless of host timezone or culture — TMDb sends ISO-8601 'Z' timestamps
+            if (v.TryGetProperty("published_at", out JsonElement pa) && pa.ValueKind == JsonValueKind.String
+                && DateTime.TryParse(pa.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsed))
+            {
+                publishedAt = parsed;
+            }
+
+            trailers.Add(new TrailerDto
+            {
+                Key = v.TryGetProperty("key", out JsonElement k) ? k.GetString() ?? "" : "",
+                Name = v.TryGetProperty("name", out JsonElement n) ? n.GetString() ?? "" : "",
+                Site = v.TryGetProperty("site", out JsonElement s) ? s.GetString() ?? "" : "",
+                Type = v.TryGetProperty("type", out JsonElement t) ? t.GetString() ?? "" : "",
+                Official = v.TryGetProperty("official", out JsonElement off) && off.ValueKind == JsonValueKind.True,
+                PublishedAt = publishedAt
+            });
+        }
+        return trailers;
     }
 
     private static List<AvailableService> ParseProviders(JsonElement usData)
