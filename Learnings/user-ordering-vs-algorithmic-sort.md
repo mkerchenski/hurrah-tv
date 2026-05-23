@@ -50,3 +50,29 @@ Adds schema complexity (one Position column per context, renumbering on transiti
 ## Generalization
 
 The deeper rule: *a user-controlled signal is only as visible as the lowest sort tier it occupies.* If your column is tier-N and tiers 1..N-1 have non-trivial discriminators on the rendered subset, the user can't see their input. Find tiers where the higher discriminators tie on the visible subset, and surface the control only there.
+
+## Postscript (2026-05-23): the assumption that broke
+
+This learning's recommendation was: *gate drag-reorder to Want-to-Watch only*, because Want-to-Watch items "typically share a null `LatestEpisodeDate` (user hasn't started watching) and collapse into one big tier."
+
+That assumption was wrong, and the failure surfaced as **#101**: drag-reorder visually worked but didn't persist on refresh.
+
+The reality: `LatestEpisodeDate` gets populated by `TmdbService`'s background refresh path for *every* queue item that has a TV show with aired episodes — Status doesn't matter. A user can sit on a Want-to-Watch list of 20 shows where 18 have a populated `LatestEpisodeDate` (because TMDb knows their air date) and only 2 are null. The `LatestEpisodeDate DESC` tier dominates Position, and the user's drag is invisible to the GET.
+
+The learning's audit step is still correct ("read every ORDER BY against the table"). What it missed was the second-order check: **for each tier, is the *value* of that column actually NULL/uniform on the rendered subset, or is it populated by a side-effect the audit didn't trace?** Schema nullability says "could be null"; the runtime data shape says "is populated by TMDb refresh."
+
+The structural fix (commit `292bf82` for #101): branch the SQL `ORDER BY` on `Status` so Want-to-Watch shortcuts past the recency tiers and ranks by `Position` only. Other statuses keep the recency-aware sort that surfaces new episodes:
+
+```sql
+ORDER BY
+    CASE Status WHEN 1 THEN 0 WHEN 0 THEN 1 WHEN 2 THEN 2 WHEN 4 THEN 3 ELSE 4 END,
+    CASE WHEN Status = 0 THEN Position END ASC NULLS LAST,
+    CASE WHEN Status != 0 AND LatestEpisodeDate >= NOW() - INTERVAL '7 days'
+          AND LatestEpisodeDate <= NOW() THEN 0 ELSE 1 END,
+    CASE WHEN Status != 0 THEN LatestEpisodeDate END DESC NULLS LAST,
+    Position
+```
+
+The `CASE WHEN Status = 0 THEN ... END` + `NULLS LAST` pattern partitions per status: Want-to-Watch sorts by Position, other statuses fall through to the recency keys. Both halves share the *same* `ORDER BY` so one query continues to serve every queue tab.
+
+**Meta-learning:** when an audit's mitigation depends on a runtime data-shape assumption, validate the assumption against actual rows in the database, not against the schema's nullable column declarations. The schema says "could be null"; the prod data may have populated 95% of those nulls via a side-effect path the audit didn't trace.

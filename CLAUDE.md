@@ -127,6 +127,9 @@ Lean test-first when the rules are spec-able from the issue (date windows, filte
 **Plans:**
 `/xplan` output for any feature touching `HurrahTv.Shared` should include a **Tests** bullet per phase. Phases that only touch Razor/CSS may skip it.
 
+**Formatter gate before push:**
+Run `dotnet format --verify-no-changes --severity info --no-restore HurrahTv.slnx` locally before pushing any C# change — that's the exact command CI runs in `main_hurrahtv.yml`'s `Verify formatting` step. The targeted sub-commands (`dotnet format style/analyzers` with `--diagnostics`) are a strict subset and will pass locally while CI fails on rules like `IDE0305` / `IDE0330`. See `Learnings/dotnet-format-ci-runs-bare-not-targeted.md` for the full mechanism.
+
 ## Context Management
 
 - Use subagents for research, exploration, and parallel analysis
