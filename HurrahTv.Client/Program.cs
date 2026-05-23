@@ -31,6 +31,12 @@ builder.Services.AddScoped<UserServicesCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddScoped<MediaFilterService>();
 builder.Services.AddScoped<ShareService>();
+builder.Services.AddScoped<ToastService>();
+builder.Services.AddScoped<ScrollService>();
+builder.Services.AddScoped<InstallBannerService>();
+builder.Services.AddScoped<VersionService>();
+builder.Services.AddScoped<LongPressService>();
+builder.Services.AddScoped<SortableService>();
 // singleton — matches QuickActionService it subscribes to; one in-memory cache per app session
 builder.Services.AddSingleton<CurationCache>();
 

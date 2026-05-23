@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.IdentityModel.Tokens;
 using HurrahTv.Api.Authorization;
 using HurrahTv.Api.Endpoints;
+using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -68,6 +69,12 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// before the static-files pipeline so /details/{tv|movie}/{id} requests from
+// link-preview bots (Twitterbot, facebookexternalhit on iMessage, Slackbot, etc.)
+// get a per-show OG card instead of the site-wide WASM bootstrap. Real users
+// pass through untouched. See issue #98.
+app.UseMiddleware<OgPreviewMiddleware>();
 
 // serve Blazor WASM client from wwwroot (handles all MIME types, compression, _framework)
 app.UseBlazorFrameworkFiles();

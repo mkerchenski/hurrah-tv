@@ -180,8 +180,12 @@ public class DbService(IConfiguration config)
         // canonical status ordering: see HurrahTv.Shared.Models.QueueStatusOrdering.DisplayOrder
         // — Client UI sorts share the same rule via QueueStatusOrdering.SortPriority.
         // ELSE 4 matches DisplayOrder.Count so unknown enum values sort after every known one.
-        // Freshness window's upper bound mirrors QueueItem.HasNewEpisode (#86) so a future-stamped
-        // LatestEpisodeDate (TMDb backfill quirk) doesn't sort into the recent bucket.
+        //
+        // WantToWatch (Status=0) is user-curated via drag-reorder, so its sole secondary
+        // sort is Position. Recency-aware ordering (freshness window + LatestEpisodeDate
+        // DESC) only applies to non-WantToWatch statuses, where surfacing new episodes is
+        // the point. The CASE WHEN Status = 0 / != 0 split makes those keys NULL for the
+        // other group so NULLS LAST keeps each status's branch isolated. Pins #101.
         IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
             SELECT * FROM QueueItems WHERE UserId = @UserId
             ORDER BY
@@ -192,9 +196,10 @@ public class DbService(IConfiguration config)
                     WHEN 4 THEN 3  -- NotForMe last
                     ELSE 4         -- unknown sorts last (matches QueueStatusOrdering.SortPriority)
                 END,
-                CASE WHEN LatestEpisodeDate >= NOW() - INTERVAL '7 days'
+                CASE WHEN Status = 0 THEN Position END ASC NULLS LAST,
+                CASE WHEN Status != 0 AND LatestEpisodeDate >= NOW() - INTERVAL '7 days'
                       AND LatestEpisodeDate <= NOW() THEN 0 ELSE 1 END,
-                LatestEpisodeDate DESC,
+                CASE WHEN Status != 0 THEN LatestEpisodeDate END DESC NULLS LAST,
                 Position
             """, new { UserId = userId });
         return [.. items];

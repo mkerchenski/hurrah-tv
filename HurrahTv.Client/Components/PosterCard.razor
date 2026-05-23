@@ -1,6 +1,6 @@
 @implements IAsyncDisposable
 @inject ApiClient Api
-@inject IJSRuntime JS
+@inject LongPressService LongPressSvc
 @inject UserServicesCache UserServicesCache
 
 <div @ref="_cardRef" class="poster-card relative rounded-lg overflow-hidden bg-surface-50 cursor-pointer group"
@@ -198,8 +198,7 @@
         _dotNetRef ??= DotNetObjectReference.Create(this);
         try
         {
-            _longPressHandle = await JS.InvokeAsync<IJSObjectReference>(
-                "hurrahLongPress", _cardRef, _dotNetRef, nameof(OnLongPress), 0);
+            _longPressHandle = await LongPressSvc.AttachAsync(_cardRef, _dotNetRef, nameof(OnLongPress), 0);
         }
         catch (JSException) { }
     }
@@ -216,8 +215,7 @@
         UserServicesCache.Changed -= OnServicesChanged;
         if (_longPressHandle != null)
         {
-            try { await JS.InvokeVoidAsync("hurrahLongPressCleanup", _longPressHandle); }
-            catch { }
+            await LongPressSvc.DetachAsync(_longPressHandle);
         }
         _dotNetRef?.Dispose();
     }

@@ -1,5 +1,5 @@
 @implements IDisposable
-@inject IJSRuntime JS
+@inject VersionService VersionSvc
 @inject NavigationManager Nav
 
 @if (_updateAvailable)
@@ -27,7 +27,7 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
-        try { await JS.InvokeAsync<bool>("hurrahCheckVersion"); }
+        try { await VersionSvc.CheckAsync(); }
         catch (JSException) { }
     }
 
@@ -42,7 +42,7 @@
         if (_updateAvailable || _disposed) return;
         try
         {
-            bool hasUpdate = await JS.InvokeAsync<bool>("hurrahCheckVersion");
+            bool hasUpdate = await VersionSvc.CheckAsync();
             if (hasUpdate && !_disposed)
             {
                 _updateAvailable = true;
