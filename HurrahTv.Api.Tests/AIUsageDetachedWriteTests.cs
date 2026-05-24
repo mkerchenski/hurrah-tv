@@ -38,6 +38,32 @@ public class AIUsageDetachedWriteTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal("show-match", requestType);
     }
 
+    // pins #123 — fire-and-forget writes registered via the drain hosted service
+    // must complete during StopAsync. Mimics SIGTERM / Azure deploy slot swap where
+    // the request pipeline returns before the Task.Run continuation runs.
+    [Fact]
+    public async Task TrackUsageDetached_RowLands_WhenStopAsyncDrainsInFlightWrites()
+    {
+        await SeedUserAsync("drain-user");
+
+        using IServiceScope scope = fx.Factory.Services.CreateScope();
+        CurationService curation = scope.ServiceProvider.GetRequiredService<CurationService>();
+        AIUsageDrainHostedService drain = fx.Factory.Services.GetRequiredService<AIUsageDrainHostedService>();
+
+        // production usage pattern — discard return value (no await).
+        _ = curation.TrackUsageDetachedAsync("drain-user", inputTokens: 42, outputTokens: 7, cost: 0.0001m, requestType: "show-match");
+
+        // StopAsync awaits the in-flight write (or times out at 10s). With no
+        // contention this finishes in tens of ms.
+        await drain.StopAsync(CancellationToken.None);
+
+        (int inputTokens, int outputTokens, decimal cost, string requestType) = await QueryUsageRowAsync("drain-user");
+        Assert.Equal(42, inputTokens);
+        Assert.Equal(7, outputTokens);
+        Assert.Equal(0.0001m, cost);
+        Assert.Equal("show-match", requestType);
+    }
+
     private async Task SeedUserAsync(string userId)
     {
         using NpgsqlConnection db = new(fx.ConnectionString);

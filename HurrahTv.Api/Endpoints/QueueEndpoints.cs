@@ -14,15 +14,20 @@ public static class QueueEndpoints
     {
         RouteGroupBuilder group = app.MapGroup("/api/queue").RequireAuthorization();
 
-        group.MapGet("", async (ClaimsPrincipal user, DbService db, IServiceScopeFactory scopeFactory) =>
+        group.MapGet("", async (ClaimsPrincipal user, DbService db, IServiceScopeFactory scopeFactory, CancellationToken ct) =>
         {
             string userId = user.GetUserId();
 
-            // run watched + services in parallel with the queue read so we don't pay them sequentially
-            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId);
-            Task<List<int>> activeServicesTask = db.GetUserServicesAsync(userId);
+            // run watched + services in parallel with the queue read so we don't pay
+            // them sequentially. Task.WhenAll observes all three so a caller-driven
+            // OCE on any one of them doesn't strand the others as unobserved Task
+            // exceptions (which would surface in TaskScheduler.UnobservedTaskException).
+            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId, ct);
+            Task<List<int>> activeServicesTask = db.GetUserServicesAsync(userId, ct);
+            Task<List<QueueItem>> itemsTask = db.GetQueueAsync(userId, ct);
+            await Task.WhenAll(watchedTask, activeServicesTask, itemsTask);
 
-            List<QueueItem> items = await db.GetQueueAsync(userId);
+            List<QueueItem> items = itemsTask.Result;
 
             List<QueueItem> staleEpisodes = [.. items
                 .Where(i => i.MediaType == MediaTypes.Tv
@@ -42,11 +47,11 @@ public static class QueueEndpoints
             if (staleEpisodes.Count > 0 || staleProviders.Count > 0)
                 _ = RefreshStaleItemsInBackground(scopeFactory, staleEpisodes, staleProviders);
 
-            HashSet<int> activeServiceIds = [.. await activeServicesTask];
+            HashSet<int> activeServiceIds = [.. activeServicesTask.Result];
             if (activeServiceIds.Count > 0)
                 items = [.. items.Where(i => IsWatchableOn(i.AvailableOnJson, activeServiceIds))];
 
-            return Results.Ok(new QueueResponse(items, await watchedTask));
+            return Results.Ok(new QueueResponse(items, watchedTask.Result));
         });
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>

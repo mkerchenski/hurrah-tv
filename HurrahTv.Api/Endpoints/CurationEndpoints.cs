@@ -14,19 +14,20 @@ public static class CurationEndpoints
         RouteGroupBuilder group = app.MapGroup("/api/curation").RequireAuthorization();
 
         // get AI-curated rows for the home page
-        group.MapGet("/rows", async (ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb, ILogger<CurationService> logger) =>
+        group.MapGet("/rows", async (ClaimsPrincipal user, DbService db, CurationService curation,
+            TmdbService tmdb, ILogger<CurationService> logger, CancellationToken ct) =>
         {
             try
             {
                 string userId = user.GetUserId();
-                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId);
-                Task<List<int>> providerTask = db.GetUserServicesAsync(userId);
-                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId);
+                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
+                Task<List<int>> providerTask = db.GetUserServicesAsync(userId, ct);
+                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId, ct);
                 await Task.WhenAll(watchlistTask, providerTask, settingsTask);
 
                 List<QueueItem> watchlist = watchlistTask.Result;
                 List<int> providerIds = providerTask.Result;
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly);
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly, cancellationToken: ct);
 
                 if (result.Rows.Count > 0)
                 {
@@ -34,7 +35,7 @@ public static class CurationEndpoints
                     ExcludeShows(result, excludeIds);
                 }
 
-                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
+                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb, ct);
 
                 return Results.Ok(new CurationResponse
                 {
@@ -45,6 +46,12 @@ public static class CurationEndpoints
                     Error = result.Error,
                     CandidateCount = result.CandidateCount
                 });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // client navigated away — log signal only; mirror /match (see #117, #120,
+                // and Learnings/status-499-server-log-only.md). pins #126.
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
             }
             catch (Exception ex)
             {
@@ -59,7 +66,7 @@ public static class CurationEndpoints
 
         // force refresh AI curation (rate-limited per user)
         group.MapPost("/refresh", async (ClaimsPrincipal user, DbService db, CurationService curation,
-            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger) =>
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, CancellationToken ct) =>
         {
             try
             {
@@ -69,17 +76,22 @@ public static class CurationEndpoints
                 if (cache.TryGetValue(rateLimitKey, out _))
                     return Results.Ok(new CurationResponse { AiEnabled = curation.IsEnabled, Error = "Please wait before refreshing again" });
 
+                // anti-abuse rate-limit lands BEFORE the cancellable chain so a
+                // rapid retry can't bypass it. We deliberately do NOT pre-blank the
+                // curation cache row here — GetCuratedRowsAsync(forceRefresh: true)
+                // skips the cache check, and a successful AI pass overwrites the row
+                // at the end of the call. Pre-blanking lost the user's row on a
+                // mid-flight client cancel (#xsimplify).
                 cache.Set(rateLimitKey, true, RefreshCooldown);
-                await db.SetCurationCacheAsync(userId, "[]", "force-refresh");
 
-                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId);
-                Task<List<int>> providerTask = db.GetUserServicesAsync(userId);
-                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId);
+                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
+                Task<List<int>> providerTask = db.GetUserServicesAsync(userId, ct);
+                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId, ct);
                 await Task.WhenAll(watchlistTask, providerTask, settingsTask);
 
                 List<QueueItem> watchlist = watchlistTask.Result;
                 List<int> providerIds = providerTask.Result;
-                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly);
+                CurationResult result = await curation.GetCuratedRowsAsync(userId, watchlist, providerIds, settingsTask.Result.EnglishOnly, forceRefresh: true, cancellationToken: ct);
 
                 if (result.Rows.Count > 0)
                 {
@@ -87,7 +99,7 @@ public static class CurationEndpoints
                     ExcludeShows(result, excludeIds);
                 }
 
-                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb);
+                List<CuratedRowResponse> rows = await ResolveRowsAsync(result.Rows, providerIds, tmdb, ct);
 
                 return Results.Ok(new CurationResponse
                 {
@@ -96,6 +108,10 @@ public static class CurationEndpoints
                     WatchlistChanged = true,
                     AiEnabled = curation.IsEnabled
                 });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
             }
             catch (Exception ex)
             {
@@ -177,7 +193,7 @@ public static class CurationEndpoints
     }
 
     private static async Task<List<CuratedRowResponse>> ResolveRowsAsync(
-        List<AICuratedRow> aiRows, List<int> providerIds, TmdbService tmdb)
+        List<AICuratedRow> aiRows, List<int> providerIds, TmdbService tmdb, CancellationToken cancellationToken = default)
     {
         List<CuratedRowResponse> rows = [];
         HashSet<int> providerSet = [.. providerIds];
@@ -189,18 +205,18 @@ public static class CurationEndpoints
                 ShowDetails? details;
                 if (aiRow.ItemMediaTypes.TryGetValue(tmdbId, out string? knownType) && MediaTypes.IsValid(knownType))
                 {
-                    details = await tmdb.GetDetailsAsync(tmdbId, knownType);
+                    details = await tmdb.GetDetailsAsync(tmdbId, knownType, cancellationToken);
                 }
                 else
                 {
                     // fallback for rows cached before ItemMediaTypes existed
-                    details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv);
-                    details ??= await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Movie);
+                    details = await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Tv, cancellationToken);
+                    details ??= await tmdb.GetDetailsAsync(tmdbId, MediaTypes.Movie, cancellationToken);
                 }
 
                 if (details != null)
                 {
-                    List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, details.MediaType);
+                    List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(tmdbId, details.MediaType, cancellationToken);
                     details.AvailableOn = [.. providers.Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && providerSet.Contains(p.ProviderId))];
                 }
                 return details;
