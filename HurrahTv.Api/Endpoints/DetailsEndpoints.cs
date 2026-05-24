@@ -14,14 +14,24 @@ public static class DetailsEndpoints
             if (!MediaTypes.IsValid(mediaType))
                 return Results.BadRequest("mediaType must be 'movie' or 'tv'");
 
-            ShowDetails? details = await tmdb.GetDetailsAsync(tmdbId, mediaType);
+            // parallel-fetch details + trailers so the user-perceived round-trip stays
+            // single. Trailers live in their own cache so curation fan-out doesn't
+            // pay for the videos block it never reads. (#110)
+            Task<ShowDetails?> detailsTask = tmdb.GetDetailsAsync(tmdbId, mediaType);
+            Task<List<TrailerDto>> trailersTask = tmdb.GetTrailersAsync(tmdbId, mediaType);
+            await Task.WhenAll(detailsTask, trailersTask);
+
+            ShowDetails? details = await detailsTask;
             if (details == null) return Results.NotFound();
+
+            // details is already a defensive copy from TmdbService — mutating it here
+            // (AvailableOn, Trailers) cannot bleed back into the cache. (#109)
+            details.Trailers = await trailersTask;
 
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);
             HashSet<int> userProviders = [.. providerIds];
 
-            // use providers already fetched by GetDetailsAsync (via append_to_response)
             List<AvailableService> allProviders = details.AvailableOn;
 
             List<AvailableService> streaming = [.. allProviders.Where(s => s.Type is ProviderType.Flatrate or ProviderType.Ads)];

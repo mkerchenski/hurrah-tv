@@ -45,24 +45,24 @@ public class ApiClient(HttpClient http)
         await _http.GetFromJsonAsync<List<SearchResult>>($"api/search/recommendations/{mediaType}/{tmdbId}") ?? [];
 
     // details
-    public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType) =>
-        await _http.GetFromJsonAsync<ShowDetails>($"api/details/{mediaType}/{tmdbId}");
+    public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default) =>
+        await _http.GetFromJsonAsync<ShowDetails>($"api/details/{mediaType}/{tmdbId}", cancellationToken);
 
     // season episodes
     public async Task<SeasonDetail?> GetSeasonAsync(int tmdbId, int seasonNumber) =>
         await _http.GetFromJsonAsync<SeasonDetail>($"api/details/tv/{tmdbId}/season/{seasonNumber}");
 
     // queue
-    public async Task<QueueResponse> GetQueueResponseAsync()
+    public async Task<QueueResponse> GetQueueResponseAsync(CancellationToken cancellationToken = default)
     {
-        QueueResponse? response = await _http.GetFromJsonAsync<QueueResponse>("api/queue");
+        QueueResponse? response = await _http.GetFromJsonAsync<QueueResponse>("api/queue", cancellationToken);
         return response ?? new QueueResponse([], []);
     }
 
     // convenience for callers that only need items (Details page, Queue page)
-    public async Task<List<QueueItem>> GetQueueAsync()
+    public async Task<List<QueueItem>> GetQueueAsync(CancellationToken cancellationToken = default)
     {
-        QueueResponse response = await GetQueueResponseAsync();
+        QueueResponse response = await GetQueueResponseAsync(cancellationToken);
         return response.Items;
     }
 

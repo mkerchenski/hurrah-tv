@@ -224,9 +224,9 @@ public class TmdbService
     {
         string cacheKey = $"details:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out ShowDetails? cached))
-            return cached;
+            return cached!.Clone(); // hand callers a fresh copy — see ShowDetails.Clone (#109)
 
-        string url = $"{mediaType}/{tmdbId}?api_key={_apiKey}&append_to_response=watch/providers,videos&language=en-US";
+        string url = $"{mediaType}/{tmdbId}?api_key={_apiKey}&append_to_response=watch/providers&language=en-US";
         JsonElement? raw = await GetAsync<JsonElement?>(url);
         if (raw == null) return null;
 
@@ -303,22 +303,39 @@ public class TmdbService
             details.AvailableOn = ParseProviders(us);
         }
 
-        if (json.TryGetProperty("videos", out JsonElement videos) &&
-            videos.TryGetProperty("results", out JsonElement videoResults) &&
+        _cache.Set(cacheKey, details, TimeSpan.FromHours(6));
+        return details.Clone();
+    }
+
+    // separate from GetDetailsAsync so curation fan-out (~20 TMDb IDs per row hydration)
+    // doesn't pay for the videos block it never reads. DetailsEndpoints parallel-fetches
+    // this alongside GetDetailsAsync so the user-perceived round-trip stays single. (#110)
+    public async Task<List<TrailerDto>> GetTrailersAsync(int tmdbId, string mediaType)
+    {
+        string cacheKey = $"trailers:{mediaType}:{tmdbId}";
+        if (_cache.TryGetValue(cacheKey, out List<TrailerDto>? cached))
+            return [.. cached!]; // defensive copy — same rationale as ShowDetails.Clone (#109)
+
+        string url = $"{mediaType}/{tmdbId}/videos?api_key={_apiKey}&language=en-US";
+        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        if (raw == null) return [];
+
+        List<TrailerDto> trailers = [];
+        if (raw.Value.TryGetProperty("results", out JsonElement videoResults) &&
             videoResults.ValueKind == JsonValueKind.Array)
         {
-            details.Trailers = TrailerFilters.PickTop(ParseTrailers(videoResults));
+            trailers = TrailerFilters.PickTop(ParseTrailers(videoResults));
         }
 
-        _cache.Set(cacheKey, details, TimeSpan.FromHours(6));
-        return details;
+        _cache.Set(cacheKey, trailers, TimeSpan.FromHours(6));
+        return [.. trailers];
     }
 
     public async Task<List<AvailableService>> GetWatchProvidersAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"providers:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out List<AvailableService>? cached))
-            return cached!;
+            return [.. cached!]; // defensive copy — same rationale as ShowDetails.Clone (#109)
 
         string url = $"{mediaType}/{tmdbId}/watch/providers?api_key={_apiKey}";
         JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
@@ -332,7 +349,7 @@ public class TmdbService
         }
 
         _cache.Set(cacheKey, providers, TimeSpan.FromHours(12));
-        return providers;
+        return [.. providers]; // copy so caller mutation can't reach the cached list (#109)
     }
 
     private static List<TrailerDto> ParseTrailers(JsonElement videoResults)
@@ -465,7 +482,7 @@ public class TmdbService
     {
         string cacheKey = $"season:{tmdbId}:{seasonNumber}";
         if (_cache.TryGetValue(cacheKey, out SeasonDetail? cached))
-            return cached;
+            return cached!.Clone(); // defensive copy — same rationale as ShowDetails.Clone (#109)
 
         string url = $"tv/{tmdbId}/season/{seasonNumber}?api_key={_apiKey}&language=en-US";
         JsonElement? raw = await GetAsync<JsonElement?>(url);
@@ -495,7 +512,7 @@ public class TmdbService
         }
 
         _cache.Set(cacheKey, detail, TimeSpan.FromHours(6));
-        return detail;
+        return detail.Clone();
     }
 
     private static SearchResult MapToSearchResult(TmdbMultiResult r) => new()

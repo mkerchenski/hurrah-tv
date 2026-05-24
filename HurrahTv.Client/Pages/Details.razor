@@ -370,7 +370,11 @@ else
     private ShowMatchResult? _showMatch;
     private bool _matchLoading;
     private bool _disposed;
-    private CancellationTokenSource? _matchCts;
+    // single page-scoped CTS — covers the awaited Details/Queue fetches AND the
+    // fire-and-forget match load. Rapid navigation cancels in-flight calls so a
+    // late response for show A can't overwrite _details / _queueItem while the
+    // user is on show B (especially visible with the trailer iframe). pins #112.
+    private CancellationTokenSource? _loadCts;
     private int _activeTrailerIndex;
     private bool _trailerPlaying;
 
@@ -385,8 +389,8 @@ else
     public void Dispose()
     {
         _disposed = true;
-        _matchCts?.Cancel();
-        _matchCts?.Dispose();
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -402,18 +406,35 @@ else
         _loading = true;
         StateHasChanged();
 
-        _details = await Api.GetDetailsAsync(TmdbId, MediaType);
-        _loading = false;
+        // cancel any prior in-flight loads (details/queue/match) so a late response
+        // from the previous TmdbId can't clobber state for the current one.
+        _loadCts?.Cancel();
+        _loadCts?.Dispose();
+        _loadCts = new CancellationTokenSource();
+        CancellationToken ct = _loadCts.Token;
 
-        // check if this item is already in the queue
-        List<QueueItem> queue = await Api.GetQueueAsync();
-        _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
+        try
+        {
+            // assign-on-success: if the HTTP call completed a beat before cancel landed,
+            // the early return drops the stale response instead of overwriting state
+            // for the now-current TmdbId.
+            ShowDetails? details = await Api.GetDetailsAsync(TmdbId, MediaType, ct);
+            if (ct.IsCancellationRequested) return;
+            _details = details;
+            _loading = false;
 
-        // cancel any previous match load and start new one
-        _matchCts?.Cancel();
-        _matchCts?.Dispose();
-        _matchCts = new CancellationTokenSource();
-        _ = LoadShowMatch(_matchCts.Token);
+            // check if this item is already in the queue
+            List<QueueItem> queue = await Api.GetQueueAsync(ct);
+            if (ct.IsCancellationRequested) return;
+            _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
+        }
+        catch (OperationCanceledException)
+        {
+            // a newer OnParametersSetAsync took over — abandon silently.
+            return;
+        }
+
+        _ = LoadShowMatch(ct);
     }
 
     private async Task LoadShowMatch(CancellationToken ct)
