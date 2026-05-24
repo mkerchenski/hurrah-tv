@@ -111,7 +111,7 @@ public static class CurationEndpoints
         // personalized match for a specific show
         group.MapGet("/match/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
             ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb,
-            IMemoryCache cache, ILogger<CurationService> logger) =>
+            IMemoryCache cache, ILogger<CurationService> logger, CancellationToken ct) =>
         {
             try
             {
@@ -136,12 +136,18 @@ public static class CurationEndpoints
                     ? await db.GetShowSentimentsAsync(tmdbId, userId)
                     : null;
 
-                ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist, showSentiments, queueItem);
+                ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist, showSentiments, queueItem, ct);
 
                 if (result is not null)
                     cache.Set(cacheKey, result, TimeSpan.FromHours(12));
 
                 return Results.Ok(result);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // client navigated away mid-flight — abort the paid AI inference and stay quiet.
+                // pins #117.
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
             }
             catch (Exception ex)
             {

@@ -441,7 +441,20 @@ else
     {
         _matchLoading = true;
         if (!_disposed) StateHasChanged();
-        _showMatch = await Api.GetShowMatchAsync(TmdbId, MediaType);
+        try
+        {
+            // pass ct so the AI inference itself aborts on rapid navigation, not just
+            // the response on this side. pins #117.
+            _showMatch = await Api.GetShowMatchAsync(TmdbId, MediaType, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // newer load took over — abandon silently. unfiltered catch would also
+            // swallow HttpClient.Timeout TaskCanceledExceptions and leave _matchLoading
+            // stuck true. when our ct isn't the cancel source, fall through so the
+            // late-check below clears state normally.
+            return;
+        }
         if (ct.IsCancellationRequested) return;
         _matchLoading = false;
         if (!_disposed) StateHasChanged();
