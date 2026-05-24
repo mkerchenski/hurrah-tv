@@ -16,42 +16,51 @@ public static class QueueEndpoints
 
         group.MapGet("", async (ClaimsPrincipal user, DbService db, IServiceScopeFactory scopeFactory, CancellationToken ct) =>
         {
-            string userId = user.GetUserId();
+            try
+            {
+                string userId = user.GetUserId();
 
-            // run watched + services in parallel with the queue read so we don't pay
-            // them sequentially. Task.WhenAll observes all three so a caller-driven
-            // OCE on any one of them doesn't strand the others as unobserved Task
-            // exceptions (which would surface in TaskScheduler.UnobservedTaskException).
-            Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId, ct);
-            Task<List<int>> activeServicesTask = db.GetUserServicesAsync(userId, ct);
-            Task<List<QueueItem>> itemsTask = db.GetQueueAsync(userId, ct);
-            await Task.WhenAll(watchedTask, activeServicesTask, itemsTask);
+                // run watched + services in parallel with the queue read so we don't pay
+                // them sequentially. Task.WhenAll observes all three so a caller-driven
+                // OCE on any one of them doesn't strand the others as unobserved Task
+                // exceptions (which would surface in TaskScheduler.UnobservedTaskException).
+                Task<List<WatchedEpisode>> watchedTask = db.GetWatchedEpisodesAsync(userId, ct);
+                Task<List<int>> activeServicesTask = db.GetUserServicesAsync(userId, ct);
+                Task<List<QueueItem>> itemsTask = db.GetQueueAsync(userId, ct);
+                await Task.WhenAll(watchedTask, activeServicesTask, itemsTask);
 
-            List<QueueItem> items = itemsTask.Result;
+                List<QueueItem> items = itemsTask.Result;
 
-            List<QueueItem> staleEpisodes = [.. items
-                .Where(i => i.MediaType == MediaTypes.Tv
-                    && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
-                    && (i.LastEpisodeCheckAt == null
-                        || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter
-                        || i.LatestEpisodeSeason == null))];
+                List<QueueItem> staleEpisodes = [.. items
+                    .Where(i => i.MediaType == MediaTypes.Tv
+                        && i.Status is QueueStatus.Watching or QueueStatus.WantToWatch
+                        && (i.LastEpisodeCheckAt == null
+                            || DateTime.UtcNow - i.LastEpisodeCheckAt > EpisodeCheckStaleAfter
+                            || i.LatestEpisodeSeason == null))];
 
-            List<QueueItem> staleProviders = [.. items
-                .Where(i => i.AvailableOnCheckedAt == null
-                    || DateTime.UtcNow - i.AvailableOnCheckedAt > ProviderCheckStaleAfter)];
+                List<QueueItem> staleProviders = [.. items
+                    .Where(i => i.AvailableOnCheckedAt == null
+                        || DateTime.UtcNow - i.AvailableOnCheckedAt > ProviderCheckStaleAfter)];
 
-            // fire-and-forget the TMDb refresh — fresh episode/provider data shows up on the
-            // next /api/queue call, but the current request returns immediately. IsWatchableOn
-            // returns true for items with empty AvailableOnJson, so newly-added items are NOT
-            // hidden during the pre-refresh window.
-            if (staleEpisodes.Count > 0 || staleProviders.Count > 0)
-                _ = RefreshStaleItemsInBackground(scopeFactory, staleEpisodes, staleProviders);
+                // fire-and-forget the TMDb refresh — fresh episode/provider data shows up on the
+                // next /api/queue call, but the current request returns immediately. IsWatchableOn
+                // returns true for items with empty AvailableOnJson, so newly-added items are NOT
+                // hidden during the pre-refresh window.
+                if (staleEpisodes.Count > 0 || staleProviders.Count > 0)
+                    _ = RefreshStaleItemsInBackground(scopeFactory, staleEpisodes, staleProviders);
 
-            HashSet<int> activeServiceIds = [.. activeServicesTask.Result];
-            if (activeServiceIds.Count > 0)
-                items = [.. items.Where(i => IsWatchableOn(i.AvailableOnJson, activeServiceIds))];
+                HashSet<int> activeServiceIds = [.. activeServicesTask.Result];
+                if (activeServiceIds.Count > 0)
+                    items = [.. items.Where(i => IsWatchableOn(i.AvailableOnJson, activeServiceIds))];
 
-            return Results.Ok(new QueueResponse(items, watchedTask.Result));
+                return Results.Ok(new QueueResponse(items, watchedTask.Result));
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // client navigated away — mirror /api/curation/rows + /match.
+                // See Learnings/status-499-server-log-only.md for the rationale.
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
+            }
         });
 
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>

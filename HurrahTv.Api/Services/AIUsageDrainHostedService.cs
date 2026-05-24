@@ -15,8 +15,14 @@ namespace HurrahTv.Api.Services;
 // task creation — the in-flight TaskCompletionSource is added to the dict BEFORE the
 // thread-pool dispatch happens, so a concurrent StopAsync snapshot can't miss it.
 // ConcurrentDictionary entries are removed on completion via ContinueWith. StopAsync
-// snapshots and uses Task.WaitAsync(linked CT) so the WhenAll fault propagates and
-// the timeout timer is disposed when drain wins (no orphan Task.Delay leak).
+// snapshots and uses Task.WaitAsync(linked CT) so the timeout timer is disposed when
+// drain wins (no orphan Task.Delay leak).
+//
+// fault contract: the tracked TCS always TrySetResult, even if the inner work threw —
+// snapshot tasks are log-only by design (callers handle their own exceptions before
+// they leave the Run delegate). StopAsync awaits Task.WhenAll(snapshot).WaitAsync(ct)
+// for cancellation, not fault observation; the WhenAll itself can't fault under this
+// contract.
 public sealed partial class AIUsageDrainHostedService(ILogger<AIUsageDrainHostedService> logger) : IHostedService
 {
     // host drain budget. Azure's deploy graceful-stop budget is ~10s before SIGKILL.
@@ -78,10 +84,12 @@ public sealed partial class AIUsageDrainHostedService(ILogger<AIUsageDrainHosted
 
         // host-driven shutdown CT is already signalled — drain budget is zero. Log
         // honestly rather than misreporting as a 10s timeout (which is what would
-        // happen if we entered the Task.Delay race with a pre-cancelled CT).
+        // happen if we entered the Task.Delay race with a pre-cancelled CT). Count
+        // not-yet-completed snapshot tasks so the report is accurate even if some
+        // finished between the snapshot and this check.
         if (cancellationToken.IsCancellationRequested)
         {
-            LogDrainAborted(snapshot.Length);
+            LogDrainAborted(snapshot.Count(t => !t.IsCompleted));
             return;
         }
 

@@ -19,7 +19,7 @@ public partial class CurationService
     // worst case at a known constant. Process-wide (static) because CurationService
     // is scoped (per-request) and a per-instance semaphore would do nothing.
     //
-    // Two separate gates so a burst of /rows (slow, large token budget) doesn't
+    // two separate gates so a burst of /rows (slow, large token budget) doesn't
     // starve Details-page /match calls (fast, small token budget) behind the same
     // queue. Sized for Haiku throughput at a $50/mo cap: at ~$0.06/curation * 2 +
     // ~$0.005/match * 2 ≈ $0.13 worst-case overshoot, which is the bounded-
@@ -64,7 +64,7 @@ public partial class CurationService
     // ObjectDisposed during host shutdown surfaces in the log rather than as an
     // unobserved Task fault. pins #121.
     //
-    // Dispatched through AIUsageDrainHostedService.Run so the in-flight task is
+    // dispatched through AIUsageDrainHostedService.Run so the in-flight task is
     // registered with the drain BEFORE thread-pool scheduling — closes the SIGTERM
     // race window where a Register-after-Task.Run ordering could let StopAsync
     // snapshot empty between the two calls. Run also bounds the inner write with
@@ -78,6 +78,13 @@ public partial class CurationService
                 using IServiceScope scope = _scopeFactory.CreateScope();
                 DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
                 await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // inner-write CT hit the 8s budget — expected during shutdown drain
+                // or under DB contention, not a write failure. Log at Warning so it
+                // doesn't trip error-level alerts on deploy-slot swaps.
+                _logger.LogWarning("Detached AIUsage write cancelled for {UserId} ({RequestType}) — drain budget exceeded", userId, requestType);
             }
             catch (Exception ex)
             {
