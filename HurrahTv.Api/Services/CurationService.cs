@@ -38,19 +38,22 @@ public partial class CurationService
         _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { ApiKey = apiKey } : null;
     }
 
-    // detached AIUsage write — runs on the thread pool inside a fresh DI scope so
-    // request-scope teardown (RequestAborted, response sent, exception propagation)
-    // can't pull dependencies out from under it. callers fire-and-forget via `_ =`;
-    // tests `await` to make the write deterministic. exceptions are logged here
-    // so a swallowed Task doesn't bury a write failure. pins #121.
-    public Task TrackUsageDetachedAsync(string userId, int inputTokens, int outputTokens, decimal cost, string requestType)
+    // detached AIUsage write — fire-and-forget on the thread pool so the request
+    // pipeline can return before the cost row lands. DbService is singleton so the
+    // fresh scope adds no protection today, but if DbService ever becomes scoped
+    // this pattern keeps the write independent of the request scope. callers
+    // fire-and-forget via `_ =`; tests `await` to make the write deterministic.
+    // CreateScope + GetRequiredService live inside the try so an ObjectDisposed
+    // during host shutdown surfaces in the log instead of an unobserved Task fault.
+    // pins #121.
+    public async Task TrackUsageDetachedAsync(string userId, int inputTokens, int outputTokens, decimal cost, string requestType)
     {
-        return Task.Run(async () =>
+        await Task.Run(async () =>
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
             try
             {
+                using IServiceScope scope = _scopeFactory.CreateScope();
+                DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
                 await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType);
             }
             catch (Exception ex)
