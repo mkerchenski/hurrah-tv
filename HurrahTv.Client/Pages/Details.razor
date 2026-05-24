@@ -415,8 +415,12 @@ else
 
         try
         {
-            _details = await Api.GetDetailsAsync(TmdbId, MediaType, ct);
+            // assign-on-success: if the HTTP call completed a beat before cancel landed,
+            // the early return drops the stale response instead of overwriting state
+            // for the now-current TmdbId.
+            ShowDetails? details = await Api.GetDetailsAsync(TmdbId, MediaType, ct);
             if (ct.IsCancellationRequested) return;
+            _details = details;
             _loading = false;
 
             // check if this item is already in the queue

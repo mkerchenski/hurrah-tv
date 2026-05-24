@@ -21,12 +21,12 @@ public static class DetailsEndpoints
             Task<List<TrailerDto>> trailersTask = tmdb.GetTrailersAsync(tmdbId, mediaType);
             await Task.WhenAll(detailsTask, trailersTask);
 
-            ShowDetails? details = detailsTask.Result;
+            ShowDetails? details = await detailsTask;
             if (details == null) return Results.NotFound();
 
             // details is already a defensive copy from TmdbService — mutating it here
             // (AvailableOn, Trailers) cannot bleed back into the cache. (#109)
-            details.Trailers = trailersTask.Result;
+            details.Trailers = await trailersTask;
 
             string userId = user.GetUserId();
             List<int> providerIds = await db.GetUserServicesAsync(userId);

@@ -24,39 +24,20 @@ public class ShowDetails : SearchResult
     // shallow copy with fresh list instances. TmdbService caches the canonical instance
     // and hands callers a clone so per-request mutation (e.g. user-filtered AvailableOn
     // in DetailsEndpoints) can't bleed back into the cache. pins #109.
-    public ShowDetails Clone() => new()
+    //
+    // MemberwiseClone covers all scalar fields automatically — only mutable collections
+    // need explicit re-allocation. New non-list properties added to ShowDetails or its
+    // SearchResult base get cloned for free; new list properties must extend this list.
+    public ShowDetails Clone()
     {
-        TmdbId = TmdbId,
-        Title = Title,
-        Overview = Overview,
-        PosterPath = PosterPath,
-        BackdropPath = BackdropPath,
-        MediaType = MediaType,
-        FirstAirDate = FirstAirDate,
-        ReleaseDate = ReleaseDate,
-        VoteAverage = VoteAverage,
-        GenreIds = [.. GenreIds],
-        OriginalLanguage = OriginalLanguage,
-        AvailableOn = [.. AvailableOn],
-        NotOnYourServices = NotOnYourServices,
-        NoStreamingInfo = NoStreamingInfo,
-        Tagline = Tagline,
-        NumberOfSeasons = NumberOfSeasons,
-        NumberOfEpisodes = NumberOfEpisodes,
-        Runtime = Runtime,
-        Genres = [.. Genres],
-        Seasons = [.. Seasons],
-        Trailers = [.. Trailers],
-        Status = Status,
-        LastEpisodeAirDate = LastEpisodeAirDate,
-        LastEpisodeName = LastEpisodeName,
-        LastEpisodeSeason = LastEpisodeSeason,
-        LastEpisodeNumber = LastEpisodeNumber,
-        NextEpisodeAirDate = NextEpisodeAirDate,
-        NextEpisodeName = NextEpisodeName,
-        NextEpisodeSeason = NextEpisodeSeason,
-        NextEpisodeNumber = NextEpisodeNumber,
-    };
+        ShowDetails copy = (ShowDetails)MemberwiseClone();
+        copy.GenreIds = [.. GenreIds];
+        copy.AvailableOn = [.. AvailableOn];
+        copy.Genres = [.. Genres];
+        copy.Seasons = [.. Seasons];
+        copy.Trailers = [.. Trailers];
+        return copy;
+    }
 }
 
 public class TrailerDto

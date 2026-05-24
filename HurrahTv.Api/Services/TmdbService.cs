@@ -304,7 +304,7 @@ public class TmdbService
         }
 
         _cache.Set(cacheKey, details, TimeSpan.FromHours(6));
-        return details.Clone(); // protect cache from caller mutation on cold-miss too (#109)
+        return details.Clone();
     }
 
     // separate from GetDetailsAsync so curation fan-out (~20 TMDb IDs per row hydration)
