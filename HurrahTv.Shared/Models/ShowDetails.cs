@@ -28,6 +28,10 @@ public class ShowDetails : SearchResult
     // MemberwiseClone covers all scalar fields automatically — only mutable collections
     // need explicit re-allocation. New non-list properties added to ShowDetails or its
     // SearchResult base get cloned for free; new list properties must extend this list.
+    //
+    // The list elements (AvailableService, SeasonInfo, TrailerDto) are shared by
+    // reference — mutating an element on the clone still bleeds into the cache. No
+    // current caller does this; if one is added, it needs a deeper copy than Clone.
     public ShowDetails Clone()
     {
         ShowDetails copy = (ShowDetails)MemberwiseClone();
@@ -74,4 +78,13 @@ public class SeasonDetail
     public int SeasonNumber { get; set; }
     public string Name { get; set; } = "";
     public List<EpisodeInfo> Episodes { get; set; } = [];
+
+    // see ShowDetails.Clone for rationale (#109). callers that need to mutate
+    // an EpisodeInfo inside the returned list need a deeper copy than this.
+    public SeasonDetail Clone()
+    {
+        SeasonDetail copy = (SeasonDetail)MemberwiseClone();
+        copy.Episodes = [.. Episodes];
+        return copy;
+    }
 }

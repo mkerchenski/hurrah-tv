@@ -335,7 +335,7 @@ public class TmdbService
     {
         string cacheKey = $"providers:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out List<AvailableService>? cached))
-            return cached!;
+            return [.. cached!]; // defensive copy — same rationale as ShowDetails.Clone (#109)
 
         string url = $"{mediaType}/{tmdbId}/watch/providers?api_key={_apiKey}";
         JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
@@ -349,7 +349,7 @@ public class TmdbService
         }
 
         _cache.Set(cacheKey, providers, TimeSpan.FromHours(12));
-        return providers;
+        return [.. providers]; // copy so caller mutation can't reach the cached list (#109)
     }
 
     private static List<TrailerDto> ParseTrailers(JsonElement videoResults)
@@ -482,7 +482,7 @@ public class TmdbService
     {
         string cacheKey = $"season:{tmdbId}:{seasonNumber}";
         if (_cache.TryGetValue(cacheKey, out SeasonDetail? cached))
-            return cached;
+            return cached!.Clone(); // defensive copy — same rationale as ShowDetails.Clone (#109)
 
         string url = $"tv/{tmdbId}/season/{seasonNumber}?api_key={_apiKey}&language=en-US";
         JsonElement? raw = await GetAsync<JsonElement?>(url);
@@ -512,7 +512,7 @@ public class TmdbService
         }
 
         _cache.Set(cacheKey, detail, TimeSpan.FromHours(6));
-        return detail;
+        return detail.Clone();
     }
 
     private static SearchResult MapToSearchResult(TmdbMultiResult r) => new()
