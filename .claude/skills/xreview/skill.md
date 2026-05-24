@@ -1,12 +1,12 @@
 ---
 name: xreview
-description: Project-aware multi-agent code review for Hurrah.tv. Asks for a mode (quick / review), then either runs a fast subset of reviewers or the full pipeline (system `review` + 4 hurrah-tv-specific reviewers + dotnet format + README check + optional GitHub-issue filing for unaddressed findings).
+description: Project-aware multi-agent code review for Hurrah.tv. Asks for a mode (quick / review), runs reviewers, fixes score-50+ findings inline by default, and always surfaces follow-up issue candidates (deferred / out-of-scope / adjacent improvements) for tracking.
 argument-hint: [--staged|--unpushed]
 ---
 
 # xreview — Hurrah.tv Augmented Multi-Agent Review
 
-Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 4 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan), a dotnet format pass, a README freshness check, and an option to file unresolved findings as GitHub issues.
+Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 4 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
 
 ## Output rules (apply to every step below)
 
@@ -22,8 +22,8 @@ Ask:
 
 > **Which review mode?**
 >
-> - **quick** — fast subset: CLAUDE.md compliance + Bug scan only. No dotnet format auto-fix. For tight-loop checks during work-in-progress.
-> - **review** — full local pipeline: system `review` + all 4 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + offer to file unresolved findings as GitHub issues.
+> - **quick** — fast subset: CLAUDE.md compliance + Bug scan only. No dotnet format auto-fix. Inline fixes still default-on. For tight-loop checks during work-in-progress.
+> - **review** — full local pipeline: system `review` + all 4 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + always-on follow-up issue surfacing.
 >
 > **When to pick `review`:** typical pre-commit / pre-push review.
 > **When to pick `quick`:** sanity check during active work.
@@ -48,7 +48,7 @@ Wait for mode response before proceeding.
 2. Empty-diff handling: if empty, report "No changes to review" and stop.
 3. Launch only **Agent 1 (CLAUDE.md Compliance)** and **Agent 4 (Bug Scan)** as Sonnet subagents in parallel. Use the prompts from Step 1-Review section 4. Skip dotnet format. Skip the other 2 agents and the README check.
 4. Score and present per Step 1-Review sections 5–6, but with a smaller findings table.
-5. Ask "fix, run full review, or done?"
+5. Apply Step 8 (default-fix) and Step 9 (follow-up surfacing) — same default-act behavior as the full review, just over a narrower finding set.
 
 ---
 
@@ -283,30 +283,45 @@ gh issue comment <num> --repo mkerchenski/hurrah-tv --body "/xreview ($(date +%Y
 
 If a linked issue's commit said `closes #NN` but the diff doesn't satisfy the issue's acceptance criteria (a reviewer agent flagged this), do NOT post automatically — surface to the user as a high-severity finding and let them decide whether to comment, fix the diff, or rewrite the issue body.
 
-#### 8. Fix
+#### 8. Fix (default: act inline)
 
-Ask: "fix the score-50+ findings, run full review again, or done?" **Do not auto-rerun the agents** after fixing — the user re-invokes `/xreview` if they want a second pass.
+**Default behavior: fix every score-50+ finding inline** without asking. Apply the fix, then re-verify with `dotnet build`, `dotnet test`, and the format gate before continuing.
 
-#### 9. File unaddressed findings as GitHub issues (optional)
+Only pause to ask the user when a specific finding is:
+- **Ambiguous** — multiple reasonable approaches and the choice matters (e.g., refactor-vs-comment, broader API change vs. narrow fix).
+- **Out-of-scope by the linked issue's own body** — e.g., the issue explicitly defers a sub-criterion to a follow-up. Surface as a follow-up suggestion in Step 9 instead of fixing.
+- **Pre-existing** — flagged by a reviewer but not introduced by the diff. Surface as a follow-up suggestion in Step 9.
+- **A false positive on re-trace** — state the rejection rationale in the user-facing summary and skip.
 
-Any score-50+ finding **not resolved** in the fix step should become a tracked follow-up issue — review notes should not disappear into PR-comment history.
+Do not auto-rerun the agents after fixing — the user re-invokes `/xreview` if they want a second pass.
 
-1. List findings that were NOT addressed in the fix step.
-2. Ask: "File these as GitHub issues so they don't fall through the cracks?"
-3. If yes, for each unaddressed finding create an issue via `gh issue create`:
-   - **Title**: `[from review] <short finding summary>` (under 80 chars)
-   - **Body** should include:
-     - The reviewer's rationale
-     - File and line references (`file.cs:123`)
-     - Score and which reviewer category caught it (CLAUDE.md / Blazor / API / Bugs)
-     - **Link back to the PR or commit range** this review covered — `gh pr view --json url` if a PR exists, else current branch + diff range. Always include at least one link so context is traceable.
-     - "Suggested approach" if the reviewer offered one
-   - **Labels**: infer from the finding
-     - Type: `type:bug` (score 80+ or bug-category), `type:refactor` (style/architecture), `type:enhancement` (nice-to-have)
-     - Area: `area:api`, `area:client`, `area:infra`, `area:auth` — pick by file paths
-     - Difficulty: `difficulty:starter`, `difficulty:intermediate`, `difficulty:advanced`
-   - Use `gh issue create --title --body-file <tempfile> --label <csv>`. Don't assign initially.
-4. After creating, report: `Filed N follow-up issues: #X, #Y, #Z` with URLs so the user can link them in the PR description as `Related: #X #Y #Z`.
+After fixing, present a disposition table showing what was fixed inline, what was rejected (with rationale), and what's a follow-up candidate going into Step 9.
+
+#### 9. Surface follow-up issue candidates (always run)
+
+Always run this step after Step 8, even when every finding was fixed inline. Review work routinely surfaces *adjacent* improvements that aren't the immediate fix but are worth tracking. These get lost if not filed.
+
+Build the follow-up candidate list from:
+- **Unaddressed score-50+ findings** — anything skipped in Step 8 because it was ambiguous, out-of-scope, or pre-existing.
+- **Issue-body-scoped follow-ups** — when a closed-by issue's body explicitly defers a sub-criterion to "a follow-up" (e.g., #112's body acknowledges match cancellation as out of scope). These are deferrals the issue author already approved.
+- **Consistency gaps reviewers noticed** — same pattern present elsewhere in the codebase that wasn't touched by the diff (e.g., "GetWatchProvidersAsync has the same shape").
+- **Pre-existing patterns** that reviewers flagged but couldn't act on inside the diff scope.
+- **Adjacent low-severity nits below the score-50 filter** — only if a reviewer marked them as worth a future cleanup.
+
+Present the candidate list with proposed title / body / labels for each, then ask which to file via `AskUserQuestion` with multi-select. Skip filing only for ones the user deselects.
+
+For each filed issue (`gh issue create`):
+- **Title**: `[from review] <short finding summary>` (under 80 chars)
+- **Body**: reviewer's rationale, `file.cs:123` refs, score + reviewer category (CLAUDE.md / Blazor / API / Bugs), link to the PR/commit range (`gh pr view --json url` if a PR exists, else current branch + diff range), "Suggested approach" if known
+- **Labels**: infer from the finding
+  - Type: `type:bug` (score 80+ or bug-category), `type:refactor` (style/architecture), `type:enhancement` (nice-to-have)
+  - Area: `area:api`, `area:client`, `area:infra`, `area:auth` — pick by file paths
+  - Difficulty: `difficulty:intermediate` / `difficulty:advanced` (never `difficulty:starter` — that's reserved per user memory)
+- Use `gh issue create --title --body-file <tempfile> --label <csv>`. Don't assign initially.
+
+After filing: report `Filed N follow-up issues: #X, #Y, #Z` with URLs so the user can link them in the PR description as `Related: #X #Y #Z`.
+
+**If there are no follow-up candidates** (rare but possible on small bug-fix PRs): report "no follow-up candidates surfaced" and skip the `AskUserQuestion`. Don't manufacture suggestions to fill space.
 
 **Why**: deferred review findings that aren't tracked tend to reappear as bugs or tech debt. Filing them makes deferral deliberate, not forgotten.
 
