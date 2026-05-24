@@ -17,23 +17,47 @@ public partial class CurationService
     private readonly DbService _db;
     private readonly TmdbService _tmdb;
     private readonly ILogger<CurationService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly string _model;
     private readonly decimal _monthlyBudget;
     private readonly AnthropicClient? _client;
 
     public bool IsEnabled => _client != null;
 
-    public CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger)
+    public CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger, IServiceScopeFactory scopeFactory)
     {
         _db = db;
         _tmdb = tmdb;
         _logger = logger;
+        _scopeFactory = scopeFactory;
         _model = config["AI:CurationModel"] ?? "claude-haiku-4-5-20251001";
         _monthlyBudget = config.GetValue<decimal>("AI:MonthlyBudgetUsd", 50m);
 
         bool enabled = config.GetValue<bool>("AI:Enabled");
         string apiKey = config["AI:AnthropicApiKey"] ?? "";
         _client = enabled && !string.IsNullOrEmpty(apiKey) ? new AnthropicClient { ApiKey = apiKey } : null;
+    }
+
+    // detached AIUsage write — runs on the thread pool inside a fresh DI scope so
+    // request-scope teardown (RequestAborted, response sent, exception propagation)
+    // can't pull dependencies out from under it. callers fire-and-forget via `_ =`;
+    // tests `await` to make the write deterministic. exceptions are logged here
+    // so a swallowed Task doesn't bury a write failure. pins #121.
+    public Task TrackUsageDetachedAsync(string userId, int inputTokens, int outputTokens, decimal cost, string requestType)
+    {
+        return Task.Run(async () =>
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
+            try
+            {
+                await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Detached AIUsage write failed for {UserId} ({RequestType})", userId, requestType);
+            }
+        });
     }
 
     public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false)
@@ -171,7 +195,7 @@ public partial class CurationService
             int outputTokens = (int)response.Usage.OutputTokens;
             decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
 
-            await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "curation");
+            _ = TrackUsageDetachedAsync(userId, inputTokens, outputTokens, cost, "curation");
 
             LogCurationUsage(userId, inputTokens, outputTokens, cost);
 
@@ -355,10 +379,10 @@ public partial class CurationService
             int outputTokens = (int)response.Usage.OutputTokens;
             decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
 
-            // intentionally not forwarding ct — if the inference completed and we're
-            // about to dispose, we still want the usage row written so cost tracking
-            // stays accurate.
-            await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "show-match");
+            // fire-and-forget on a fresh DI scope — the request scope may tear down at
+            // any moment (RequestAborted or response-sent), and we already paid Anthropic
+            // for the inference. detaching guarantees the cost row lands. see #121.
+            _ = TrackUsageDetachedAsync(userId, inputTokens, outputTokens, cost, "show-match");
 
             // parse
             text = text.Trim();
