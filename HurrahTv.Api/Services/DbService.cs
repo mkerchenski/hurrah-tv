@@ -174,7 +174,7 @@ public class DbService(IConfiguration config)
     }
 
     // queue operations
-    public async Task<List<QueueItem>> GetQueueAsync(string userId)
+    public async Task<List<QueueItem>> GetQueueAsync(string userId, CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync();
         // canonical status ordering: see HurrahTv.Shared.Models.QueueStatusOrdering.DisplayOrder
@@ -186,7 +186,7 @@ public class DbService(IConfiguration config)
         // DESC) only applies to non-WantToWatch statuses, where surfacing new episodes is
         // the point. The CASE WHEN Status = 0 / != 0 split makes those keys NULL for the
         // other group so NULLS LAST keeps each status's branch isolated. Pins #101.
-        IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>("""
+        CommandDefinition cmd = new("""
             SELECT * FROM QueueItems WHERE UserId = @UserId
             ORDER BY
                 CASE Status
@@ -201,7 +201,8 @@ public class DbService(IConfiguration config)
                       AND LatestEpisodeDate <= NOW() THEN 0 ELSE 1 END,
                 CASE WHEN Status != 0 THEN LatestEpisodeDate END DESC NULLS LAST,
                 Position
-            """, new { UserId = userId });
+            """, new { UserId = userId }, cancellationToken: cancellationToken);
+        IEnumerable<QueueItem> items = await db.QueryAsync<QueueItem>(cmd);
         return [.. items];
     }
 
@@ -516,15 +517,17 @@ public class DbService(IConfiguration config)
     }
 
     // season & episode sentiments
-    public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId, string userId)
+    public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId, string userId, CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync();
-        IEnumerable<SeasonSentiment> seasons = await db.QueryAsync<SeasonSentiment>(
+        CommandDefinition seasonsCmd = new(
             "SELECT TmdbId, SeasonNumber, Sentiment FROM SeasonSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId",
-            new { UserId = userId, TmdbId = tmdbId });
-        IEnumerable<EpisodeSentiment> episodes = await db.QueryAsync<EpisodeSentiment>(
+            new { UserId = userId, TmdbId = tmdbId }, cancellationToken: cancellationToken);
+        CommandDefinition episodesCmd = new(
             "SELECT TmdbId, SeasonNumber, EpisodeNumber, Sentiment FROM EpisodeSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId",
-            new { UserId = userId, TmdbId = tmdbId });
+            new { UserId = userId, TmdbId = tmdbId }, cancellationToken: cancellationToken);
+        IEnumerable<SeasonSentiment> seasons = await db.QueryAsync<SeasonSentiment>(seasonsCmd);
+        IEnumerable<EpisodeSentiment> episodes = await db.QueryAsync<EpisodeSentiment>(episodesCmd);
         return new ShowSentiments { Seasons = [.. seasons], Episodes = [.. episodes] };
     }
 

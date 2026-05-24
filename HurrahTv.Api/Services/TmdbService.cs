@@ -220,14 +220,14 @@ public class TmdbService
         return filtered;
     }
 
-    public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType)
+    public async Task<ShowDetails?> GetDetailsAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"details:{mediaType}:{tmdbId}";
         if (_cache.TryGetValue(cacheKey, out ShowDetails? cached))
             return cached!.Clone(); // hand callers a fresh copy — see ShowDetails.Clone (#109)
 
         string url = $"{mediaType}/{tmdbId}?api_key={_apiKey}&append_to_response=watch/providers&language=en-US";
-        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
         if (raw == null) return null;
 
         JsonElement json = raw.Value;

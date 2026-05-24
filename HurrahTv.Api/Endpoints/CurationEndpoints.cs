@@ -125,15 +125,15 @@ public static class CurationEndpoints
                 if (cache.TryGetValue(cacheKey, out ShowMatchResult? cached))
                     return Results.Ok(cached);
 
-                ShowDetails? show = await tmdb.GetDetailsAsync(tmdbId, mediaType);
+                ShowDetails? show = await tmdb.GetDetailsAsync(tmdbId, mediaType, ct);
                 if (show == null) return Results.NotFound();
 
-                List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+                List<QueueItem> watchlist = await db.GetQueueAsync(userId, ct);
                 QueueItem? queueItem = watchlist.FirstOrDefault(i => i.TmdbId == tmdbId && i.MediaType == mediaType);
 
                 // include episode sentiments if the user has any for this show
                 ShowSentiments? showSentiments = mediaType == "tv"
-                    ? await db.GetShowSentimentsAsync(tmdbId, userId)
+                    ? await db.GetShowSentimentsAsync(tmdbId, userId, ct)
                     : null;
 
                 ShowMatchResult? result = await curation.GetShowMatchAsync(userId, show, watchlist, showSentiments, queueItem, ct);
@@ -145,8 +145,12 @@ public static class CurationEndpoints
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // client navigated away mid-flight — abort the paid AI inference and stay quiet.
-                // pins #117.
+                // 499 is a server-log signal, not a client contract. The cancelling client
+                // already raised OCE locally (HttpClient.GetFromJsonAsync) and abandoned this
+                // response — the 499 just lets request-log middleware bucket "client gave up"
+                // separately from real 5xx errors. ApiClient.GetShowMatchAsync intentionally
+                // does NOT special-case the status. See Learnings/status-499-server-log-only.md.
+                // pins #117, #120.
                 return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
             }
             catch (Exception ex)
