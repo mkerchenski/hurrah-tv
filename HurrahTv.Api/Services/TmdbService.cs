@@ -88,21 +88,21 @@ public class TmdbService
 
     // popular content on user's services (no date filter — best for "trending")
     public async Task<List<SearchResult>> PopularOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null, bool deep = false, bool englishOnly = false) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false, deep: deep, englishOnly: englishOnly);
+        List<int>? genreIds = null, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: false, deep: deep, englishOnly: englishOnly, cancellationToken: cancellationToken);
 
     // recently released content on user's services (date-filtered — "new this season")
     public async Task<List<SearchResult>> NewOnServicesAsync(List<int> providerIds, string mediaType = "tv",
-        List<int>? genreIds = null, bool deep = false, bool englishOnly = false) =>
-        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep, englishOnly: englishOnly);
+        List<int>? genreIds = null, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default) =>
+        await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep, englishOnly: englishOnly, cancellationToken: cancellationToken);
 
     private async Task<List<SearchResult>> InterleaveByProviderAsync(List<int> providerIds, string mediaType,
-        List<int>? genreIds, bool recentOnly, bool deep = false, bool englishOnly = false)
+        List<int>? genreIds, bool recentOnly, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default)
     {
         if (providerIds.Count == 0) return [];
 
         int perProvider = deep ? DeepResultsPerProvider : ResultsPerProvider;
-        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly, englishOnly))];
+        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly, englishOnly, cancellationToken))];
         await Task.WhenAll(tasks);
 
         List<SearchResult> interleaved = [];
@@ -120,7 +120,7 @@ public class TmdbService
     }
 
     private async Task<List<SearchResult>> DiscoverForProviderAsync(int providerId, string mediaType,
-        List<int>? genreIds, bool recentOnly, bool englishOnly = false)
+        List<int>? genreIds, bool recentOnly, bool englishOnly = false, CancellationToken cancellationToken = default)
     {
         string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
         string dateSuffix = recentOnly ? $":{DateTime.UtcNow.AddDays(-NewContentDaysBack):yyyy-MM-dd}" : ":all";
@@ -150,7 +150,7 @@ public class TmdbService
         if (englishOnly)
             url += "&with_original_language=en";
 
-        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url);
+        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url, cancellationToken);
         if (response == null) return [];
 
         List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
@@ -190,7 +190,7 @@ public class TmdbService
         return [.. enriched.Select(e => e.result)];
     }
 
-    public async Task<List<SearchResult>> FilterToUserServicesAsync(List<SearchResult> results, List<int> providerIds)
+    public async Task<List<SearchResult>> FilterToUserServicesAsync(List<SearchResult> results, List<int> providerIds, CancellationToken cancellationToken = default)
     {
         if (providerIds.Count == 0) return [];
 
@@ -199,7 +199,7 @@ public class TmdbService
         Task<(SearchResult result, List<AvailableService> providers)>[] tasks = [.. results
             .Select(async r =>
             {
-                List<AvailableService> providers = await GetWatchProvidersAsync(r.TmdbId, r.MediaType);
+                List<AvailableService> providers = await GetWatchProvidersAsync(r.TmdbId, r.MediaType, cancellationToken);
                 return (r, providers);
             })];
 
@@ -539,7 +539,17 @@ public class TmdbService
             string json = await response.Content.ReadAsStringAsync(cancellationToken);
             return JsonSerializer.Deserialize<T>(json, JsonOpts);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        // narrow the filter to caller-driven cancellation only: HttpClient.Timeout raises
+        // TaskCanceledException (a subclass of OCE) when its internal CTS fires, which
+        // would otherwise escape `ex is not OperationCanceledException` and propagate
+        // as 500. Same trap as Learnings/oce-rethrow-needs-token-filter.md, one layer
+        // deeper. Caller cancellation rethrows; everything else (timeouts, network,
+        // parse) falls into the null-return path. pins #125.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             Console.Error.WriteLine($"TMDb API error: {ex.Message}");
             return default;

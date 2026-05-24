@@ -14,6 +14,13 @@ builder.Services.AddSingleton<DbService>();
 builder.Services.AddSingleton<SmsService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CurationService>();
+// drain in-flight detached AIUsage writes on host shutdown (#123). Registered as
+// both a hosted service (StopAsync drain) and a singleton so CurationService can
+// resolve it for Register(Task). Same instance for both — hosted services are
+// singletons by default; the explicit AddSingleton(sp => GetRequiredService) keeps
+// the lookup path unified.
+builder.Services.AddSingleton<AIUsageDrainHostedService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AIUsageDrainHostedService>());
 
 // jwt auth
 string jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");

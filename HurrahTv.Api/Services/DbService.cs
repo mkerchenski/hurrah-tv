@@ -176,7 +176,7 @@ public class DbService(IConfiguration config)
     // queue operations
     public async Task<List<QueueItem>> GetQueueAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
         // canonical status ordering: see HurrahTv.Shared.Models.QueueStatusOrdering.DisplayOrder
         // — Client UI sorts share the same rule via QueueStatusOrdering.SortPriority.
         // ELSE 4 matches DisplayOrder.Count so unknown enum values sort after every known one.
@@ -403,7 +403,7 @@ public class DbService(IConfiguration config)
 
     public async Task UpdateProvidersAsync(int id, string availableOnJson, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new("""
             UPDATE QueueItems SET
                 AvailableOnJson      = @AvailableOnJson,
@@ -423,7 +423,7 @@ public class DbService(IConfiguration config)
         DateTime? nextEpisodeDate, int? nextEpisodeSeason, int? nextEpisodeNumber,
         CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new("""
             UPDATE QueueItems SET
                 LatestEpisodeDate   = @Latest,
@@ -451,22 +451,23 @@ public class DbService(IConfiguration config)
     // user preferences (loads services, genres, and settings in parallel)
     public record UserPreferences(List<int> ProviderIds, List<int> GenreIds, bool EnglishOnly);
 
-    public async Task<UserPreferences> GetUserPreferencesAsync(string userId)
+    public async Task<UserPreferences> GetUserPreferencesAsync(string userId, CancellationToken cancellationToken = default)
     {
-        Task<List<int>> providers = GetUserServicesAsync(userId);
-        Task<List<int>> genres = GetUserGenresAsync(userId);
-        Task<UserSettings> settings = GetUserSettingsAsync(userId);
+        Task<List<int>> providers = GetUserServicesAsync(userId, cancellationToken);
+        Task<List<int>> genres = GetUserGenresAsync(userId, cancellationToken);
+        Task<UserSettings> settings = GetUserSettingsAsync(userId, cancellationToken);
         await Task.WhenAll(providers, genres, settings);
         return new UserPreferences(providers.Result, genres.Result, settings.Result.EnglishOnly);
     }
 
     // user services
-    public async Task<List<int>> GetUserServicesAsync(string userId)
+    public async Task<List<int>> GetUserServicesAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        IEnumerable<int> ids = await db.QueryAsync<int>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT ProviderId FROM UserServices WHERE UserId = @UserId AND IsActive = TRUE",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        IEnumerable<int> ids = await db.QueryAsync<int>(cmd);
         return [.. ids];
     }
 
@@ -493,12 +494,13 @@ public class DbService(IConfiguration config)
     }
 
     // user genres
-    public async Task<List<int>> GetUserGenresAsync(string userId)
+    public async Task<List<int>> GetUserGenresAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        IEnumerable<int> ids = await db.QueryAsync<int>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT GenreId FROM UserGenres WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        IEnumerable<int> ids = await db.QueryAsync<int>(cmd);
         return [.. ids];
     }
 
@@ -519,7 +521,7 @@ public class DbService(IConfiguration config)
     // season & episode sentiments
     public async Task<ShowSentiments> GetShowSentimentsAsync(int tmdbId, string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition seasonsCmd = new(
             "SELECT TmdbId, SeasonNumber, Sentiment FROM SeasonSentiments WHERE UserId = @UserId AND TmdbId = @TmdbId",
             new { UserId = userId, TmdbId = tmdbId }, cancellationToken: cancellationToken);
@@ -616,22 +618,26 @@ public class DbService(IConfiguration config)
         return userId;
     }
 
-    // ai usage tracking
-    public async Task TrackAIUsageAsync(string userId, int inputTokens, int outputTokens, decimal costUsd, string requestType)
+    // ai usage tracking — CT bounds the write so it can't outlive the drain budget
+    // when invoked through AIUsageDrainHostedService.Run (which passes an 8s
+    // timeout-bounded token). pins follow-up to #123.
+    public async Task TrackAIUsageAsync(string userId, int inputTokens, int outputTokens, decimal costUsd, string requestType, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("""
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new("""
             INSERT INTO AIUsage (UserId, InputTokens, OutputTokens, EstimatedCostUsd, RequestType, CreatedAt)
             VALUES (@UserId, @InputTokens, @OutputTokens, @CostUsd, @RequestType, @CreatedAt)
-            """, new { UserId = userId, InputTokens = inputTokens, OutputTokens = outputTokens, CostUsd = costUsd, RequestType = requestType, CreatedAt = DateTime.UtcNow });
+            """, new { UserId = userId, InputTokens = inputTokens, OutputTokens = outputTokens, CostUsd = costUsd, RequestType = requestType, CreatedAt = DateTime.UtcNow }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
     }
 
-    public async Task<decimal> GetMonthlyAICostAsync()
+    public async Task<decimal> GetMonthlyAICostAsync(CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        return await db.QuerySingleOrDefaultAsync<decimal>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT COALESCE(SUM(EstimatedCostUsd), 0) FROM AIUsage WHERE EXTRACT(YEAR FROM CreatedAt) = @Year AND EXTRACT(MONTH FROM CreatedAt) = @Month",
-            new { DateTime.UtcNow.Year, DateTime.UtcNow.Month });
+            new { DateTime.UtcNow.Year, DateTime.UtcNow.Month }, cancellationToken: cancellationToken);
+        return await db.QuerySingleOrDefaultAsync<decimal>(cmd);
     }
 
     public async Task<decimal> GetUserAICostAsync(string userId)
@@ -643,32 +649,35 @@ public class DbService(IConfiguration config)
     }
 
     // curation cache
-    public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId)
+    public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        (string RowsJson, string WatchlistHash)? row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT RowsJson, WatchlistHash FROM CurationCache WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        (string RowsJson, string WatchlistHash)? row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(cmd);
         return row;
     }
 
-    public async Task SetCurationCacheAsync(string userId, string rowsJson, string watchlistHash)
+    public async Task SetCurationCacheAsync(string userId, string rowsJson, string watchlistHash, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        await db.ExecuteAsync("""
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new("""
             INSERT INTO CurationCache (UserId, RowsJson, WatchlistHash, GeneratedAt)
             VALUES (@UserId, @RowsJson, @Hash, NOW())
             ON CONFLICT (UserId) DO UPDATE SET RowsJson = @RowsJson, WatchlistHash = @Hash, GeneratedAt = NOW()
-            """, new { UserId = userId, RowsJson = rowsJson, Hash = watchlistHash });
+            """, new { UserId = userId, RowsJson = rowsJson, Hash = watchlistHash }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
     }
 
     // user settings
-    public async Task<UserSettings> GetUserSettingsAsync(string userId)
+    public async Task<UserSettings> GetUserSettingsAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType FROM UserSettings WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(cmd);
         return settings ?? new UserSettings();
     }
 
@@ -716,12 +725,13 @@ public class DbService(IConfiguration config)
             new { UserId = userId, TmdbId = tmdbId, Season = season, Episode = episode });
     }
 
-    public async Task<List<WatchedEpisode>> GetWatchedEpisodesAsync(string userId)
+    public async Task<List<WatchedEpisode>> GetWatchedEpisodesAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        IEnumerable<(int TmdbId, int Season, int Episode)> rows = await db.QueryAsync<(int, int, int)>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT TmdbId, Season, Episode FROM WatchedEpisodes WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        IEnumerable<(int TmdbId, int Season, int Episode)> rows = await db.QueryAsync<(int, int, int)>(cmd);
         return [.. rows.Select(r => new WatchedEpisode(r.TmdbId, r.Season, r.Episode))];
     }
 
@@ -772,12 +782,13 @@ public class DbService(IConfiguration config)
     }
 
     // user profile
-    public async Task<string?> GetUserFirstNameAsync(string userId)
+    public async Task<string?> GetUserFirstNameAsync(string userId, CancellationToken cancellationToken = default)
     {
-        using NpgsqlConnection db = await OpenAsync();
-        return await db.QuerySingleOrDefaultAsync<string?>(
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
             "SELECT FirstName FROM Users WHERE Id = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        return await db.QuerySingleOrDefaultAsync<string?>(cmd);
     }
 
     public async Task SetUserFirstNameAsync(string userId, string? firstName)
@@ -972,10 +983,14 @@ public class DbService(IConfiguration config)
         return new AdminOnboardingFunnel(total, withServices, withGenres, withQueue, [.. buckets]);
     }
 
-    private async Task<NpgsqlConnection> OpenAsync()
+    // accepts ct so cancellation aborts connection acquisition (TCP handshake + auth
+    // round-trip) for callers that already abandoned their request. Without this,
+    // OpenAsync runs to completion before the subsequent Dapper command throws OCE,
+    // wasting a pooled connection on a request the caller has given up on. pins #127.
+    private async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken = default)
     {
         NpgsqlConnection conn = new(_connectionString);
-        await conn.OpenAsync();
+        await conn.OpenAsync(cancellationToken);
         return conn;
     }
 }

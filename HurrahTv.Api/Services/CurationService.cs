@@ -12,24 +12,43 @@ public partial class CurationService
     private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
     private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
 
+    // bound concurrent paid AI inferences so a burst can't overshoot the monthly
+    // budget by more than `(MatchSlots + CurationSlots) * per-call-cost`. The pre-AI
+    // budget check (_db.GetMonthlyAICostAsync) races with detached AIUsage writes
+    // under load, so the gates' purpose isn't perfect accounting — they cap the
+    // worst case at a known constant. Process-wide (static) because CurationService
+    // is scoped (per-request) and a per-instance semaphore would do nothing.
+    //
+    // two separate gates so a burst of /rows (slow, large token budget) doesn't
+    // starve Details-page /match calls (fast, small token budget) behind the same
+    // queue. Sized for Haiku throughput at a $50/mo cap: at ~$0.06/curation * 2 +
+    // ~$0.005/match * 2 ≈ $0.13 worst-case overshoot, which is the bounded-
+    // eventual-consistency option from #124.
+    private const int MaxConcurrentMatchInferences = 2;
+    private const int MaxConcurrentCurationInferences = 2;
+    private static readonly SemaphoreSlim AiMatchGate = new(MaxConcurrentMatchInferences, MaxConcurrentMatchInferences);
+    private static readonly SemaphoreSlim AiCurationGate = new(MaxConcurrentCurationInferences, MaxConcurrentCurationInferences);
+
     private static readonly JsonSerializerOptions CaseInsensitive = new() { PropertyNameCaseInsensitive = true };
 
     private readonly DbService _db;
     private readonly TmdbService _tmdb;
     private readonly ILogger<CurationService> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly AIUsageDrainHostedService _drain;
     private readonly string _model;
     private readonly decimal _monthlyBudget;
     private readonly AnthropicClient? _client;
 
     public bool IsEnabled => _client != null;
 
-    public CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger, IServiceScopeFactory scopeFactory)
+    public CurationService(IConfiguration config, DbService db, TmdbService tmdb, ILogger<CurationService> logger, IServiceScopeFactory scopeFactory, AIUsageDrainHostedService drain)
     {
         _db = db;
         _tmdb = tmdb;
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _drain = drain;
         _model = config["AI:CurationModel"] ?? "claude-haiku-4-5-20251001";
         _monthlyBudget = config.GetValue<decimal>("AI:MonthlyBudgetUsd", 50m);
 
@@ -44,15 +63,28 @@ public partial class CurationService
     // becomes scoped. The try covers _scopeFactory.CreateScope() too so an
     // ObjectDisposed during host shutdown surfaces in the log rather than as an
     // unobserved Task fault. pins #121.
-    public async Task TrackUsageDetachedAsync(string userId, int inputTokens, int outputTokens, decimal cost, string requestType)
+    //
+    // dispatched through AIUsageDrainHostedService.Run so the in-flight task is
+    // registered with the drain BEFORE thread-pool scheduling — closes the SIGTERM
+    // race window where a Register-after-Task.Run ordering could let StopAsync
+    // snapshot empty between the two calls. Run also bounds the inner write with
+    // an 8s timeout so it can't outlive the drain's 10s deadline. pins #123.
+    public Task TrackUsageDetachedAsync(string userId, int inputTokens, int outputTokens, decimal cost, string requestType)
     {
-        await Task.Run(async () =>
+        return _drain.Run(async ct =>
         {
             try
             {
                 using IServiceScope scope = _scopeFactory.CreateScope();
                 DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
-                await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType);
+                await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                // inner-write CT hit the 8s budget — expected during shutdown drain
+                // or under DB contention, not a write failure. Log at Warning so it
+                // doesn't trip error-level alerts on deploy-slot swaps.
+                _logger.LogWarning("Detached AIUsage write cancelled for {UserId} ({RequestType}) — drain budget exceeded", userId, requestType);
             }
             catch (Exception ex)
             {
@@ -61,15 +93,19 @@ public partial class CurationService
         });
     }
 
-    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false)
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)
             return new CurationResult { Error = "AI not enabled" };
 
         string currentHash = ComputeWatchlistHash(watchlist);
 
-        // check cache
-        (string? rowsJson, string? watchlistHash)? cached = await _db.GetCurationCacheAsync(userId);
+        // check cache (unless caller forced a refresh — /refresh endpoint passes
+        // forceRefresh=true so the cache check is skipped without first blanking the
+        // cache row. Pre-blanking lost the user's row on mid-flight client cancel.)
+        (string? rowsJson, string? watchlistHash)? cached = forceRefresh
+            ? null
+            : await _db.GetCurationCacheAsync(userId, cancellationToken);
         if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null
             && cached.Value.rowsJson != "[]")
         {
@@ -81,7 +117,7 @@ public partial class CurationService
         bool watchlistChanged = cached != null && cached.Value.watchlistHash != currentHash;
 
         // budget check
-        decimal monthlyCost = await _db.GetMonthlyAICostAsync();
+        decimal monthlyCost = await _db.GetMonthlyAICostAsync(cancellationToken);
         if (monthlyCost >= _monthlyBudget)
         {
             _logger.LogWarning("AI monthly budget exceeded: ${Cost:F2} / ${Budget:F2}", monthlyCost, _monthlyBudget);
@@ -96,32 +132,32 @@ public partial class CurationService
             return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
         // phase 1: gather candidate pool from TMDb (excluding watchlist)
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, englishOnly);
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, englishOnly, cancellationToken);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
 
         // phase 2: send candidates + taste profile to AI for curation
-        List<AICuratedRow> rows = await CurateWithAIAsync(userId, signalItems, watchlist, candidatePool);
+        List<AICuratedRow> rows = await CurateWithAIAsync(userId, signalItems, watchlist, candidatePool, cancellationToken);
 
         if (rows.Count == 0)
             return new CurationResult { Error = "Couldn't generate recommendations right now — try again later", CandidateCount = candidatePool.Count };
 
         string rowsJsonStr = JsonSerializer.Serialize(rows);
-        await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash);
+        await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash, cancellationToken);
 
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, bool englishOnly)
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
     {
         HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
 
         // fetch recent TV and movies in parallel across user's services
-        Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly);
-        Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly);
-        Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly);
-        Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly);
+        Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
 
         // combine and deduplicate, excluding watchlist items
@@ -137,17 +173,17 @@ public partial class CurationService
         }
 
         // enrich with provider info for shows that don't have it
-        pool = await _tmdb.FilterToUserServicesAsync(pool, providerIds);
+        pool = await _tmdb.FilterToUserServicesAsync(pool, providerIds, cancellationToken);
 
         return pool;
     }
 
     private async Task<List<AICuratedRow>> CurateWithAIAsync(string userId, List<QueueItem> signalItems,
-        List<QueueItem> allItems, List<SearchResult> candidates)
+        List<QueueItem> allItems, List<SearchResult> candidates, CancellationToken cancellationToken)
     {
         string tasteProfile = BuildTasteProfile(signalItems, allItems);
         string candidateList = BuildCandidateList(candidates);
-        string? firstName = await _db.GetUserFirstNameAsync(userId);
+        string? firstName = await _db.GetUserFirstNameAsync(userId, cancellationToken);
         string namedAddress = string.IsNullOrWhiteSpace(firstName) ? "" : $"\nThe user's name is {firstName}. Address them by name in 1-2 of the reasons where it lands naturally — don't force it into every line.\n";
 
         string prompt = $$"""
@@ -179,14 +215,18 @@ public partial class CurationService
             The "id" is the candidate number (# before each show). Order by recommendation strength (best first).
             """;
 
+        await AiCurationGate.WaitAsync(cancellationToken);
         try
         {
+            // forward CT so Home-page navigation aborts the paid AI inference. Same
+            // pattern as GetShowMatchAsync (#117/#122) — /rows is the most expensive
+            // AI path (12-15 picks, larger token budget than /match). pins #126.
             Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
                 MaxTokens = 1024,
                 Messages = [new MessageParam { Role = Role.User, Content = prompt }]
-            });
+            }, cancellationToken: cancellationToken);
 
             string text = "";
             if (response.Content.Count > 0 && response.Content[0].TryPickText(out TextBlock? textBlock))
@@ -240,10 +280,20 @@ public partial class CurationService
                 ItemMediaTypes = itemMediaTypes
             }];
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // client navigated away — propagate so endpoint can return 499 instead of
+            // burying as a generic "AI curation failed" log. Mirrors GetShowMatchAsync.
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "AI curation failed for {UserId}", userId);
             return [];
+        }
+        finally
+        {
+            AiCurationGate.Release();
         }
     }
 
@@ -311,7 +361,7 @@ public partial class CurationService
         if (signalItems.Count < 2) return null;
 
         // budget check
-        decimal monthlyCost = await _db.GetMonthlyAICostAsync();
+        decimal monthlyCost = await _db.GetMonthlyAICostAsync(cancellationToken);
         if (monthlyCost >= _monthlyBudget) return null;
 
         string tasteProfile = BuildTasteProfile(signalItems, watchlist);
@@ -361,6 +411,7 @@ public partial class CurationService
             {"match":"strong" or "good" or "stretch" or "miss","reason":"Your 1-2 sentence take"}
             """;
 
+        await AiMatchGate.WaitAsync(cancellationToken);
         try
         {
             // forward CT so rapid Details-page navigation aborts the paid AI inference,
@@ -404,6 +455,10 @@ public partial class CurationService
         {
             _logger.LogError(ex, "Show match failed for {UserId}/{TmdbId}", userId, show.TmdbId);
             return null;
+        }
+        finally
+        {
+            AiMatchGate.Release();
         }
     }
 
