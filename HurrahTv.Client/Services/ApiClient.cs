@@ -148,7 +148,11 @@ public class ApiClient(HttpClient http)
         {
             return await _http.GetFromJsonAsync<CurationResponse>("api/curation/rows", cancellationToken);
         }
-        catch (OperationCanceledException) { throw; }
+        // only rethrow caller-driven cancellation. HttpClient.Timeout surfaces as
+        // TaskCanceledException with our token NOT cancelled — that should keep the
+        // legacy "all-errors-return-null" contract so existing callers (no CT) don't
+        // suddenly see exceptions.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return null; }
     }
 
@@ -161,7 +165,7 @@ public class ApiClient(HttpClient http)
                 return await response.Content.ReadFromJsonAsync<CurationResponse>(cancellationToken);
             return null;
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return null; }
     }
 
@@ -171,7 +175,7 @@ public class ApiClient(HttpClient http)
         {
             return await _http.GetFromJsonAsync<ShowMatchResult?>($"api/curation/match/{mediaType}/{tmdbId}", cancellationToken);
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return null; }
     }
 
