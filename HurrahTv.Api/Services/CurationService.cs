@@ -277,7 +277,7 @@ public partial class CurationService
     }
 
     // personalized match blurb for a specific show
-    public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist, ShowSentiments? showSentiments = null, QueueItem? queueItem = null)
+    public async Task<ShowMatchResult?> GetShowMatchAsync(string userId, ShowDetails show, List<QueueItem> watchlist, ShowSentiments? showSentiments = null, QueueItem? queueItem = null, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled) return null;
 
@@ -338,12 +338,14 @@ public partial class CurationService
 
         try
         {
+            // forward CT so rapid Details-page navigation aborts the paid AI inference,
+            // not just the response on the client side. pins #117.
             Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
                 MaxTokens = 150,
                 Messages = [new MessageParam { Role = Role.User, Content = prompt }]
-            });
+            }, cancellationToken: cancellationToken);
 
             string text = "";
             if (response.Content.Count > 0 && response.Content[0].TryPickText(out TextBlock? textBlock))
@@ -353,6 +355,9 @@ public partial class CurationService
             int outputTokens = (int)response.Usage.OutputTokens;
             decimal cost = (inputTokens * InputCostPerToken) + (outputTokens * OutputCostPerToken);
 
+            // intentionally not forwarding ct — if the inference completed and we're
+            // about to dispose, we still want the usage row written so cost tracking
+            // stays accurate.
             await _db.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, "show-match");
 
             // parse
@@ -363,6 +368,12 @@ public partial class CurationService
                 text = text[jsonStart..(jsonEnd + 1)];
 
             return JsonSerializer.Deserialize<ShowMatchResult>(text, CaseInsensitive);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // client navigated away — propagate so endpoint can return 499 instead of
+            // pretending success with null.
+            throw;
         }
         catch (Exception ex)
         {
