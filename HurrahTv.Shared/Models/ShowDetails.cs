@@ -20,6 +20,43 @@ public class ShowDetails : SearchResult
     public string? NextEpisodeName { get; set; }
     public int? NextEpisodeSeason { get; set; }
     public int? NextEpisodeNumber { get; set; }
+
+    // shallow copy with fresh list instances. TmdbService caches the canonical instance
+    // and hands callers a clone so per-request mutation (e.g. user-filtered AvailableOn
+    // in DetailsEndpoints) can't bleed back into the cache. pins #109.
+    public ShowDetails Clone() => new()
+    {
+        TmdbId = TmdbId,
+        Title = Title,
+        Overview = Overview,
+        PosterPath = PosterPath,
+        BackdropPath = BackdropPath,
+        MediaType = MediaType,
+        FirstAirDate = FirstAirDate,
+        ReleaseDate = ReleaseDate,
+        VoteAverage = VoteAverage,
+        GenreIds = [.. GenreIds],
+        OriginalLanguage = OriginalLanguage,
+        AvailableOn = [.. AvailableOn],
+        NotOnYourServices = NotOnYourServices,
+        NoStreamingInfo = NoStreamingInfo,
+        Tagline = Tagline,
+        NumberOfSeasons = NumberOfSeasons,
+        NumberOfEpisodes = NumberOfEpisodes,
+        Runtime = Runtime,
+        Genres = [.. Genres],
+        Seasons = [.. Seasons],
+        Trailers = [.. Trailers],
+        Status = Status,
+        LastEpisodeAirDate = LastEpisodeAirDate,
+        LastEpisodeName = LastEpisodeName,
+        LastEpisodeSeason = LastEpisodeSeason,
+        LastEpisodeNumber = LastEpisodeNumber,
+        NextEpisodeAirDate = NextEpisodeAirDate,
+        NextEpisodeName = NextEpisodeName,
+        NextEpisodeSeason = NextEpisodeSeason,
+        NextEpisodeNumber = NextEpisodeNumber,
+    };
 }
 
 public class TrailerDto
