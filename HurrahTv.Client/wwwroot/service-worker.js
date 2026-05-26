@@ -48,11 +48,11 @@ self.addEventListener('fetch', (event) => {
     //  - appsettings.json so a deploy's new BuildVersion is picked up (it drives the
     //    ?v= cache-bust for lazy JS module imports — a stale copy would pin old modules)
     if (req.mode === 'navigate') {
-        event.respondWith(networkFirstShell(req));
+        event.respondWith(networkFirst(req, OFFLINE_SHELL));
         return;
     }
     if (url.pathname === '/appsettings.json') {
-        event.respondWith(networkFirst(req));
+        event.respondWith(networkFirst(req, req));
         return;
     }
 
@@ -61,30 +61,19 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(cacheFirst(req));
 });
 
-async function networkFirstShell(req) {
+// network-first with cache fallback. cacheKey is what gets written/read: navigations
+// store the response under OFFLINE_SHELL (every SPA route resolves to the same shell);
+// other resources store under their own request.
+async function networkFirst(req, cacheKey) {
     try {
         const res = await fetch(req);
         if (res && res.ok) {
             const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(OFFLINE_SHELL, copy));
+            caches.open(CACHE).then((cache) => cache.put(cacheKey, copy));
         }
         return res;
     } catch {
-        const cached = await caches.match(OFFLINE_SHELL);
-        return cached || Response.error();
-    }
-}
-
-async function networkFirst(req) {
-    try {
-        const res = await fetch(req);
-        if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(req, copy));
-        }
-        return res;
-    } catch {
-        const cached = await caches.match(req);
+        const cached = await caches.match(cacheKey);
         return cached || Response.error();
     }
 }

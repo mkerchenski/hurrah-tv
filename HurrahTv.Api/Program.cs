@@ -96,12 +96,14 @@ app.UseStaticFiles(new StaticFileOptions
     {
         string path = ctx.Context.Request.Path.Value ?? "";
 
-        if (ctx.Context.Request.Query.ContainsKey("v"))
+        // service-worker.js must always revalidate so a new deploy's SW replaces the old
+        // one — checked before the ?v= branch so a future fingerprinted SW URL can't pin
+        // it immutable for a year (issue #15)
+        if (path.EndsWith("service-worker.js"))
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        else if (ctx.Context.Request.Query.ContainsKey("v"))
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         else if (path.EndsWith("index.html"))
-            ctx.Context.Response.Headers.CacheControl = "no-cache";
-        else if (path.EndsWith("service-worker.js"))
-            // revalidate every load so a new deploy's SW replaces the old one (issue #15)
             ctx.Context.Response.Headers.CacheControl = "no-cache";
         else
             ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
