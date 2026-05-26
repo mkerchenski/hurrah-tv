@@ -66,7 +66,7 @@
          isn't intercepted by a cache; test the SW against a published build via the Api. -->
     <script>
         if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
-            navigator.serviceWorker.register('/service-worker.js');
+            navigator.serviceWorker.register('/service-worker.js').catch(() => { });
         }
     </script>
 </body>

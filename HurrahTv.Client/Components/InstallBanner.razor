@@ -69,7 +69,8 @@ else if (_variant == Variant.Install)
         catch (JSException) { }
 
         // the native prompt is single-use — hide the banner regardless of outcome.
-        // if the user declined, Chrome may re-offer later and the banner reappears.
+        // if the user declined, the banner returns only on the next page load (detection
+        // runs once, on firstRender) — see #15 follow-up for live re-evaluation.
         _variant = Variant.None;
         _installing = false;
         StateHasChanged();
