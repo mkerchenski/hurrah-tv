@@ -52,6 +52,13 @@
     <!-- SortableJS loaded as a global; consumed by wwwroot/js/sortable.js (issue #87) -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <!-- PWA service worker (issue #15). Skipped on localhost so dotnet watch hot-reload
+         isn't intercepted by a cache; test the SW against a published build via the Api. -->
+    <script>
+        if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+            navigator.serviceWorker.register('/service-worker.js');
+        }
+    </script>
 </body>
 
 </html>

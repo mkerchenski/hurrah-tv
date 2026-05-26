@@ -100,6 +100,9 @@ app.UseStaticFiles(new StaticFileOptions
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
         else if (path.EndsWith("index.html"))
             ctx.Context.Response.Headers.CacheControl = "no-cache";
+        else if (path.EndsWith("service-worker.js"))
+            // revalidate every load so a new deploy's SW replaces the old one (issue #15)
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
         else
             ctx.Context.Response.Headers.CacheControl = "public, max-age=3600, must-revalidate";
     }
