@@ -1,6 +1,7 @@
 @inject InstallBannerService InstallSvc
+@implements IDisposable
 
-@if (_show)
+@if (_variant == Variant.Ios)
 {
     <div class="bg-surface-100 border border-surface-200 rounded-xl px-4 py-3 mb-4 flex items-start gap-3">
         <span class="icon-[heroicons--arrow-up-on-square] w-5 h-5 text-accent mt-0.5 shrink-0"></span>
@@ -14,9 +15,30 @@
         </button>
     </div>
 }
+else if (_variant == Variant.Install)
+{
+    <div class="bg-surface-100 border border-surface-200 rounded-xl px-4 py-3 mb-4 flex items-center gap-3">
+        <span class="icon-[heroicons--arrow-down-tray] w-5 h-5 text-accent shrink-0"></span>
+        <div class="flex-1 text-sm text-gray-300">
+            <span class="text-white font-medium">Install Hurrah.tv</span><br />
+            Add it to your device for a full-screen, app-like experience.
+        </div>
+        <button @onclick="Install" disabled="@_installing"
+                class="bg-accent hover:bg-accent-light text-white font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0">
+            Install
+        </button>
+        <button @onclick="Dismiss" class="text-gray-500 hover:text-white p-1 shrink-0" title="Dismiss">
+            <span class="icon-[heroicons--x-mark] w-5 h-5"></span>
+        </button>
+    </div>
+}
 
 @code {
-    private bool _show;
+    private enum Variant { None, Ios, Install }
+
+    private Variant _variant = Variant.None;
+    private bool _installing;
+    private DotNetObjectReference<InstallBanner>? _selfRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -24,20 +46,60 @@
 
         try
         {
-            bool shouldShow = await InstallSvc.ShouldShowAsync();
-            if (shouldShow)
+            // iOS Safari has no programmatic install — show the manual instructions.
+            if (await InstallSvc.ShouldShowAsync())
             {
-                _show = true;
+                _variant = Variant.Ios;
                 StateHasChanged();
+                return;
+            }
+
+            // Android / desktop Chrome: subscribe to beforeinstallprompt. The callback
+            // fires immediately if the event was already captured, and again if it arrives
+            // later — so the Install banner appears whenever the browser offers it.
+            _selfRef = DotNetObjectReference.Create(this);
+            await InstallSvc.OnInstallAvailableAsync(_selfRef);
+        }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnInstallAvailable()
+    {
+        if (_variant != Variant.None) return;
+        try
+        {
+            // re-check so dismissal is honored even if the browser re-offers
+            if (await InstallSvc.CanPromptInstallAsync())
+            {
+                _variant = Variant.Install;
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch (JSException) { }
     }
 
+    private async Task Install()
+    {
+        if (_installing) return;
+        _installing = true;
+        try { await InstallSvc.PromptInstallAsync(); }
+        catch (JSException) { }
+
+        // the native prompt is single-use — hide the banner regardless of outcome. if the
+        // user declined, Chrome may emit a fresh beforeinstallprompt later, which re-fires
+        // OnInstallAvailable and brings the banner back (no reload needed).
+        _variant = Variant.None;
+        _installing = false;
+        StateHasChanged();
+    }
+
     private async Task Dismiss()
     {
-        _show = false;
+        _variant = Variant.None;
         try { await InstallSvc.DismissAsync(); }
         catch (JSException) { }
     }
+
+    public void Dispose() => _selfRef?.Dispose();
 }

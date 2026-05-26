@@ -16,6 +16,7 @@ Hurrah.tv is an opinionated streaming platform that curates content across Netfl
 - **Multi-step onboarding** — Pick a name, services, genres, then at least 3 shows with sentiment so AI works from day one
 - **Balanced discovery** — Content is interleaved across your services so no single provider dominates your feed
 - **Language filter** — Option to show English originals only, hiding dubbed and subtitled content
+- **Installable PWA** — Add to your home screen on iOS or Android for a full-screen, app-like experience; a service worker caches the app shell so it still loads offline
 - **Admin views** — Owner-only `/admin` surface for users (with name + admin grant), AI usage and budget tracking, and onboarding funnel
 
 **Live at:** [hurrah.tv](https://hurrah.tv)

@@ -56,6 +56,29 @@ public sealed class InstallBannerService(IJSRuntime js, IConfiguration config) :
         try { await _module.InvokeVoidAsync("dismiss"); } catch { }
     }
 
+    // Android / desktop Chrome: whether a programmatic install prompt is available
+    public async Task<bool> CanPromptInstallAsync()
+    {
+        _module ??= await js.InvokeAsync<IJSObjectReference>("import", _path);
+        return await _module.InvokeAsync<bool>("canPromptInstall");
+    }
+
+    // returns true if the user accepted the native install prompt
+    public async Task<bool> PromptInstallAsync()
+    {
+        _module ??= await js.InvokeAsync<IJSObjectReference>("import", _path);
+        try { return await _module.InvokeAsync<bool>("promptInstall"); }
+        catch (JSException) { return false; }
+    }
+
+    // subscribe T's [JSInvokable] OnInstallAvailable callback to beforeinstallprompt so a
+    // late event shows the banner without a reload; fires immediately if already available
+    public async Task OnInstallAvailableAsync<T>(DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _module ??= await js.InvokeAsync<IJSObjectReference>("import", _path);
+        await _module.InvokeVoidAsync("onInstallAvailable", dotNetRef);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_module is null) return;

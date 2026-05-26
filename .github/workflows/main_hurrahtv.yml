@@ -81,6 +81,10 @@ jobs:
           jq --arg v "$SHORT_SHA" '. + {BuildVersion: $v}' api-output/wwwroot/appsettings.json > api-output/wwwroot/appsettings.tmp \
             && mv api-output/wwwroot/appsettings.tmp api-output/wwwroot/appsettings.json \
             || { rm -f api-output/wwwroot/appsettings.tmp; echo "Failed to stamp client BuildVersion"; exit 1; }
+          # stamp the same SHA into the service worker so each deploy gets a fresh cache
+          # namespace (hurrah-cache-$SHORT_SHA); activate() then drops the old one (#15)
+          sed -i "s|__BUILD_VERSION__|$SHORT_SHA|" api-output/wwwroot/service-worker.js
+          grep -q "$SHORT_SHA" api-output/wwwroot/service-worker.js || { echo "SW version stamp failed"; exit 1; }
 
       - name: Remove dev config from client output
         run: rm -f api-output/wwwroot/appsettings.Development.json

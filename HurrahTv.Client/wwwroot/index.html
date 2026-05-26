@@ -32,6 +32,18 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <link rel="manifest" href="manifest.webmanifest" />
     <script type="importmap"></script>
+    <!-- capture beforeinstallprompt early (issue #15): the event fires before the WASM
+         runtime boots and the lazy js/install.js module loads, so a listener registered
+         later would miss it. Stash the deferred event for the module to consume. -->
+    <script>
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            window.__hurrahInstallPrompt = e;
+            // notify the install banner if it has already subscribed (event can fire after render)
+            if (window.__hurrahNotifyInstall) window.__hurrahNotifyInstall();
+        });
+        window.addEventListener('appinstalled', () => { window.__hurrahInstallPrompt = null; });
+    </script>
 </head>
 
 <body class="bg-surface text-gray-100 min-h-screen">
@@ -52,6 +64,13 @@
     <!-- SortableJS loaded as a global; consumed by wwwroot/js/sortable.js (issue #87) -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <!-- PWA service worker (issue #15). Skipped on localhost so dotnet watch hot-reload
+         isn't intercepted by a cache; test the SW against a published build via the Api. -->
+    <script>
+        if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+            navigator.serviceWorker.register('/service-worker.js').catch(() => { });
+        }
+    </script>
 </body>
 
 </html>
