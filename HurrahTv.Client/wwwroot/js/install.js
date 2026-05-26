@@ -19,3 +19,28 @@ export function shouldShow() {
 export function dismiss() {
     try { localStorage.setItem(DISMISS_KEY, '1'); } catch { }
 }
+
+// Android / desktop Chrome path: the deferred beforeinstallprompt event is captured
+// early in index.html (it fires before this module loads) and stashed on window.
+// canPromptInstall reports whether a programmatic install prompt is available.
+export function canPromptInstall() {
+    try {
+        if (localStorage.getItem(DISMISS_KEY)) return false;
+    } catch { /* private mode — fall through, still allow install */ }
+    return !!window.__hurrahInstallPrompt;
+}
+
+// fire the native install prompt. The event is single-use, so clear it afterward —
+// Chrome may emit a fresh beforeinstallprompt later if the user didn't install.
+export async function promptInstall() {
+    const evt = window.__hurrahInstallPrompt;
+    if (!evt) return false;
+    window.__hurrahInstallPrompt = null;
+    try {
+        evt.prompt();
+        const choice = await evt.userChoice;
+        return choice && choice.outcome === 'accepted';
+    } catch {
+        return false;
+    }
+}

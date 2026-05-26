@@ -32,6 +32,16 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
     <link rel="manifest" href="manifest.webmanifest" />
     <script type="importmap"></script>
+    <!-- capture beforeinstallprompt early (issue #15): the event fires before the WASM
+         runtime boots and the lazy js/install.js module loads, so a listener registered
+         later would miss it. Stash the deferred event for the module to consume. -->
+    <script>
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            window.__hurrahInstallPrompt = e;
+        });
+        window.addEventListener('appinstalled', () => { window.__hurrahInstallPrompt = null; });
+    </script>
 </head>
 
 <body class="bg-surface text-gray-100 min-h-screen">
