@@ -30,6 +30,14 @@ export function canPromptInstall() {
     return !!window.__hurrahInstallPrompt;
 }
 
+// register a .NET callback fired when an install prompt becomes available — lets the
+// banner appear without a reload if beforeinstallprompt arrives after first render.
+// Fires immediately if the event was already captured before the component subscribed.
+export function onInstallAvailable(dotNetRef) {
+    window.__hurrahNotifyInstall = () => dotNetRef.invokeMethodAsync('OnInstallAvailable').catch(() => { });
+    if (window.__hurrahInstallPrompt) window.__hurrahNotifyInstall();
+}
+
 // fire the native install prompt. The event is single-use, so clear it afterward —
 // Chrome may emit a fresh beforeinstallprompt later if the user didn't install.
 export async function promptInstall() {

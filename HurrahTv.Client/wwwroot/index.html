@@ -39,6 +39,8 @@
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             window.__hurrahInstallPrompt = e;
+            // notify the install banner if it has already subscribed (event can fire after render)
+            if (window.__hurrahNotifyInstall) window.__hurrahNotifyInstall();
         });
         window.addEventListener('appinstalled', () => { window.__hurrahInstallPrompt = null; });
     </script>

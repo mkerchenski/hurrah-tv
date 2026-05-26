@@ -1,4 +1,5 @@
 @inject InstallBannerService InstallSvc
+@implements IDisposable
 
 @if (_variant == Variant.Ios)
 {
@@ -37,6 +38,7 @@ else if (_variant == Variant.Install)
 
     private Variant _variant = Variant.None;
     private bool _installing;
+    private DotNetObjectReference<InstallBanner>? _selfRef;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -45,17 +47,33 @@ else if (_variant == Variant.Install)
         try
         {
             // iOS Safari has no programmatic install — show the manual instructions.
-            // Everything else (Android / desktop Chrome) gets a real Install button
-            // when the browser has offered a beforeinstallprompt.
             if (await InstallSvc.ShouldShowAsync())
             {
                 _variant = Variant.Ios;
                 StateHasChanged();
+                return;
             }
-            else if (await InstallSvc.CanPromptInstallAsync())
+
+            // Android / desktop Chrome: subscribe to beforeinstallprompt. The callback
+            // fires immediately if the event was already captured, and again if it arrives
+            // later — so the Install banner appears whenever the browser offers it.
+            _selfRef = DotNetObjectReference.Create(this);
+            await InstallSvc.OnInstallAvailableAsync(_selfRef);
+        }
+        catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnInstallAvailable()
+    {
+        if (_variant != Variant.None) return;
+        try
+        {
+            // re-check so dismissal is honored even if the browser re-offers
+            if (await InstallSvc.CanPromptInstallAsync())
             {
                 _variant = Variant.Install;
-                StateHasChanged();
+                await InvokeAsync(StateHasChanged);
             }
         }
         catch (JSException) { }
@@ -68,9 +86,9 @@ else if (_variant == Variant.Install)
         try { await InstallSvc.PromptInstallAsync(); }
         catch (JSException) { }
 
-        // the native prompt is single-use — hide the banner regardless of outcome.
-        // if the user declined, the banner returns only on the next page load (detection
-        // runs once, on firstRender) — see #15 follow-up for live re-evaluation.
+        // the native prompt is single-use — hide the banner regardless of outcome. if the
+        // user declined, Chrome may emit a fresh beforeinstallprompt later, which re-fires
+        // OnInstallAvailable and brings the banner back (no reload needed).
         _variant = Variant.None;
         _installing = false;
         StateHasChanged();
@@ -82,4 +100,6 @@ else if (_variant == Variant.Install)
         try { await InstallSvc.DismissAsync(); }
         catch (JSException) { }
     }
+
+    public void Dispose() => _selfRef?.Dispose();
 }

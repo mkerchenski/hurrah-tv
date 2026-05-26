@@ -18,7 +18,9 @@ self.addEventListener('install', (event) => {
     // take over without waiting for old tabs to close — the existing UpdateBanner
     // (/api/version) remains the user-facing update prompt; the SW activates silently.
     self.skipWaiting();
-    event.waitUntil(caches.open(CACHE).then((cache) => cache.add(OFFLINE_SHELL)).catch(() => { }));
+    // precache the offline entrypoint; if it fails, let install fail so the browser retries
+    // rather than activating a SW with no offline shell.
+    event.waitUntil(caches.open(CACHE).then((cache) => cache.add(OFFLINE_SHELL)));
 });
 
 self.addEventListener('activate', (event) => {

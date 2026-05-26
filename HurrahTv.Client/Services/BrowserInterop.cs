@@ -71,6 +71,14 @@ public sealed class InstallBannerService(IJSRuntime js, IConfiguration config) :
         catch (JSException) { return false; }
     }
 
+    // subscribe T's [JSInvokable] OnInstallAvailable callback to beforeinstallprompt so a
+    // late event shows the banner without a reload; fires immediately if already available
+    public async Task OnInstallAvailableAsync<T>(DotNetObjectReference<T> dotNetRef) where T : class
+    {
+        _module ??= await js.InvokeAsync<IJSObjectReference>("import", _path);
+        await _module.InvokeVoidAsync("onInstallAvailable", dotNetRef);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (_module is null) return;
