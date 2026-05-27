@@ -99,6 +99,46 @@ public class QueueItemExtensionsTests
         Assert.Empty(item.ParseAvailableOnProviderIds());
     }
 
+    // #141: a title with no stored provider data is "unknown — don't hide", mirroring the
+    // API's IsWatchableOn — otherwise a queued show whose providers TMDb hasn't surfaced
+    // yet vanishes from the Home watchlist rows.
+    [Fact]
+    public void IsStreamableOn_EmptyProviderData_ReturnsTrue()
+    {
+        QueueItem item = new() { AvailableOnJson = "[]" };
+        Assert.True(item.IsStreamableOn([8]));
+    }
+
+    [Fact]
+    public void IsStreamableOn_MalformedProviderData_ReturnsTrue()
+    {
+        QueueItem item = new() { AvailableOnJson = "not json" };
+        Assert.True(item.IsStreamableOn([8]));
+    }
+
+    [Fact]
+    public void IsStreamableOn_ProviderInUserServices_ReturnsTrue()
+    {
+        QueueItem item = new() { AvailableOnJson = "[8,15]" };
+        Assert.True(item.IsStreamableOn([8]));
+    }
+
+    // a title with KNOWN providers that don't intersect the user's services is still
+    // hidden — that's the filter's purpose; only the empty/unknown case changed for #141.
+    [Fact]
+    public void IsStreamableOn_KnownProvider_NotInUserServices_ReturnsFalse()
+    {
+        QueueItem item = new() { AvailableOnJson = "[15]" };
+        Assert.False(item.IsStreamableOn([8]));
+    }
+
+    [Fact]
+    public void IsStreamableOn_NoUserServices_ReturnsFalse()
+    {
+        QueueItem item = new() { AvailableOnJson = "[]" };
+        Assert.False(item.IsStreamableOn([]));
+    }
+
     [Fact]
     public void VisibleServicesFor_EmptyUserServices_ReturnsEmpty()
     {

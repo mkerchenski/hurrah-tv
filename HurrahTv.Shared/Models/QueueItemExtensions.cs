@@ -26,12 +26,17 @@ public static class QueueItemExtensions
     public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
         item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
 
-    // boolean form of VisibleServicesFor — short-circuits on first match without allocating
-    // a result list. Use in filter predicates where only "streamable y/n" matters.
+    // streamable y/n for the Home watchlist filter. Mirrors the API's IsWatchableOn
+    // (QueueEndpoints): a title with no stored provider data is "unknown — don't hide",
+    // not "not streamable". Otherwise a queued show whose providers TMDb/JustWatch hasn't
+    // surfaced (common for daily network shows) silently vanishes from the Home rows even
+    // though it shows on the Queue page (#141).
     public static bool IsStreamableOn(this QueueItem item, IReadOnlyList<int> userServices)
     {
         if (userServices.Count == 0) return false;
-        foreach (int id in item.ParseAvailableOnProviderIds())
+        List<int> providerIds = item.ParseAvailableOnProviderIds();
+        if (providerIds.Count == 0) return true; // unknown providers — don't hide
+        foreach (int id in providerIds)
         {
             if (userServices.Contains(id) && StreamingService.ById.ContainsKey(id))
                 return true;
