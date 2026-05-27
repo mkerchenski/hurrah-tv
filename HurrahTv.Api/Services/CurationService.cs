@@ -184,14 +184,18 @@ public partial class CurationService
         if (pick is null)
             return new HeroResult { Error = reservoir.Error };
 
-        await _db.RecordHeroImpressionAsync(userId, pick.TmdbId, cancellationToken);
+        // the impression is recorded by the caller AFTER it confirms the pick hydrated (so a TMDb
+        // failure can't burn a strong pick's cooldown without ever showing it), and only when it
+        // isn't already today's pick (avoids a redundant write on every page load).
+        bool alreadyShownToday = lastShown.TryGetValue(pick.TmdbId, out DateTime last) && last.Date == DateTime.UtcNow.Date;
 
         return new HeroResult
         {
             TmdbId = pick.TmdbId,
             MediaType = pick.MediaType,
             Reason = row.Reasons.GetValueOrDefault(pick.TmdbId, ""),
-            Score = pick.Score
+            Score = pick.Score,
+            ShouldRecordImpression = !alreadyShownToday
         };
     }
 
@@ -303,7 +307,18 @@ public partial class CurationService
             int jsonStart = text.IndexOf('[');
             int jsonEnd = text.LastIndexOf(']');
             if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
                 text = text[jsonStart..(jsonEnd + 1)];
+            }
+            else if (jsonStart >= 0)
+            {
+                // response was truncated (e.g. hit MaxTokens mid-array, more likely now at
+                // 25-30 picks with longer reasons) — salvage the complete leading objects by
+                // closing the array after the last finished one rather than discarding all of it.
+                int lastObject = text.LastIndexOf('}');
+                if (lastObject > jsonStart)
+                    text = text[jsonStart..(lastObject + 1)] + "]";
+            }
 
             List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, CaseInsensitive) ?? [];
 
@@ -610,5 +625,8 @@ public class HeroResult
     public string Reason { get; set; } = "";
     public int Score { get; set; }
     public string? Error { get; set; }
+    // true when this pick is new for today — the endpoint records the impression only after a
+    // successful hydration, so a TMDb miss doesn't put a never-shown title into the cooldown.
+    public bool ShouldRecordImpression { get; set; }
     public bool HasPick => TmdbId is not null;
 }

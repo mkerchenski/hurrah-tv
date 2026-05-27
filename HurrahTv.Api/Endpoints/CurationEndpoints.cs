@@ -43,6 +43,12 @@ public static class CurationEndpoints
 
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
 
+                // record the impression only after the pick hydrated, so a TMDb miss can't burn a
+                // strong pick's 14-day cooldown without ever showing it. ShouldRecordImpression is
+                // false when it's already today's pick, avoiding a redundant write per page load.
+                if (hero is not null && result.ShouldRecordImpression)
+                    await db.RecordHeroImpressionAsync(userId, result.TmdbId!.Value, ct);
+
                 return Results.Ok(new CuratedHeroResponse
                 {
                     Hero = hero,
