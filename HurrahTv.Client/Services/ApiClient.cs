@@ -183,22 +183,31 @@ public class ApiClient(HttpClient http)
     public async Task<UserSettings> GetUserSettingsAsync(CancellationToken cancellationToken = default) =>
         await _http.GetFromJsonAsync<UserSettings>("api/settings", cancellationToken) ?? new UserSettings();
 
-    public async Task SetUserSettingsAsync(UserSettings settings, CancellationToken cancellationToken = default) =>
-        await _http.PutAsJsonAsync("api/settings", settings, cancellationToken);
+    public async Task<bool> SetUserSettingsAsync(UserSettings settings, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.PutAsJsonAsync("api/settings", settings, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
 
     // user services
     public async Task<List<int>> GetUserServicesAsync(CancellationToken cancellationToken = default) =>
         await _http.GetFromJsonAsync<List<int>>("api/services", cancellationToken) ?? [];
 
-    public async Task SetUserServicesAsync(List<int> providerIds, CancellationToken cancellationToken = default) =>
-        await _http.PutAsJsonAsync("api/services", providerIds, cancellationToken);
+    public async Task<bool> SetUserServicesAsync(List<int> providerIds, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.PutAsJsonAsync("api/services", providerIds, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
 
     // user genres
     public async Task<List<int>> GetUserGenresAsync(CancellationToken cancellationToken = default) =>
         await _http.GetFromJsonAsync<List<int>>("api/genres", cancellationToken) ?? [];
 
-    public async Task SetUserGenresAsync(List<int> genreIds, CancellationToken cancellationToken = default) =>
-        await _http.PutAsJsonAsync("api/genres", genreIds, cancellationToken);
+    public async Task<bool> SetUserGenresAsync(List<int> genreIds, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.PutAsJsonAsync("api/genres", genreIds, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
 
     // profile
     public async Task<UserProfile?> GetProfileAsync(CancellationToken cancellationToken = default) =>
