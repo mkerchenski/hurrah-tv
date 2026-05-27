@@ -511,6 +511,9 @@ else
     {
         IEnumerable<QueueItem> scoped = _items
             .Where(i => MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType)
+            // deliberate asymmetry vs QueueItemExtensions.IsStreamableOn / IsWatchableOn: an
+            // explicit service chip HIDES empty-provider items (it asks "is this on THIS
+            // service"), unlike the Home filter which keeps unknown-provider items visible.
             .Where(i => _selectedServiceId is not int svcId || _itemProviderIds.GetValueOrDefault(i.Id)?.Contains(svcId) == true);
         List<QueueItem> scopedList = [.. scoped];
         _totalCount = scopedList.Count;

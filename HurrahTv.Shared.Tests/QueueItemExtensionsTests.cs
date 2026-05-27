@@ -123,6 +123,17 @@ public class QueueItemExtensionsTests
         Assert.True(item.IsStreamableOn([8]));
     }
 
+    // a provider id the StreamingService registry doesn't know (999) is still streamable if
+    // the user subscribes to it — IsStreamableOn matches on plain membership, exactly like the
+    // API's IsWatchableOn (no ById gate). Contrast VisibleServicesFor below, which DOES skip
+    // unknown ids because it renders logos. pins the client/API alignment for #141.
+    [Fact]
+    public void IsStreamableOn_ProviderInUserServices_NotInRegistry_ReturnsTrue()
+    {
+        QueueItem item = new() { AvailableOnJson = "[999]" };
+        Assert.True(item.IsStreamableOn([999]));
+    }
+
     // a title with KNOWN providers that don't intersect the user's services is still
     // hidden — that's the filter's purpose; only the empty/unknown case changed for #141.
     [Fact]
@@ -132,6 +143,9 @@ public class QueueItemExtensionsTests
         Assert.False(item.IsStreamableOn([8]));
     }
 
+    // pins guard ordering: empty AvailableOnJson would hit the "unknown — don't hide" path,
+    // but the empty-userServices guard runs FIRST and returns false. if the two guards were
+    // swapped, a user with no services would see unknown-provider items leak through.
     [Fact]
     public void IsStreamableOn_NoUserServices_ReturnsFalse()
     {
