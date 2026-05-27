@@ -11,12 +11,16 @@ export function init(el, dotNetRef, callbackName, options) {
         delay: 0,
         delayOnTouchOnly: true,
         touchStartThreshold: 5,
-        // force the JS fallback drag on every platform. without it SortableJS uses the
-        // native HTML5 drag-and-drop API, which never fires on touch — the row would lift
-        // (chosenClass) but no gap opens and it can't be dropped on mobile. forceFallback makes
-        // mouse and touch share one pointer-driven path, so behavior is identical across both.
-        // pins #139.
+        // mobile drag-reorder needs BOTH of these (#139):
+        //  - forceFallback: skip the native HTML5 drag API (touch never fires it) and use
+        //    SortableJS's own drag, so the row picks up on touch.
+        //  - supportPointer:false: track the drag with touch/mouse events instead of Pointer
+        //    Events. SortableJS defaults to Pointer Events, whose path on mobile often fails to
+        //    fire the drag-over that opens the gap — the row lifts but never slots in and the
+        //    drop reverts. The touch-event path opens the gap. (forceFallback alone doesn't fix
+        //    this; the symptom is identical with it on or off.)
         forceFallback: true,
+        supportPointer: false,
         fallbackTolerance: 5,
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
