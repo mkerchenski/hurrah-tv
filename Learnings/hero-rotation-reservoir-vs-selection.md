@@ -28,6 +28,10 @@ return (today - shownDay).Days > cooldownDays;
 
 So recording the impression is idempotent for the rest of the day, and the title only enters the cooldown window tomorrow. A manual "shuffle" passes `keepTodaysPickEligible: false` to advance past today's pick on demand. The boundary is UTC midnight (server `DateTime.UtcNow.Date`) — acceptable for a once-a-day pick; documented rather than localized.
 
+### Gate only the expensive half of the shuffle
+
+The shuffle button does two things: advance to the next pick (free — pure selection over the cached reservoir) and regenerate the reservoir (a paid AI call). The first version rate-limited the *whole* shuffle behind one 5-minute key, so a second shuffle inside the cooldown returned the same pick and looked broken ("refresh does nothing"). Fix: gate **only** the paid regen; always run the free advance. A rapid second shuffle then still moves to a new pick, while the expensive regen stays throttled independently. General rule: when one user action bundles a cheap always-doable effect with an expensive rate-limited one, rate-limit only the expensive half — don't let the limiter swallow the cheap feedback the user is actually looking for.
+
 ### Cost shape
 
 Reservoir 15→30 picks is a few hundred extra Haiku output tokens (negligible). The only real new spend is the time-based regen (≤1 paid call/user/N days), gated by the existing budget check. The daily rotation itself is free because it's pure selection over already-cached data.
