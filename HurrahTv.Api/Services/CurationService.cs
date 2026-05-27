@@ -103,7 +103,7 @@ public partial class CurationService
         // check cache (unless caller forced a refresh — /refresh endpoint passes
         // forceRefresh=true so the cache check is skipped without first blanking the
         // cache row. Pre-blanking lost the user's row on mid-flight client cancel.)
-        (string? rowsJson, string? watchlistHash)? cached = forceRefresh
+        (string? rowsJson, string? watchlistHash, DateTime? generatedAt)? cached = forceRefresh
             ? null
             : await _db.GetCurationCacheAsync(userId, cancellationToken);
         if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null

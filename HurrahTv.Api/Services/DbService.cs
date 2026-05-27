@@ -88,6 +88,15 @@ public class DbService(IConfiguration config)
                 GeneratedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            -- per-user record of when a title was last featured in the Home hero, so the
+            -- daily rotation can keep a title out of the hero for a cooldown window (#135)
+            CREATE TABLE IF NOT EXISTS CurationHeroImpressions (
+                UserId VARCHAR(50) NOT NULL,
+                TmdbId INT NOT NULL,
+                ShownAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (UserId, TmdbId)
+            );
+
             -- watchlist evolution: add new columns to QueueItems
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastSeasonWatched INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastEpisodeWatched INT NULL;
@@ -649,14 +658,37 @@ public class DbService(IConfiguration config)
     }
 
     // curation cache
-    public async Task<(string? rowsJson, string? watchlistHash)?> GetCurationCacheAsync(string userId, CancellationToken cancellationToken = default)
+    public async Task<(string? rowsJson, string? watchlistHash, DateTime? generatedAt)?> GetCurationCacheAsync(string userId, CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new(
-            "SELECT RowsJson, WatchlistHash FROM CurationCache WHERE UserId = @UserId",
+            "SELECT RowsJson, WatchlistHash, GeneratedAt FROM CurationCache WHERE UserId = @UserId",
             new { UserId = userId }, cancellationToken: cancellationToken);
-        (string RowsJson, string WatchlistHash)? row = await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash)?>(cmd);
+        (string RowsJson, string WatchlistHash, DateTime GeneratedAt)? row =
+            await db.QuerySingleOrDefaultAsync<(string RowsJson, string WatchlistHash, DateTime GeneratedAt)?>(cmd);
         return row;
+    }
+
+    // hero rotation: last-shown timestamp per featured title, used to enforce the cooldown
+    public async Task<Dictionary<int, DateTime>> GetHeroImpressionsAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
+            "SELECT TmdbId, ShownAt FROM CurationHeroImpressions WHERE UserId = @UserId",
+            new { UserId = userId }, cancellationToken: cancellationToken);
+        IEnumerable<(int TmdbId, DateTime ShownAt)> rows = await db.QueryAsync<(int, DateTime)>(cmd);
+        return rows.ToDictionary(r => r.TmdbId, r => r.ShownAt);
+    }
+
+    public async Task RecordHeroImpressionAsync(string userId, int tmdbId, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new("""
+            INSERT INTO CurationHeroImpressions (UserId, TmdbId, ShownAt)
+            VALUES (@UserId, @TmdbId, NOW())
+            ON CONFLICT (UserId, TmdbId) DO UPDATE SET ShownAt = NOW()
+            """, new { UserId = userId, TmdbId = tmdbId }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
     }
 
     public async Task SetCurationCacheAsync(string userId, string rowsJson, string watchlistHash, CancellationToken cancellationToken = default)
