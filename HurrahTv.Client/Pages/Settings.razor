@@ -146,9 +146,9 @@
     private void OnServicesChanged()
     {
         List<int> snapshot = [.. _selectedServices];
-        _servicesSaver.Schedule(async ct =>
+        _servicesSaver.Schedule(async () =>
         {
-            await Api.SetUserServicesAsync(snapshot, ct);
+            await Api.SetUserServicesAsync(snapshot);
             UserServicesCache.Set(snapshot);
         });
     }
@@ -156,7 +156,7 @@
     private void OnGenresChanged()
     {
         List<int> snapshot = [.. _selectedGenres];
-        _genresSaver.Schedule(ct => Api.SetUserGenresAsync(snapshot, ct));
+        _genresSaver.Schedule(() => Api.SetUserGenresAsync(snapshot));
     }
 
     private void OnEnglishOnlyChanged()
@@ -174,17 +174,17 @@
             WatchlistSort = _settings.WatchlistSort,
             MediaType = _settings.MediaType,
         };
-        _settingsSaver.Schedule(ct => Api.SetUserSettingsAsync(snapshot, ct));
+        _settingsSaver.Schedule(() => Api.SetUserSettingsAsync(snapshot));
     }
 
     private void OnNameChanged()
     {
         // not snapshotted like the other handlers: each keystroke reschedules the 1.5s debounce,
         // so when this fires _firstName is already the final typed value — reading it live is correct.
-        _nameSaver.Schedule(async ct =>
+        _nameSaver.Schedule(async () =>
         {
             string? trimmed = string.IsNullOrWhiteSpace(_firstName) ? null : _firstName.Trim();
-            AuthResponse? auth = await Api.UpdateProfileAsync(trimmed, ct);
+            AuthResponse? auth = await Api.UpdateProfileAsync(trimmed);
             if (auth is null) throw new InvalidOperationException("profile update failed");
             await TokenService.SetTokenAsync(auth.Token);
             AuthState.NotifyAuthChanged();
