@@ -200,6 +200,9 @@ public static class QueueEndpoints
         }
     }
 
+    // canonical pair: HurrahTv.Shared QueueItemExtensions.IsStreamableOn mirrors this for the
+    // client Home filter. keep the two in lockstep — empty/unknown providers must "don't hide",
+    // and a match is plain service-id membership (no StreamingService.ById registry gate).
     private static bool IsWatchableOn(string availableOnJson, HashSet<int> activeServiceIds)
     {
         if (string.IsNullOrWhiteSpace(availableOnJson) || availableOnJson == "[]")

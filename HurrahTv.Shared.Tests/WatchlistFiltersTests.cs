@@ -57,6 +57,20 @@ public class WatchlistFiltersTests
     }
 
     [Fact]
+    public void AvailableNow_Includes_Watching_Item_With_No_ProviderData()
+    {
+        // pins #141 — a Watching show whose providers TMDb hasn't surfaced (empty
+        // AvailableOnJson) used to be dropped from both Home rows by the streamability
+        // gate. "Unknown providers" must be treated as "don't hide", matching the API.
+        QueueItem item = TvItem(status: QueueStatus.Watching, latestEpisode: Today.AddDays(-1));
+        item.AvailableOnJson = "[]";
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+    }
+
+    [Fact]
     public void AvailableNow_Excludes_TvItem_With_LatestEpisodeDate_In_Future()
     {
         // regression: the old predicate `DaysSinceLatestEpisode is <= 7` would silently

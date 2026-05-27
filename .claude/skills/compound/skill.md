@@ -69,6 +69,6 @@ Present a table of what was captured:
 
 ## Rules
 - One learning per file, named descriptively
-- Learnings/ is gitignored — local knowledge base
+- Learnings/ is tracked in git (per CLAUDE.md) — commit new learning files; prefer a standalone branch/PR (e.g. `learnings/<topic>`, matching #137) but committing alongside the work that surfaced them is fine
 - Don't duplicate what's derivable from reading current code
 - Focus on the *why*, not the *what*

@@ -26,14 +26,21 @@ public static class QueueItemExtensions
     public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
         item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
 
-    // boolean form of VisibleServicesFor — short-circuits on first match without allocating
-    // a result list. Use in filter predicates where only "streamable y/n" matters.
+    // streamable y/n for the Home watchlist filter — mirrors the API's IsWatchableOn
+    // (QueueEndpoints) exactly: empty/unknown provider data is "don't hide" (#141), and a
+    // match is plain service-id membership. NOT the same rule as the Queue page's
+    // per-service chip filter, which hides empty-provider items because it answers a
+    // narrower question ("is this demonstrably on THIS service" — see Queue.razor).
     public static bool IsStreamableOn(this QueueItem item, IReadOnlyList<int> userServices)
     {
-        if (userServices.Count == 0) return false;
-        foreach (int id in item.ParseAvailableOnProviderIds())
+        if (userServices.Count == 0) return false; // guard order matters: must precede the empty-providers check below
+        List<int> providerIds = item.ParseAvailableOnProviderIds();
+        if (providerIds.Count == 0) return true; // unknown providers — don't hide
+        foreach (int id in providerIds)
         {
-            if (userServices.Contains(id) && StreamingService.ById.ContainsKey(id))
+            // membership only — no StreamingService.ById gate, matching IsWatchableOn. a
+            // provider the registry doesn't know is still streamable if the user has it.
+            if (userServices.Contains(id))
                 return true;
         }
         return false;
