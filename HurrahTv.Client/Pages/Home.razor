@@ -124,11 +124,20 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- hero billboard — the rotating daily AI pick is the primary surface; it falls back to
-             Continue Watching, then a recently-aired show, until curation arrives. Shuffle asks the
-             server for a different pick. Nothing renders if no candidate has a backdrop yet (e.g. a
-             fresh user before any TMDb backfill landed). -->
-        <HomeHero Item="_hero" OnShuffle="@(() => LoadHero(refresh: true))" />
+        <!-- hero billboard — the rotating daily AI pick. While it loads we show a skeleton rather
+             than a watchlist item, so the hero never flashes a show that's already in the list.
+             It only falls back to Continue Watching / New This Week if AI curation is unavailable;
+             nothing renders when there's no candidate at all. Shuffle asks for a different pick. -->
+        @if (_hero is not null)
+        {
+            <HomeHero Item="_hero" OnShuffle="@(() => LoadHero(refresh: true))" />
+        }
+        else if (_heroLoading)
+        {
+            <section class="relative -mx-4 md:-mx-6 mb-6 md:mb-10 overflow-hidden rounded-b-xl md:rounded-xl">
+                <div class="aspect-[3/4] sm:aspect-[16/9] md:aspect-[21/9] loading-shimmer"></div>
+            </section>
+        }
 
         <!-- My Watchlist section — header with chips + all three rows grouped together -->
         @{
@@ -295,8 +304,11 @@ else
     private UserSettings _settings = new();
 
     // AI curation — a single rotating hero pick (the only AI surface on Home). null until
-    // the background fetch returns; the hero falls back to Continue Watching until then.
+    // the background fetch returns. While _heroLoading we show a skeleton rather than a
+    // watchlist fallback, so the hero never flashes an already-in-list item.
     private CuratedHero? _heroPick;
+    private bool _heroLoading;
+    private int _heroRequestSeq; // latest-wins guard so overlapping fetches don't both apply
 
     // hero billboard — cached so it doesn't recompute on every render. recomputed in
     // ReapplyDerivedState after queue mutations and after the AI pick arrives.
@@ -335,7 +347,9 @@ else
         ProcessQueueResponse(await queueTask);
 
         // AI is the slowest call (Claude API) and not needed for first paint — let it
-        // finish in the background and swap the hero to the AI pick when it returns
+        // finish in the background and swap the hero to the AI pick when it returns. Until
+        // then the hero slot shows a skeleton (see _heroLoading).
+        _heroLoading = true;
         _ = LoadHero();
     }
 
@@ -457,6 +471,7 @@ else
         ProcessQueueResponse(queueResponse);
 
         // AI hero is fire-and-forget — slow Claude call shouldn't block first paint
+        _heroLoading = true;
         _ = LoadHero();
     }
 
@@ -511,19 +526,27 @@ else
     // is no error UI. refresh=true asks the server for a different pick (manual escape hatch).
     private async Task LoadHero(bool refresh = false)
     {
+        // latest-wins: a slower in-flight fetch (e.g. the initial load) must not clobber a
+        // newer one (e.g. a shuffle). Only the most recent request applies its result.
+        int seq = ++_heroRequestSeq;
         try
         {
             CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh);
-            if (response?.Hero is not null)
-            {
+            if (seq == _heroRequestSeq && response?.Hero is not null)
                 _heroPick = response.Hero;
-                _hero = SelectHero();
-                StateHasChanged();
-            }
         }
         catch
         {
-            // hero is non-critical — leave the fallback hero in place
+            // hero is non-critical — leave any existing pick / fallback in place
+        }
+        finally
+        {
+            if (seq == _heroRequestSeq)
+            {
+                _heroLoading = false;
+                _hero = SelectHero();
+                StateHasChanged();
+            }
         }
     }
 
@@ -648,6 +671,11 @@ else
                 PrimaryLabel: "Add to list",
                 PrimaryAction: HomeHero.HeroAction.Add);
         }
+
+        // while the AI pick is still loading, render nothing here — Home shows a skeleton in the
+        // hero slot. This stops an in-list Continue Watching item from flashing as the "hero"
+        // during the load window; the fallbacks below only apply once curation has resolved.
+        if (_heroLoading) return null;
 
         // 2. an item the user is actively watching, with a backdrop available
         QueueItem? watching = _availableNowItems.FirstOrDefault(i =>

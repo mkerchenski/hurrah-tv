@@ -251,7 +251,7 @@ public partial class CurationService
             {{candidateList}}
 
             ## YOUR TASK
-            Pick the 25-30 best shows from the candidates for this user. For each, give:
+            Pick the 25-30 best titles from the candidates for this user — include a healthy mix of BOTH TV shows AND movies (the candidate list contains both; don't return only one kind). For each, give:
             - a match score 0-100 — how confident you are THIS user will love it. Be discriminating and use the full range: reserve 90+ for near-certain hits, put genuine stretches in the 50s-60s.
             - a reason (2-3 sentences, ~30-45 words) explaining WHY this user specifically would like it. Name the specific shows/tastes of theirs it connects to and what the payoff is. This is shown prominently in the home hero, so make it concrete and persuasive, not generic.
 

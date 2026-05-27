@@ -67,7 +67,7 @@
                     @if (OnShuffle.HasDelegate)
                     {
                         <button @onclick="OnShuffleClick" disabled="@_shuffling" title="Show another pick" aria-label="Show another pick"
-                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 disabled:opacity-60 font-semibold p-2 md:p-2.5 rounded-lg transition-colors">
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 disabled:opacity-60 flex items-center justify-center self-stretch px-3 md:px-3.5 py-2 md:py-2.5 rounded-lg transition-colors">
                             <span class="icon-[heroicons--arrow-path] w-4 h-4 md:w-5 md:h-5 @(_shuffling ? "animate-spin" : "")"></span>
                         </button>
                     }

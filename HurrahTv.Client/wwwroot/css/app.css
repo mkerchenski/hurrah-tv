@@ -816,6 +816,9 @@
   .gap-y-2 {
     row-gap: calc(var(--spacing) * 2);
   }
+  .self-stretch {
+    align-self: stretch;
+  }
   .truncate {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2261,11 +2264,6 @@
       padding: calc(var(--spacing) * 1);
     }
   }
-  .md\:p-2\.5 {
-    @media (width >= 48rem) {
-      padding: calc(var(--spacing) * 2.5);
-    }
-  }
   .md\:p-3 {
     @media (width >= 48rem) {
       padding: calc(var(--spacing) * 3);
@@ -2289,6 +2287,11 @@
   .md\:px-3 {
     @media (width >= 48rem) {
       padding-inline: calc(var(--spacing) * 3);
+    }
+  }
+  .md\:px-3\.5 {
+    @media (width >= 48rem) {
+      padding-inline: calc(var(--spacing) * 3.5);
     }
   }
   .md\:px-6 {
