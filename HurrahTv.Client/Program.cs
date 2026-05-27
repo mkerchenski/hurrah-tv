@@ -41,7 +41,5 @@ builder.Services.AddScoped<VersionService>();
 builder.Services.AddScoped<LongPressService>();
 builder.Services.AddScoped<SortableService>();
 builder.Services.AddScoped<TitleService>();
-// singleton — matches QuickActionService it subscribes to; one in-memory cache per app session
-builder.Services.AddSingleton<CurationCache>();
 
 await builder.Build().RunAsync();

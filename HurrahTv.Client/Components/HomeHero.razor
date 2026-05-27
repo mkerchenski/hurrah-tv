@@ -39,11 +39,24 @@
                         <span class="@PrimaryIcon w-4 h-4 md:w-5 md:h-5"></span>
                         <span>@Item.PrimaryLabel</span>
                     </button>
-                    <button @onclick="OnSecondary"
-                            class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
-                        <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
-                        <span class="hidden sm:inline">More info</span>
-                    </button>
+                    @* "More info" only when it adds a distinct destination. For a Resume hero the
+                       primary already navigates to the details page, so a second button to the
+                       same URL is redundant — that was #138. *@
+                    @if (Item.PrimaryAction != HeroAction.Resume)
+                    {
+                        <button @onclick="OnSecondary"
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                            <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
+                            <span class="hidden sm:inline">More info</span>
+                        </button>
+                    }
+                    @if (OnShuffle.HasDelegate)
+                    {
+                        <button @onclick="OnShuffle" title="Show another pick" aria-label="Show another pick"
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold p-2 md:p-2.5 rounded-lg transition-colors">
+                            <span class="icon-[heroicons--arrow-path] w-4 h-4 md:w-5 md:h-5"></span>
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -52,6 +65,10 @@
 
 @code {
     [Parameter, EditorRequired] public HeroItem? Item { get; set; }
+
+    // when set, renders a shuffle button that asks the parent for a different pick (the
+    // manual force-refresh escape hatch for the rotating AI hero). #135
+    [Parameter] public EventCallback OnShuffle { get; set; }
 
     private string PrimaryIcon => Item?.PrimaryAction switch
     {

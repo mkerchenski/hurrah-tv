@@ -168,8 +168,8 @@ public partial class CurationService
         if (row is null || row.TmdbIds.Count == 0)
             return new HeroResult { Error = reservoir.Error };
 
-        // drop anything added to the watchlist since the reservoir was cached — same safety
-        // net as the /rows endpoint's ExcludeShows.
+        // drop anything added to the watchlist since the reservoir was cached, so a freshly
+        // added title can't come back as a recommendation.
         HashSet<int> onWatchlist = [.. watchlist.Select(i => i.TmdbId)];
         List<HeroCandidate> candidates = [.. row.TmdbIds
             .Where(id => !onWatchlist.Contains(id))
