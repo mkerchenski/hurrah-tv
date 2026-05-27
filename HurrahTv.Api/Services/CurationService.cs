@@ -99,16 +99,16 @@ public partial class CurationService
         });
     }
 
-    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)
             return new CurationResult { Error = "AI not enabled" };
 
         string currentHash = ComputeWatchlistHash(watchlist);
 
-        // check cache (unless caller forced a refresh — /refresh endpoint passes
-        // forceRefresh=true so the cache check is skipped without first blanking the
-        // cache row. Pre-blanking lost the user's row on mid-flight client cancel.)
+        // check cache (unless caller forced a refresh — a shuffle passes forceRefresh=true so the
+        // cache check is skipped without first blanking the cache row. Pre-blanking lost the
+        // user's row on a mid-flight client cancel.)
         (string? rowsJson, string? watchlistHash, DateTime? generatedAt)? cached = forceRefresh
             ? null
             : await _db.GetCurationCacheAsync(userId, cancellationToken);
@@ -139,7 +139,7 @@ public partial class CurationService
             return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
         // phase 1: gather candidate pool from TMDb (excluding watchlist)
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(userId, providerIds, watchlist, englishOnly, cancellationToken);
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, genreIds, watchlist, englishOnly, cancellationToken);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
@@ -164,20 +164,21 @@ public partial class CurationService
     //   - advancePick (free): treat today's already-shown picks as ineligible so we move to
     //     the next-best — every shuffle changes the pick, even when regen is rate-limited.
     //   - regenerateReservoir (paid AI, rate-limited): pull genuinely new candidate material.
-    public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds,
+    public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds,
         bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, CancellationToken cancellationToken = default)
     {
-        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, englishOnly, regenerateReservoir, cancellationToken);
+        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, regenerateReservoir, cancellationToken);
         AICuratedRow? row = reservoir.Rows.FirstOrDefault();
         if (row is null || row.TmdbIds.Count == 0)
             return new HeroResult { Error = reservoir.Error };
 
-        // drop anything added to the watchlist since the reservoir was cached, so a freshly
-        // added title can't come back as a recommendation.
-        HashSet<int> onWatchlist = [.. watchlist.Select(i => i.TmdbId)];
+        // drop anything already on the watchlist, so a title the user has (or just added) can't
+        // come back as a recommendation. Keyed on (TmdbId, MediaType) because TMDb ids are
+        // namespaced per media type — a movie and a TV show can share a numeric id.
+        HashSet<(int, string)> onWatchlist = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
         List<HeroCandidate> candidates = [.. row.TmdbIds
-            .Where(id => !onWatchlist.Contains(id))
-            .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))];
+            .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))
+            .Where(c => !onWatchlist.Contains((c.TmdbId, c.MediaType)))];
 
         Dictionary<int, DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
         HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !advancePick);
@@ -199,15 +200,10 @@ public partial class CurationService
         };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(string userId, List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
+    // genreIds (the user's stated genre prefs, possibly empty) weight the deep-cut band; they're
+    // fetched once by the caller via GetUserPreferencesAsync rather than re-queried here.
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<int> genreIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
     {
-        HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
-
-        // genre-weight the deep-cut band toward the user's stated genre preferences
-        // (empty = no genre filter). TMDb treats with_genres as an OR list, so a mix of
-        // tv/movie genre ids across both media types is harmless.
-        List<int> genreIds = await _db.GetUserGenresAsync(userId, cancellationToken);
-
         // three bands in parallel across the user's services. The highly-rated back-catalog
         // band (#135) gives the AI non-recent, well-reviewed material so the rotating hero
         // can surface deep cuts, not just the latest hits.
@@ -219,14 +215,16 @@ public partial class CurationService
         Task<List<SearchResult>> topMovies = _tmdb.HighlyRatedOnServicesAsync(providerIds, "movie", genreIds, deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         await Task.WhenAll(newTv, newMovies, popularTv, popularMovies, topTv, topMovies);
 
-        // combine and deduplicate, excluding watchlist items
-        HashSet<int> seen = [.. watchlistIds];
+        // combine and deduplicate, excluding watchlist items. Keyed on (TmdbId, MediaType)
+        // because TMDb ids are namespaced per media type — a movie and a TV show can share a
+        // numeric id, so a TmdbId-only key would cross-exclude unrelated titles.
+        HashSet<(int, string)> seen = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
         List<SearchResult> pool = [];
         foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result, topTv.Result, topMovies.Result })
         {
             foreach (SearchResult r in batch)
             {
-                if (seen.Add(r.TmdbId))
+                if (seen.Add((r.TmdbId, r.MediaType)))
                     pool.Add(r);
             }
         }

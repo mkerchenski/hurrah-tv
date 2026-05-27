@@ -141,7 +141,7 @@ public class TmdbService
         return interleaved;
     }
 
-    private async Task<List<SearchResult>> DiscoverForProviderAsync(int providerId, string mediaType,
+    private Task<List<SearchResult>> DiscoverForProviderAsync(int providerId, string mediaType,
         List<int>? genreIds, bool recentOnly, bool englishOnly = false, CancellationToken cancellationToken = default)
     {
         string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
@@ -149,6 +149,48 @@ public class TmdbService
         string langSuffix = englishOnly ? ":en" : "";
         string cacheKey = $"discover-provider:{providerId}:{mediaType}:{genres}{dateSuffix}{langSuffix}";
 
+        string extra = "&sort_by=popularity.desc";
+        if (recentOnly)
+        {
+            string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
+            extra += $"&{dateParam}.gte={DateTime.UtcNow.AddDays(-NewContentDaysBack):yyyy-MM-dd}&{dateParam}.lte={DateTime.UtcNow:yyyy-MM-dd}";
+        }
+        extra += GenreAndLangParams(genres, englishOnly);
+
+        return DiscoverAsync(providerId, mediaType, cacheKey, extra, TimeSpan.FromHours(2), cancellationToken);
+    }
+
+    private Task<List<SearchResult>> DiscoverHighlyRatedForProviderAsync(int providerId, string mediaType,
+        List<int>? genreIds, bool englishOnly, CancellationToken cancellationToken)
+    {
+        string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
+        string langSuffix = englishOnly ? ":en" : "";
+        string cacheKey = $"discover-toprated:{providerId}:{mediaType}:{genres}{langSuffix}";
+
+        // sort by rating, gate on a vote-count floor so a handful of perfect scores on an obscure
+        // title can't top the list, and cap the release date so these are genuinely back-catalog
+        // (the New band already covers the last 60 days).
+        string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
+        string extra = $"&sort_by=vote_average.desc&vote_count.gte={HighlyRatedMinVoteCount}&vote_average.gte={HighlyRatedMinVoteAverage}" +
+                       $"&{dateParam}.lte={DateTime.UtcNow.AddDays(-HighlyRatedOlderThanDays):yyyy-MM-dd}" +
+                       GenreAndLangParams(genres, englishOnly);
+
+        return DiscoverAsync(providerId, mediaType, cacheKey, extra, TimeSpan.FromHours(12), cancellationToken);  // back catalog changes slowly
+    }
+
+    private static string GenreAndLangParams(string genres, bool englishOnly)
+    {
+        string p = "";
+        if (!string.IsNullOrEmpty(genres)) p += $"&with_genres={genres}";   // TMDb OR-separated, literal |
+        if (englishOnly) p += "&with_original_language=en";
+        return p;
+    }
+
+    // shared discover scaffolding: the per-provider/flatrate/region base + fetch + map + cache.
+    // Each band (New/Popular/HighlyRated) supplies its own sort/date/vote params, cache key, and TTL.
+    private async Task<List<SearchResult>> DiscoverAsync(int providerId, string mediaType, string cacheKey,
+        string extraParams, TimeSpan cacheTtl, CancellationToken cancellationToken)
+    {
         if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
             return cached!;
 
@@ -156,67 +198,15 @@ public class TmdbService
         string url = $"discover/{mediaType}?api_key={_apiKey}" +
                      $"&with_watch_providers={providerId}" +
                      $"&with_watch_monetization_types=flatrate|ads" +
-                     $"&watch_region=US&sort_by=popularity.desc&language=en-US";
-
-        if (recentOnly)
-        {
-            string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
-            string dateFrom = DateTime.UtcNow.AddDays(-NewContentDaysBack).ToString("yyyy-MM-dd");
-            string dateTo = DateTime.UtcNow.ToString("yyyy-MM-dd");
-            url += $"&{dateParam}.gte={dateFrom}&{dateParam}.lte={dateTo}";
-        }
-
-        if (!string.IsNullOrEmpty(genres))
-            url += $"&with_genres={genres}";
-
-        if (englishOnly)
-            url += "&with_original_language=en";
+                     $"&watch_region=US&language=en-US" +
+                     extraParams;
 
         TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url, cancellationToken);
         if (response == null) return [];
 
         List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
 
-        _cache.Set(cacheKey, results, TimeSpan.FromHours(2));
-        return results;
-    }
-
-    private async Task<List<SearchResult>> DiscoverHighlyRatedForProviderAsync(int providerId, string mediaType,
-        List<int>? genreIds, bool englishOnly, CancellationToken cancellationToken)
-    {
-        string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
-        string langSuffix = englishOnly ? ":en" : "";
-        string cacheKey = $"discover-toprated:{providerId}:{mediaType}:{genres}{langSuffix}";
-
-        if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
-            return cached!;
-
-        string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
-        string olderThan = DateTime.UtcNow.AddDays(-HighlyRatedOlderThanDays).ToString("yyyy-MM-dd");
-
-        // sort by rating, gate on a vote-count floor so a handful of perfect scores on an
-        // obscure title can't top the list, and cap the release date so these are genuinely
-        // back-catalog (the New band already covers the last 60 days).
-        string url = $"discover/{mediaType}?api_key={_apiKey}" +
-                     $"&with_watch_providers={providerId}" +
-                     $"&with_watch_monetization_types=flatrate|ads" +
-                     $"&watch_region=US&sort_by=vote_average.desc&language=en-US" +
-                     $"&vote_count.gte={HighlyRatedMinVoteCount}" +
-                     $"&vote_average.gte={HighlyRatedMinVoteAverage}" +
-                     $"&{dateParam}.lte={olderThan}";
-
-        if (!string.IsNullOrEmpty(genres))
-            url += $"&with_genres={genres}";
-
-        if (englishOnly)
-            url += "&with_original_language=en";
-
-        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url, cancellationToken);
-        if (response == null) return [];
-
-        List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
-
-        _cache.Set(cacheKey, results, TimeSpan.FromHours(12));  // back catalog changes slowly
+        _cache.Set(cacheKey, results, cacheTtl);
         return results;
     }
 

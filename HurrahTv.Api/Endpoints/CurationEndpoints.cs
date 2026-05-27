@@ -32,14 +32,16 @@ public static class CurationEndpoints
                     regenerate = true;
                 }
 
+                // batch services + genres + settings in one parallel fetch (GetUserPreferencesAsync)
+                // alongside the queue, so the genre fetch isn't serialized in front of the TMDb fan-out.
                 Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
-                Task<List<int>> providerTask = db.GetUserServicesAsync(userId, ct);
-                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId, ct);
-                await Task.WhenAll(watchlistTask, providerTask, settingsTask);
+                Task<DbService.UserPreferences> prefsTask = db.GetUserPreferencesAsync(userId, ct);
+                await Task.WhenAll(watchlistTask, prefsTask);
 
-                List<int> providerIds = providerTask.Result;
-                HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds,
-                    settingsTask.Result.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, cancellationToken: ct);
+                DbService.UserPreferences prefs = prefsTask.Result;
+                List<int> providerIds = prefs.ProviderIds;
+                HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds, prefs.GenreIds,
+                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, cancellationToken: ct);
 
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
 
