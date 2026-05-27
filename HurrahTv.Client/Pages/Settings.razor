@@ -148,7 +148,7 @@
         List<int> snapshot = [.. _selectedServices];
         _servicesSaver.Schedule(async () =>
         {
-            await Api.SetUserServicesAsync(snapshot);
+            if (!await Api.SetUserServicesAsync(snapshot)) throw new InvalidOperationException("save failed");
             UserServicesCache.Set(snapshot);
         });
     }
@@ -156,7 +156,10 @@
     private void OnGenresChanged()
     {
         List<int> snapshot = [.. _selectedGenres];
-        _genresSaver.Schedule(() => Api.SetUserGenresAsync(snapshot));
+        _genresSaver.Schedule(async () =>
+        {
+            if (!await Api.SetUserGenresAsync(snapshot)) throw new InvalidOperationException("save failed");
+        });
     }
 
     private void OnEnglishOnlyChanged()
@@ -174,7 +177,10 @@
             WatchlistSort = _settings.WatchlistSort,
             MediaType = _settings.MediaType,
         };
-        _settingsSaver.Schedule(() => Api.SetUserSettingsAsync(snapshot));
+        _settingsSaver.Schedule(async () =>
+        {
+            if (!await Api.SetUserSettingsAsync(snapshot)) throw new InvalidOperationException("save failed");
+        });
     }
 
     private void OnNameChanged()

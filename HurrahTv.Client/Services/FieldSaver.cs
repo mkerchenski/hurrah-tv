@@ -12,7 +12,8 @@ public sealed class FieldSaver(Func<Task> stateChanged, int debounceMs = 250) : 
 {
     public enum Status { Idle, Saving, Saved, Failed }
 
-    private static readonly TimeSpan SavedDisplay = TimeSpan.FromMilliseconds(1500);
+    private const int SavedDisplayMs = 1500; // how long "Saved" lingers before fading to Idle
+    private const int SavedPollMs = 100;     // granularity for cutting that linger short when a new change queues
 
     private CancellationTokenSource? _debounceCts;
     private Func<Task>? _pending; // newest debounced save waiting to run; a not-yet-started one is replaced
@@ -82,7 +83,14 @@ public sealed class FieldSaver(Func<Task> stateChanged, int debounceMs = 250) : 
 
                 State = Status.Saved;
                 await Notify();
-                await Task.Delay(SavedDisplay);
+
+                // hold "Saved" briefly, but bail the moment a new change queues so the next save
+                // isn't stuck waiting behind this cosmetic delay
+                for (int elapsed = 0; elapsed < SavedDisplayMs && _pending is null; elapsed += SavedPollMs)
+                {
+                    await Task.Delay(SavedPollMs);
+                }
+
                 if (_pending is null && State == Status.Saved)
                 {
                     State = Status.Idle;
@@ -96,7 +104,10 @@ public sealed class FieldSaver(Func<Task> stateChanged, int debounceMs = 250) : 
     private async Task Notify()
     {
         if (_disposed) return;
-        await stateChanged();
+        // best-effort UI refresh — a renderer disposed mid-flight is the only realistic throw, and
+        // faulting this fire-and-forget task would just be console noise (see PR #143 review)
+        try { await stateChanged(); }
+        catch { }
     }
 
     public void Dispose()

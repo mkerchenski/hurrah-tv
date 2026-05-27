@@ -54,4 +54,17 @@ public class FieldSaverTests
 
         saver.Dispose();
     }
+
+    [Fact]
+    public void FailedSave_SurfacesFailedState()
+    {
+        FieldSaver saver = NewSaver();
+
+        // a non-success PUT surfaces as a thrown save (see Settings.razor); FieldSaver must show Failed
+        // so the inline "Couldn't save" + Retry affordance appears
+        saver.Schedule(() => Task.FromException(new InvalidOperationException("save failed")));
+        Assert.Equal(FieldSaver.Status.Failed, saver.State);
+
+        saver.Dispose();
+    }
 }
