@@ -84,6 +84,12 @@ body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* keeps the hero eyebrow/title/reason legible over arbitrary (and sometimes light or
+   busy) backdrop imagery, on top of the gradient scrim. #135 */
+.text-shadow-hero {
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.75), 0 2px 18px rgb(0 0 0 / 0.6);
+}
+
 .service-badge:hover {
     filter: brightness(1.2);
 }
@@ -103,4 +109,16 @@ body {
         transform: scale(1.05);
         box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
     }
+}
+
+/* SortableJS drag-reorder (queue Want-to-Watch tab). forceFallback is on (see
+   js/sortable.js, #139), so the dragged row is cloned into .sortable-fallback that
+   follows the pointer while the original stays in the list as the placeholder —
+   dim the placeholder so it reads as "this is where it'll land". */
+.sortable-ghost {
+    opacity: 0.4;
+}
+
+.sortable-fallback {
+    cursor: grabbing;
 }

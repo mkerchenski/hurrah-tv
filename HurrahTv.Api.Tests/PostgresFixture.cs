@@ -105,7 +105,7 @@ public class PostgresFixture : IAsyncLifetime
             TRUNCATE
                 QueueItems, OtpCodes, UserServices, UserGenres, UserSettings,
                 SeasonSentiments, EpisodeSentiments, WatchedEpisodes,
-                AIUsage, CurationCache, Users
+                AIUsage, CurationCache, CurationHeroImpressions, Users
             RESTART IDENTITY CASCADE
             """);
         await SeedAdminAsync();

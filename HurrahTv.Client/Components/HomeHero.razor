@@ -1,6 +1,7 @@
 @inject NavigationManager Nav
 @inject ApiClient Api
 @inject QuickActionService QuickActionSvc
+@inject ToastService Toast
 
 @if (Item is not null)
 {
@@ -13,37 +14,63 @@
                      class="absolute inset-0 w-full h-full object-cover no-callout" />
             }
 
-            <!-- gradient: dark at bottom for text legibility, fades to transparent at top -->
-            <div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/60 to-transparent"></div>
+            <!-- gradient: dark and tall at the bottom for text legibility, fading to transparent -->
+            <div class="absolute inset-0 bg-gradient-to-t from-bg via-bg/80 to-transparent"></div>
             <!-- subtle side fade so the eyebrow doesn't disappear into a busy left edge -->
-            <div class="absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-bg/50 to-transparent hidden md:block"></div>
+            <div class="absolute inset-y-0 left-0 w-2/3 bg-gradient-to-r from-bg/60 to-transparent hidden md:block"></div>
 
             <!-- content -->
             <div class="absolute inset-x-0 bottom-0 p-4 md:p-8">
-                <div class="text-[10px] md:text-xs uppercase tracking-widest text-accent font-semibold mb-1.5 md:mb-2">
+                <div class="text-[10px] md:text-xs uppercase tracking-widest text-accent-light font-bold mb-1.5 md:mb-2 text-shadow-hero">
                     @Item.Eyebrow
                 </div>
-                <h1 class="text-2xl sm:text-3xl md:text-5xl font-bold text-white leading-tight max-w-2xl">
+                <h1 class="text-2xl sm:text-3xl md:text-5xl font-bold text-white leading-tight max-w-2xl text-shadow-hero">
                     @Item.Title
                 </h1>
                 @if (!string.IsNullOrEmpty(Item.Overview))
                 {
-                    <p class="hidden md:block text-sm md:text-base text-gray-200 mt-3 max-w-xl line-clamp-2 italic">
+                    <p class="text-xs md:text-base text-gray-100 mt-2 md:mt-3 max-w-xl line-clamp-3 md:line-clamp-3 italic text-shadow-hero">
                         &ldquo;@Item.Overview&rdquo;
                     </p>
                 }
 
                 <div class="flex items-center gap-2 mt-3 md:mt-5">
-                    <button @onclick="OnPrimary"
-                            class="bg-white text-black hover:bg-gray-200 font-semibold px-5 md:px-7 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
-                        <span class="@PrimaryIcon w-4 h-4 md:w-5 md:h-5"></span>
-                        <span>@Item.PrimaryLabel</span>
+                    <button @onclick="OnPrimary" disabled="@(_adding || _added)"
+                            class="bg-white text-black hover:bg-gray-200 disabled:hover:bg-white font-semibold px-5 md:px-7 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                        @if (_adding)
+                        {
+                            <span class="w-4 h-4 md:w-5 md:h-5 border-2 border-black/30 border-t-black rounded-full animate-spin"></span>
+                            <span>Adding…</span>
+                        }
+                        else if (_added)
+                        {
+                            <span class="icon-[heroicons--check-20-solid] w-4 h-4 md:w-5 md:h-5"></span>
+                            <span>Added to list</span>
+                        }
+                        else
+                        {
+                            <span class="@PrimaryIcon w-4 h-4 md:w-5 md:h-5"></span>
+                            <span>@Item.PrimaryLabel</span>
+                        }
                     </button>
-                    <button @onclick="OnSecondary"
-                            class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
-                        <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
-                        <span class="hidden sm:inline">More info</span>
-                    </button>
+                    @* "More info" only when it adds a distinct destination. For a Resume hero the
+                       primary already navigates to the details page, so a second button to the
+                       same URL is redundant — that was #138. *@
+                    @if (Item.PrimaryAction != HeroAction.Resume)
+                    {
+                        <button @onclick="OnSecondary"
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                            <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
+                            <span class="hidden sm:inline">More info</span>
+                        </button>
+                    }
+                    @if (OnShuffle.HasDelegate)
+                    {
+                        <button @onclick="OnShuffleClick" disabled="@_shuffling" title="Show another pick" aria-label="Show another pick"
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 disabled:opacity-60 flex items-center justify-center self-stretch px-3 md:px-3.5 py-2 md:py-2.5 rounded-lg transition-colors">
+                            <span class="icon-[heroicons--arrow-path] w-4 h-4 md:w-5 md:h-5 @(_shuffling ? "animate-spin" : "")"></span>
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -53,6 +80,27 @@
 @code {
     [Parameter, EditorRequired] public HeroItem? Item { get; set; }
 
+    // when set, renders a shuffle button that asks the parent for a different pick (the
+    // manual force-refresh escape hatch for the rotating AI hero). #135
+    [Parameter] public EventCallback OnShuffle { get; set; }
+
+    private bool _shuffling;
+    private bool _adding;
+    private bool _added;
+    private int _lastHeroId;
+
+    protected override void OnParametersSet()
+    {
+        // reset the per-hero button state whenever the hero changes (e.g. after a shuffle)
+        if (Item is not null && Item.TmdbId != _lastHeroId)
+        {
+            _lastHeroId = Item.TmdbId;
+            _added = false;
+            _adding = false;
+            _shuffling = false;
+        }
+    }
+
     private string PrimaryIcon => Item?.PrimaryAction switch
     {
         HeroAction.Resume => "icon-[heroicons--play-20-solid]",
@@ -60,7 +108,7 @@
         _ => "icon-[heroicons--play-20-solid]"
     };
 
-    private void OnPrimary()
+    private async Task OnPrimary()
     {
         if (Item is null) return;
         switch (Item.PrimaryAction)
@@ -69,7 +117,7 @@
                 Nav.NavigateTo($"/details/{Item.MediaType}/{Item.TmdbId}");
                 break;
             case HeroAction.Add:
-                _ = AddAndNotifyAsync();
+                await AddAndNotifyAsync();
                 break;
         }
     }
@@ -80,19 +128,67 @@
         Nav.NavigateTo($"/details/{Item.MediaType}/{Item.TmdbId}");
     }
 
+    private async Task OnShuffleClick()
+    {
+        if (_shuffling || !OnShuffle.HasDelegate) return;
+        // spin the icon for the whole round-trip — refresh can take a beat (it may regenerate
+        // the AI reservoir), and without feedback it looked like nothing happened.
+        _shuffling = true;
+        StateHasChanged();
+        try
+        {
+            await OnShuffle.InvokeAsync();
+        }
+        finally
+        {
+            _shuffling = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task AddAndNotifyAsync()
     {
-        if (Item is null) return;
+        if (Item is null || _adding || _added) return;
+
+        // snapshot the hero before the await — a background AI load / shuffle can swap Item
+        // mid-request, which would otherwise add the right title but show the wrong one in the toast.
+        HeroItem hero = Item;
         QueueItem stub = new()
         {
-            TmdbId = Item.TmdbId,
-            MediaType = Item.MediaType,
-            Title = Item.Title,
-            PosterPath = Item.PosterPath,
-            BackdropPath = Item.BackdropPathRaw
+            TmdbId = hero.TmdbId,
+            MediaType = hero.MediaType,
+            Title = hero.Title,
+            PosterPath = hero.PosterPath,
+            BackdropPath = hero.BackdropPathRaw
         };
-        QueueItem? added = await Api.AddToQueueAsync(stub);
-        if (added is not null) QuickActionSvc.NotifyItemUpdated(added);
+
+        _adding = true;
+        StateHasChanged();
+        try
+        {
+            // AddToQueueAsync doesn't swallow exceptions — a network failure throws, so the
+            // finally is what guarantees the button doesn't get stuck spinning.
+            QueueItem? added = await Api.AddToQueueAsync(stub);
+            if (added is not null)
+            {
+                _added = true;
+                QuickActionSvc.NotifyItemUpdated(added);
+                await Toast.ShowAsync($"Added “{hero.Title}” to your list");
+            }
+            else
+            {
+                await Toast.ShowAsync("Couldn't add to your list — try again");
+            }
+        }
+        catch
+        {
+            await Toast.ShowAsync("Couldn't add to your list — try again");
+        }
+        finally
+        {
+            _adding = false;
+            StateHasChanged();
+        }
     }
 
     public enum HeroAction { Resume, Add }

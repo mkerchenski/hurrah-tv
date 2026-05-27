@@ -141,30 +141,18 @@ public class ApiClient(HttpClient http)
         return null;
     }
 
-    // curation
-    public async Task<CurationResponse?> GetCuratedRowsAsync(CancellationToken cancellationToken = default)
+    // curation — single rotating AI hero pick for Home (#135). refresh=true asks the server
+    // for a different pick (manual escape hatch). Returns null on any failure; Home falls back
+    // to a watchlist-derived hero, so there's no user-facing error path here.
+    public async Task<CuratedHeroResponse?> GetCuratedHeroAsync(bool refresh = false, CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<CurationResponse>("api/curation/rows", cancellationToken);
+            return await _http.GetFromJsonAsync<CuratedHeroResponse>($"api/curation/hero?refresh={refresh}", cancellationToken);
         }
         // only rethrow caller-driven cancellation. HttpClient.Timeout surfaces as
-        // TaskCanceledException with our token NOT cancelled — that should keep the
-        // legacy "all-errors-return-null" contract so existing callers (no CT) don't
-        // suddenly see exceptions.
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch { return null; }
-    }
-
-    public async Task<CurationResponse?> RefreshCurationAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            HttpResponseMessage response = await _http.PostAsync("api/curation/refresh", null, cancellationToken);
-            if (response.IsSuccessStatusCode)
-                return await response.Content.ReadFromJsonAsync<CurationResponse>(cancellationToken);
-            return null;
-        }
+        // TaskCanceledException with our token NOT cancelled — keep the "errors return null"
+        // contract so callers (no CT) don't suddenly see exceptions.
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch { return null; }
     }

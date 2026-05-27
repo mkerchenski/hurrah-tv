@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Anthropic;
 using Anthropic.Models.Messages;
+using HurrahTv.Shared.Curation;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
@@ -11,6 +12,11 @@ public partial class CurationService
 {
     private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
     private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
+
+    // regenerate the reservoir when it's older than this even if the watchlist is unchanged,
+    // so the rotating hero gets genuinely fresh material month-over-month and isn't frozen
+    // until the user next touches their list. tune against AIUsage spend. pins #135.
+    private const int ReservoirMaxAgeDays = 7;
 
     // bound concurrent paid AI inferences so a burst can't overshoot the monthly
     // budget by more than `(MatchSlots + CurationSlots) * per-call-cost`. The pre-AI
@@ -93,21 +99,22 @@ public partial class CurationService
         });
     }
 
-    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)
             return new CurationResult { Error = "AI not enabled" };
 
         string currentHash = ComputeWatchlistHash(watchlist);
 
-        // check cache (unless caller forced a refresh — /refresh endpoint passes
-        // forceRefresh=true so the cache check is skipped without first blanking the
-        // cache row. Pre-blanking lost the user's row on mid-flight client cancel.)
-        (string? rowsJson, string? watchlistHash)? cached = forceRefresh
+        // check cache (unless caller forced a refresh — a shuffle passes forceRefresh=true so the
+        // cache check is skipped without first blanking the cache row. Pre-blanking lost the
+        // user's row on a mid-flight client cancel.)
+        (string? rowsJson, string? watchlistHash, DateTime? generatedAt)? cached = forceRefresh
             ? null
             : await _db.GetCurationCacheAsync(userId, cancellationToken);
         if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null
-            && cached.Value.rowsJson != "[]")
+            && cached.Value.rowsJson != "[]"
+            && cached.Value.generatedAt is { } gen && gen > DateTime.UtcNow.AddDays(-ReservoirMaxAgeDays))
         {
             List<AICuratedRow> cachedRows = JsonSerializer.Deserialize<List<AICuratedRow>>(cached.Value.rowsJson) ?? [];
             if (cachedRows.Count > 0)
@@ -132,7 +139,7 @@ public partial class CurationService
             return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
         // phase 1: gather candidate pool from TMDb (excluding watchlist)
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, englishOnly, cancellationToken);
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, genreIds, watchlist, englishOnly, cancellationToken);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
@@ -149,25 +156,75 @@ public partial class CurationService
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
+    // one rotating hero pick for the Home page. The reservoir (above) is the expensive,
+    // periodically-refreshed scored candidate set; selection is a cheap read-time concern
+    // that rotates daily and keeps a title out of the hero for a cooldown window. pins #135.
+    //
+    // The two refresh levers are independent so a "shuffle" is always responsive:
+    //   - advancePick (free): treat today's already-shown picks as ineligible so we move to
+    //     the next-best — every shuffle changes the pick, even when regen is rate-limited.
+    //   - regenerateReservoir (paid AI, rate-limited): pull genuinely new candidate material.
+    public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds,
+        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, CancellationToken cancellationToken = default)
     {
-        HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
+        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, regenerateReservoir, cancellationToken);
+        AICuratedRow? row = reservoir.Rows.FirstOrDefault();
+        if (row is null || row.TmdbIds.Count == 0)
+            return new HeroResult { Error = reservoir.Error };
 
-        // fetch recent TV and movies in parallel across user's services
+        // drop anything already on the watchlist, so a title the user has (or just added) can't
+        // come back as a recommendation. Keyed on (TmdbId, MediaType) because TMDb ids are
+        // namespaced per media type — a movie and a TV show can share a numeric id.
+        HashSet<(int, string)> onWatchlist = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
+        List<HeroCandidate> candidates = [.. row.TmdbIds
+            .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))
+            .Where(c => !onWatchlist.Contains((c.TmdbId, c.MediaType)))];
+
+        Dictionary<int, DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
+        HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !advancePick);
+        if (pick is null)
+            return new HeroResult { Error = reservoir.Error };
+
+        // the impression is recorded by the caller AFTER it confirms the pick hydrated (so a TMDb
+        // failure can't burn a strong pick's cooldown without ever showing it), and only when it
+        // isn't already today's pick (avoids a redundant write on every page load).
+        bool alreadyShownToday = lastShown.TryGetValue(pick.TmdbId, out DateTime last) && last.Date == DateTime.UtcNow.Date;
+
+        return new HeroResult
+        {
+            TmdbId = pick.TmdbId,
+            MediaType = pick.MediaType,
+            Reason = row.Reasons.GetValueOrDefault(pick.TmdbId, ""),
+            Score = pick.Score,
+            ShouldRecordImpression = !alreadyShownToday
+        };
+    }
+
+    // genreIds (the user's stated genre prefs, possibly empty) weight the deep-cut band; they're
+    // fetched once by the caller via GetUserPreferencesAsync rather than re-queried here.
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<int> genreIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
+    {
+        // three bands in parallel across the user's services. The highly-rated back-catalog
+        // band (#135) gives the AI non-recent, well-reviewed material so the rotating hero
+        // can surface deep cuts, not just the latest hits.
         Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
-        await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
+        Task<List<SearchResult>> topTv = _tmdb.HighlyRatedOnServicesAsync(providerIds, "tv", genreIds, deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        Task<List<SearchResult>> topMovies = _tmdb.HighlyRatedOnServicesAsync(providerIds, "movie", genreIds, deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        await Task.WhenAll(newTv, newMovies, popularTv, popularMovies, topTv, topMovies);
 
-        // combine and deduplicate, excluding watchlist items
-        HashSet<int> seen = [.. watchlistIds];
+        // combine and deduplicate, excluding watchlist items. Keyed on (TmdbId, MediaType)
+        // because TMDb ids are namespaced per media type — a movie and a TV show can share a
+        // numeric id, so a TmdbId-only key would cross-exclude unrelated titles.
+        HashSet<(int, string)> seen = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
         List<SearchResult> pool = [];
-        foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result })
+        foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result, topTv.Result, topMovies.Result })
         {
             foreach (SearchResult r in batch)
             {
-                if (seen.Add(r.TmdbId))
+                if (seen.Add((r.TmdbId, r.MediaType)))
                     pool.Add(r);
             }
         }
@@ -196,7 +253,9 @@ public partial class CurationService
             {{candidateList}}
 
             ## YOUR TASK
-            Pick the 12-15 best shows from the candidates for this user. Rank them by how strongly you'd recommend them. For each, write a short reason (10-20 words) explaining WHY this user specifically would like it.
+            Pick the 25-30 best titles from the candidates for this user — include a healthy mix of BOTH TV shows AND movies (the candidate list contains both; don't return only one kind). For each, give:
+            - a match score 0-100 — how confident you are THIS user will love it. Be discriminating and use the full range: reserve 90+ for near-certain hits, put genuine stretches in the 50s-60s.
+            - a reason (2-3 sentences, ~30-45 words) explaining WHY this user specifically would like it. Name the specific shows/tastes of theirs it connects to and what the payoff is. This is shown prominently in the home hero, so make it concrete and persuasive, not generic.
 
             Think beyond genre. Look for:
             - Unexpected connections (they like medical dramas AND comedies → dark comedy about doctors)
@@ -205,14 +264,14 @@ public partial class CurationService
             - Non-obvious patterns in their taste
 
             Rules:
-            - STRONGLY prefer shows from 2024-2026. Legacy shows only if the taste connection is truly compelling.
+            - Mix eras. Lean toward fresh, recent shows, but include standout older titles when the taste connection is strong — variety matters more than recency.
             - Be opinionated and specific in your reasons. Don't hedge.
             - The list is for adding to their watchlist, not necessarily watching tonight.
 
             Respond with ONLY a JSON array (no markdown, no explanation):
-            [{"id":1,"reason":"Why this user specifically would love this show"}]
+            [{"id":1,"score":92,"reason":"Why this user specifically would love this show"}]
 
-            The "id" is the candidate number (# before each show). Order by recommendation strength (best first).
+            The "id" is the candidate number (# before each show). Order best-first by score.
             """;
 
         await AiCurationGate.WaitAsync(cancellationToken);
@@ -221,10 +280,11 @@ public partial class CurationService
             // forward CT so Home-page navigation aborts the paid AI inference. Same
             // pattern as GetShowMatchAsync (#117/#122) — /rows is the most expensive
             // AI path (12-15 picks, larger token budget than /match). pins #126.
+            // 25-30 picks, each id+score + a 2-3 sentence reason — needs real output headroom
             Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
-                MaxTokens = 1024,
+                MaxTokens = 3500,
                 Messages = [new MessageParam { Role = Role.User, Content = prompt }]
             }, cancellationToken: cancellationToken);
 
@@ -245,14 +305,26 @@ public partial class CurationService
             int jsonStart = text.IndexOf('[');
             int jsonEnd = text.LastIndexOf(']');
             if (jsonStart >= 0 && jsonEnd > jsonStart)
+            {
                 text = text[jsonStart..(jsonEnd + 1)];
+            }
+            else if (jsonStart >= 0)
+            {
+                // response was truncated (e.g. hit MaxTokens mid-array, more likely now at
+                // 25-30 picks with longer reasons) — salvage the complete leading objects by
+                // closing the array after the last finished one rather than discarding all of it.
+                int lastObject = text.LastIndexOf('}');
+                if (lastObject > jsonStart)
+                    text = text[jsonStart..(lastObject + 1)] + "]";
+            }
 
             List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, CaseInsensitive) ?? [];
 
-            // build a single flat curated list
+            // build the scored reservoir — a single ranked list the hero rotation draws from
             List<int> tmdbIds = [];
             Dictionary<int, string> reasons = [];
             Dictionary<int, string> itemMediaTypes = [];
+            Dictionary<int, int> scores = [];
 
             foreach (AIPick pick in picks)
             {
@@ -263,6 +335,7 @@ public partial class CurationService
                     {
                         tmdbIds.Add(candidate.TmdbId);
                         itemMediaTypes[candidate.TmdbId] = candidate.MediaType;
+                        scores[candidate.TmdbId] = Math.Clamp(pick.Score, 0, 100);
                         if (!string.IsNullOrEmpty(pick.Reason))
                             reasons[candidate.TmdbId] = pick.Reason;
                     }
@@ -277,7 +350,8 @@ public partial class CurationService
                 Subtitle = "Personalized picks based on your taste",
                 TmdbIds = tmdbIds,
                 Reasons = reasons,
-                ItemMediaTypes = itemMediaTypes
+                ItemMediaTypes = itemMediaTypes,
+                Scores = scores
             }];
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -512,6 +586,7 @@ public partial class CurationService
     private class AIPick
     {
         public int Id { get; set; }
+        public int Score { get; set; }
         public string Reason { get; set; } = "";
     }
 
@@ -528,6 +603,7 @@ public class AICuratedRow
     public List<int> TmdbIds { get; set; } = [];
     public Dictionary<int, string> Reasons { get; set; } = []; // TmdbId → reason
     public Dictionary<int, string> ItemMediaTypes { get; set; } = [];
+    public Dictionary<int, int> Scores { get; set; } = []; // TmdbId → AI match score 0-100 (#135)
 }
 
 public class CurationResult
@@ -537,4 +613,18 @@ public class CurationResult
     public bool WatchlistChanged { get; set; }
     public string? Error { get; set; }
     public int CandidateCount { get; set; }
+}
+
+// the chosen hero before TMDb hydration — the endpoint resolves TmdbId into a SearchResult.
+public class HeroResult
+{
+    public int? TmdbId { get; set; }
+    public string MediaType { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public int Score { get; set; }
+    public string? Error { get; set; }
+    // true when this pick is new for today — the endpoint records the impression only after a
+    // successful hydration, so a TMDb miss doesn't put a never-shown title into the cooldown.
+    public bool ShouldRecordImpression { get; set; }
+    public bool HasPick => TmdbId is not null;
 }

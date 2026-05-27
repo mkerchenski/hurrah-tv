@@ -7,7 +7,6 @@
 @inject UserServicesCache UserServicesCache
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
-@inject CurationCache CurationCache
 @using HurrahTv.Shared.Filters
 
 <PageTitle>Hurrah.tv - Your Streaming, Curated</PageTitle>
@@ -125,10 +124,20 @@ else if (!_onboardingComplete)
 else
 {
     <div class="fade-in">
-        <!-- hero billboard — replaces the standalone greeting; selection prefers Continue Watching,
-             then a recently-aired show, then the top AI pick. nothing renders if no candidate has a
-             backdrop yet (e.g. fresh user before any TMDb backfill landed). -->
-        <HomeHero Item="_hero" />
+        <!-- hero billboard — the rotating daily AI pick. While it loads we show a skeleton rather
+             than a watchlist item, so the hero never flashes a show that's already in the list.
+             It only falls back to Continue Watching / New This Week if AI curation is unavailable;
+             nothing renders when there's no candidate at all. Shuffle asks for a different pick. -->
+        @if (_hero is not null)
+        {
+            <HomeHero Item="_hero" OnShuffle="@(() => LoadHero(refresh: true))" />
+        }
+        else if (_heroLoading)
+        {
+            <section class="relative -mx-4 md:-mx-6 mb-6 md:mb-10 overflow-hidden rounded-b-xl md:rounded-xl">
+                <div class="aspect-[3/4] sm:aspect-[16/9] md:aspect-[21/9] loading-shimmer"></div>
+            </section>
+        }
 
         <!-- My Watchlist section — header with chips + all three rows grouped together -->
         @{
@@ -239,25 +248,6 @@ else
             </div>
         }
 
-        <!-- AI-curated section -->
-        @if (_curatedItems.Count > 0 || _aiLoading)
-        {
-            <CuratedSection Items="_curatedItems" Loading="_aiLoading" MediaType="@MediaFilter.MediaType" />
-        }
-        @if (!string.IsNullOrEmpty(_aiError))
-        {
-            <div class="flex items-center justify-between mb-6 px-4 py-3 bg-surface-50 border border-surface-200 rounded-lg">
-                <div class="flex items-center gap-2">
-                    <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent flex-shrink-0"></span>
-                    <span class="text-sm text-gray-400">@_aiError</span>
-                </div>
-                <button class="text-xs text-accent hover:text-accent-light transition-colors flex-shrink-0 ml-4"
-                        @onclick="RefreshCuration">
-                    Retry
-                </button>
-            </div>
-        }
-
         <!-- TV-only rows (hidden in Movies mode) -->
         @if (MediaFilter.MediaType != "movie")
         {
@@ -313,13 +303,16 @@ else
     private string _watchlistSort = "date"; // single sort for all My Watchlist rows, synced with UserSettings
     private UserSettings _settings = new();
 
-    // AI curation
-    private List<CuratedItem> _curatedItems = [];
-    private bool _aiLoading;
-    private string? _aiError;
+    // AI curation — a single rotating hero pick (the only AI surface on Home). null until
+    // the background fetch returns. While _heroLoading we show a skeleton rather than a
+    // watchlist fallback, so the hero never flashes an already-in-list item.
+    private CuratedHero? _heroPick;
+    private bool _heroLoading;
+    private int _heroRequestSeq; // latest-wins guard so overlapping fetches don't both apply
+    private bool _disposed;      // LoadHero is fire-and-forget + slow; don't render after disposal
 
     // hero billboard — cached so it doesn't recompute on every render. recomputed in
-    // ReapplyDerivedState after queue mutations and after AI curation arrives.
+    // ReapplyDerivedState after queue mutations and after the AI pick arrives.
     private HomeHero.HeroItem? _hero;
 
     protected override async Task OnInitializedAsync()
@@ -352,11 +345,15 @@ else
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;
 
+        // set BEFORE ProcessQueueResponse: it computes _hero via SelectHero, which must see
+        // _heroLoading=true to suppress the watchlist fallback and render the skeleton instead.
+        // Otherwise the hero flashes an in-list item until the AI pick lands.
+        _heroLoading = true;
         ProcessQueueResponse(await queueTask);
 
-        // AI is the slowest call (Claude API) and not needed for first paint — let it
-        // finish in the background and fill in the curated row when it returns
-        _ = LoadAICuration();
+        // AI is the slowest call (Claude API) and not needed for first paint — let it finish in
+        // the background and swap the hero to the AI pick when it returns
+        _ = LoadHero();
     }
 
     private async Task OnboardingNext()
@@ -473,11 +470,14 @@ else
 
     private async Task LoadWatchlistData()
     {
+        // set BEFORE ProcessQueueResponse so SelectHero renders the skeleton, not a watchlist
+        // fallback, until the AI pick lands (see OnInitializedAsync for the full rationale)
+        _heroLoading = true;
         QueueResponse queueResponse = await Api.GetQueueResponseAsync();
         ProcessQueueResponse(queueResponse);
 
-        // AI curation is fire-and-forget — slow Claude call shouldn't block first paint
-        _ = LoadAICuration();
+        // AI hero is fire-and-forget — slow Claude call shouldn't block first paint
+        _ = LoadHero();
     }
 
     private bool IsStatusActive(QueueStatus status) => status switch
@@ -526,97 +526,36 @@ else
         _wantToWatchMovies = SortMovies(partition.Movies);
     }
 
-    private async Task RefreshCuration()
+    // fetch the rotating AI hero pick and swap it into the hero slot. Best-effort: on any
+    // failure the fallback hero (Continue Watching / New This Week) already shows, so there
+    // is no error UI. refresh=true asks the server for a different pick (manual escape hatch).
+    private async Task LoadHero(bool refresh = false)
     {
-        _aiError = null;
-        _curatedItems = [];
-        _aiLoading = true;
-        CurationCache.Invalidate(); // user explicitly asked for a refresh — bypass cache entirely
-        StateHasChanged();
-
+        // latest-wins: a slower in-flight fetch (e.g. the initial load) must not clobber a
+        // newer one (e.g. a shuffle). Only the most recent request applies its result.
+        int seq = ++_heroRequestSeq;
         try
         {
-            CurationResponse? fresh = await Api.RefreshCurationAsync();
-            _aiLoading = false;
-            if (fresh?.AiEnabled == true && fresh.Rows.Count > 0)
+            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh);
+            if (seq == _heroRequestSeq && response?.Hero is not null)
+                _heroPick = response.Hero;
+        }
+        catch
+        {
+            // hero is non-critical — leave any existing pick / fallback in place
+        }
+        finally
+        {
+            // the hero fetch is the slowest call in the app; the user may navigate away before
+            // it returns. Don't touch state / render on a disposed component.
+            if (!_disposed && seq == _heroRequestSeq)
             {
-                CurationCache.Set(fresh);
-                _curatedItems = FlattenCuration(fresh);
+                _heroLoading = false;
                 _hero = SelectHero();
-            }
-            else
-            {
-                _aiError = fresh == null ? "Failed to reach curation API" : $"Not enough candidates ({fresh.CandidateCount})";
-            }
-        }
-        catch (Exception ex)
-        {
-            _aiLoading = false;
-            _aiError = $"Exception: {ex.Message}";
-        }
-        StateHasChanged();
-    }
-
-    private async Task LoadAICuration()
-    {
-        // cache hit: render immediately, skip the HTTP round-trip entirely. server already
-        // caches by watchlist hash, but the network round-trip alone is ~100-300ms.
-        // first call hydrates from localStorage if available — survives a full page reload.
-        CurationResponse? cached = await CurationCache.GetAsync();
-        if (cached is { AiEnabled: true })
-        {
-            _curatedItems = FlattenCuration(cached);
-            _aiError = cached.Error;
-            _aiLoading = false;
-            _hero = SelectHero();
-            StateHasChanged();
-            return;
-        }
-
-        try
-        {
-            _aiLoading = true;
-            StateHasChanged();
-
-            CurationResponse? curation = await Api.GetCuratedRowsAsync();
-            _aiLoading = false;
-
-            if (curation == null)
-            {
-                _aiError = "Failed to reach curation API";
                 StateHasChanged();
-                return;
             }
-
-            if (!curation.AiEnabled)
-            {
-                _aiError = $"AI not enabled (candidates: {curation.CandidateCount})";
-                StateHasChanged();
-                return;
-            }
-
-            _aiError = curation.Error;
-            CurationCache.Set(curation);
-            _curatedItems = FlattenCuration(curation);
-            _hero = SelectHero(); // re-pick now that AI candidates exist
-
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-
-            _aiLoading = false;
-            _aiError = $"Exception: {ex.Message}";
-            StateHasChanged();
         }
     }
-
-    private static List<CuratedItem> FlattenCuration(CurationResponse response) =>
-        [.. response.Rows.SelectMany(row => row.Results.Select(r => new CuratedItem
-        {
-            Result = r,
-            Reason = row.Reasons.TryGetValue(r.TmdbId, out string? reason) ? reason : ""
-        }))];
 
     // content row data loaders — pass queued IDs so discovered items exclude already-queued shows
     private Task<List<SearchResult>> LoadTrendingTv() => Api.ForYouAsync("tv", _queuedTmdbIds);
@@ -717,11 +656,35 @@ else
         ? "My Watchlist"
         : $"{_firstName}'s Watchlist";
 
-    // hero source priority. Continue Watching > Latest aired this week > top AI pick.
+    // hero source priority. Rotating AI pick > Continue Watching > Latest aired this week.
+    // the AI pick is the primary surface but arrives async, so until it loads (or when it's
+    // unavailable / filtered out) the hero falls back to the watchlist-derived options.
     // returns null when nothing has a usable backdrop yet (fresh users before backfill).
     private HomeHero.HeroItem? SelectHero()
     {
-        // 1. an item the user is actively watching, with a backdrop available
+        // 1. the rotating AI pick (the only AI surface), if it matches the active media filter
+        if (_heroPick is { Result: { } pick } && !string.IsNullOrEmpty(pick.BackdropPath)
+            && (MediaFilter.MediaType == "all" || pick.MediaType == MediaFilter.MediaType))
+        {
+            return new HomeHero.HeroItem(
+                Eyebrow: "Recommended for You",
+                Title: pick.Title,
+                BackdropUrl: pick.BackdropUrl("w1280"),
+                BackdropPathRaw: pick.BackdropPath,
+                PosterPath: pick.PosterPath,
+                Overview: _heroPick.Reason,
+                TmdbId: pick.TmdbId,
+                MediaType: pick.MediaType,
+                PrimaryLabel: "Add to list",
+                PrimaryAction: HomeHero.HeroAction.Add);
+        }
+
+        // while the AI pick is still loading, render nothing here — Home shows a skeleton in the
+        // hero slot. This stops an in-list Continue Watching item from flashing as the "hero"
+        // during the load window; the fallbacks below only apply once curation has resolved.
+        if (_heroLoading) return null;
+
+        // 2. an item the user is actively watching, with a backdrop available
         QueueItem? watching = _availableNowItems.FirstOrDefault(i =>
             i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath));
         if (watching is not null)
@@ -739,7 +702,7 @@ else
                 PrimaryAction: HomeHero.HeroAction.Resume);
         }
 
-        // 2. a TV show whose latest episode aired in the last 7 days (regardless of status)
+        // 3. a TV show whose latest episode aired in the last 7 days (regardless of status)
         QueueItem? recent = _allItems
             .Where(i => i.MediaType == MediaTypes.Tv
                 && i.HasNewEpisode
@@ -762,30 +725,12 @@ else
                 PrimaryAction: HomeHero.HeroAction.Resume);
         }
 
-        // 3. top AI curation pick that still matches the active media-type filter
-        CuratedItem? topAi = _curatedItems.FirstOrDefault(c =>
-            !string.IsNullOrEmpty(c.Result.BackdropPath)
-            && (MediaFilter.MediaType == "all" || c.Result.MediaType == MediaFilter.MediaType));
-        if (topAi is not null)
-        {
-            return new HomeHero.HeroItem(
-                Eyebrow: "Recommended for You",
-                Title: topAi.Result.Title,
-                BackdropUrl: topAi.Result.BackdropUrl("w1280"),
-                BackdropPathRaw: topAi.Result.BackdropPath,
-                PosterPath: topAi.Result.PosterPath,
-                Overview: topAi.Reason,
-                TmdbId: topAi.Result.TmdbId,
-                MediaType: topAi.Result.MediaType,
-                PrimaryLabel: "Add to list",
-                PrimaryAction: HomeHero.HeroAction.Add);
-        }
-
         return null;
     }
 
     public void Dispose()
     {
+        _disposed = true;
         QuickActionSvc.OnChanged -= OnQuickActionChanged;
         QuickActionSvc.OnItemUpdated -= OnItemUpdated;
         QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;

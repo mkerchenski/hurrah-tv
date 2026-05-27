@@ -8,8 +8,8 @@ AI-curated streaming across all your services. One smart watchlist that learns w
 
 Hurrah.tv is an opinionated streaming platform that curates content across Netflix, Hulu, Disney+, Prime Video, Max, Peacock, Paramount+, and Apple TV+. It learns from your watch history and preferences to build a personalized home feed — like opening one app instead of eight.
 
-- **AI-powered curation** — Claude analyzes your taste (and addresses you by name) to generate themed content rows ("High-Stakes Hospital Nights", "Slow-Burn Thrillers That Hook Fast")
-- **Hero billboard** — Top of Home picks from your Continue Watching, latest aired this week, or top AI rec — whichever fits, with a Netflix-style backdrop and Go to show / Watch latest / Add to list CTA
+- **AI-powered hero** — Claude scores a reservoir of candidates against your taste (and addresses you by name) and surfaces one confident pick that rotates daily without repeating within a two-week window
+- **Hero billboard** — Top of Home is driven by the rotating AI pick with a one-line "why", falling back to Continue Watching or a show that aired this week when curation is unavailable; Netflix-style backdrop with Add to list / More info CTAs and a shuffle for a different pick
 - **Smart watchlists** — Track what you're watching, want to watch, and have watched. Separate sentiment system (thumbs up/down/favorite) lets you rate shows, seasons, and individual episodes independently from your list.
 - **Optimistic UI** — Marking watched, changing status, or rating closes the modal instantly and updates the watchlist row in place; the API call runs in the background
 - **New episode alerts** — Shows in your list with new or upcoming episodes are flagged automatically with "returning" indicators for shows you've finished
@@ -37,10 +37,9 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 
 | Row type | Source | Example |
 |----------|--------|---------|
-| Hero Billboard | Continue Watching / latest aired this week / top AI pick (self-gating) | Full-bleed backdrop with Go to show/movie / Watch latest / Add to list |
+| Hero Billboard | Rotating daily AI pick → Continue Watching → aired this week (self-gating) | Full-bleed backdrop, one-line AI reason, Add to list / More info / shuffle |
 | Continue Watching | User's "Watching" list + air dates | Most recently aired first with "Xd ago" badges |
 | Upcoming Episodes | All non-dismissed shows + TMDb air dates | Next 7 days, with "Returning" flag for finished shows |
-| AI-Curated | Claude AI + TMDb discover | "High-Stakes Hospital Nights" |
 | New This Season | TMDb discover (date-filtered) | Recently aired TV across your services |
 | Trending TV Shows | TMDb popularity + recency boost | Popular TV, newer ones first |
 | New Releases | TMDb discover (date-filtered) | Recently released movies |
@@ -119,10 +118,10 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 
 ## AI Curation
 
-Claude Haiku analyzes the user's watchlist to generate personalized content row strategies. The AI decides *what* rows to show and *how* to title them — TMDb's discover API fills them with actual content from the user's streaming services.
+Claude Haiku scores a reservoir of ~25–30 candidate titles — drawn from new, popular, and highly-rated back-catalog content on the user's services — by how well each matches their taste. One confident pick is surfaced in the Home hero and rotates daily, without repeating a title within a two-week cooldown.
 
 - **Model:** Claude Haiku 4.5 (fast, cost-effective for structured output)
-- **Trigger:** Rows regenerate when the watchlist changes (hash-based cache invalidation)
+- **Trigger:** The reservoir regenerates when the watchlist changes or after 7 days (hash + time-based cache invalidation); the daily rotation itself is a free server-side selection from the cached reservoir
 - **Cost tracking:** Per-user token usage logged in `AIUsage` table for pricing analysis
 - **Budget:** Configurable monthly cap prevents runaway costs
 - **Fallback:** App works fully without AI — TMDb recommendations and trending fill the gap
