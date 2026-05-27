@@ -104,3 +104,15 @@ body {
         box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
     }
 }
+
+/* SortableJS drag-reorder (queue Want-to-Watch tab). forceFallback is on (see
+   js/sortable.js, #139), so the dragged row is cloned into .sortable-fallback that
+   follows the pointer while the original stays in the list as the placeholder —
+   dim the placeholder so it reads as "this is where it'll land". */
+.sortable-ghost {
+    opacity: 0.4;
+}
+
+.sortable-fallback {
+    cursor: grabbing;
+}

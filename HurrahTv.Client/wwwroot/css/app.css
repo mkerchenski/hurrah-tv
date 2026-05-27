@@ -2453,6 +2453,12 @@ body {
     box-shadow: 0 8px 32px rgba(99, 102, 241, 0.3);
   }
 }
+.sortable-ghost {
+  opacity: 0.4;
+}
+.sortable-fallback {
+  cursor: grabbing;
+}
 @property --tw-translate-x {
   syntax: "*";
   inherits: false;
