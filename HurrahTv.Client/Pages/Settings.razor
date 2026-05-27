@@ -108,6 +108,7 @@
     private List<int> _selectedServices = [];
     private List<int> _selectedGenres = [];
     private bool _englishOnly;
+    private UserSettings _settings = new();
     private string _firstName = "";
     private bool _loaded;
 
@@ -136,7 +137,8 @@
 
         _selectedServices = servicesTask.Result;
         _selectedGenres = genresTask.Result;
-        _englishOnly = settingsTask.Result.EnglishOnly;
+        _settings = settingsTask.Result;
+        _englishOnly = _settings.EnglishOnly;
         _firstName = profileTask.Result?.FirstName ?? "";
         _loaded = true;
     }
@@ -159,12 +161,26 @@
 
     private void OnEnglishOnlyChanged()
     {
-        bool value = _englishOnly;
-        _settingsSaver.Schedule(ct => Api.SetUserSettingsAsync(new UserSettings { EnglishOnly = value }, ct));
+        // only EnglishOnly is editable here, but the settings PUT upserts the whole row —
+        // carry the other fields (home filters, sort, media type) from the loaded settings so
+        // toggling this doesn't reset them to defaults server-side.
+        _settings.EnglishOnly = _englishOnly;
+        UserSettings snapshot = new()
+        {
+            EnglishOnly = _settings.EnglishOnly,
+            ShowWatching = _settings.ShowWatching,
+            ShowWantToWatch = _settings.ShowWantToWatch,
+            ShowFinished = _settings.ShowFinished,
+            WatchlistSort = _settings.WatchlistSort,
+            MediaType = _settings.MediaType,
+        };
+        _settingsSaver.Schedule(ct => Api.SetUserSettingsAsync(snapshot, ct));
     }
 
     private void OnNameChanged()
     {
+        // not snapshotted like the other handlers: each keystroke reschedules the 1.5s debounce,
+        // so when this fires _firstName is already the final typed value — reading it live is correct.
         _nameSaver.Schedule(async ct =>
         {
             string? trimmed = string.IsNullOrWhiteSpace(_firstName) ? null : _firstName.Trim();

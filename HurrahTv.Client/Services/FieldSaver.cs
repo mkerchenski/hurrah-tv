@@ -71,7 +71,9 @@ public sealed class FieldSaver(Func<Task> stateChanged, int debounceMs = 250) : 
         State = Status.Saved;
         await Notify();
 
-        await Task.Delay(SavedDisplay);
+        try { await Task.Delay(SavedDisplay, token); }
+        catch (OperationCanceledException) { return; } // disposed or superseded during the Saved display
+
         if (version == _version && State == Status.Saved)
         {
             State = Status.Idle;
