@@ -86,6 +86,11 @@ public class TmdbService
     private const int ResultsPerProvider = 5;
     private const int DeepResultsPerProvider = 15; // for AI curation — larger pool
 
+    // "highly-rated back catalog" discover band (AI curation deep cuts, #135)
+    private const string HighlyRatedMinVoteAverage = "7.3";
+    private const int HighlyRatedMinVoteCount = 200;       // floor so a few 10/10 votes can't dominate
+    private const int HighlyRatedOlderThanDays = 365;      // genuinely back-catalog; New band covers recent
+
     // popular content on user's services (no date filter — best for "trending")
     public async Task<List<SearchResult>> PopularOnServicesAsync(List<int> providerIds, string mediaType = "tv",
         List<int>? genreIds = null, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default) =>
@@ -96,26 +101,43 @@ public class TmdbService
         List<int>? genreIds = null, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default) =>
         await InterleaveByProviderAsync(providerIds, mediaType, genreIds, recentOnly: true, deep: deep, englishOnly: englishOnly, cancellationToken: cancellationToken);
 
+    // highly-rated back catalog on user's services — the "deep cuts" the New and Popular
+    // bands miss. Gives AI curation non-recent, well-reviewed material so the rotating
+    // Home hero isn't always the latest hit. pins #135.
+    public async Task<List<SearchResult>> HighlyRatedOnServicesAsync(List<int> providerIds, string mediaType = "tv",
+        List<int>? genreIds = null, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default)
+    {
+        if (providerIds.Count == 0) return [];
+
+        Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverHighlyRatedForProviderAsync(pid, mediaType, genreIds, englishOnly, cancellationToken))];
+        await Task.WhenAll(tasks);
+        return Interleave([.. tasks.Select(t => t.Result)], deep ? DeepResultsPerProvider : ResultsPerProvider);
+    }
+
     private async Task<List<SearchResult>> InterleaveByProviderAsync(List<int> providerIds, string mediaType,
         List<int>? genreIds, bool recentOnly, bool deep = false, bool englishOnly = false, CancellationToken cancellationToken = default)
     {
         if (providerIds.Count == 0) return [];
 
-        int perProvider = deep ? DeepResultsPerProvider : ResultsPerProvider;
         Task<List<SearchResult>>[] tasks = [.. providerIds.Select(pid => DiscoverForProviderAsync(pid, mediaType, genreIds, recentOnly, englishOnly, cancellationToken))];
         await Task.WhenAll(tasks);
+        return Interleave([.. tasks.Select(t => t.Result)], deep ? DeepResultsPerProvider : ResultsPerProvider);
+    }
 
+    // round-robin per-provider result lists so no single large service (Netflix/Hulu)
+    // dominates the combined pool. see Learnings/provider-popularity-dominance.md
+    private static List<SearchResult> Interleave(IReadOnlyList<List<SearchResult>> perProvider, int take)
+    {
         List<SearchResult> interleaved = [];
         HashSet<int> seen = [];
-        for (int i = 0; i < perProvider; i++)
+        for (int i = 0; i < take; i++)
         {
-            foreach (Task<List<SearchResult>> task in tasks)
+            foreach (List<SearchResult> results in perProvider)
             {
-                if (i < task.Result.Count && seen.Add(task.Result[i].TmdbId))
-                    interleaved.Add(task.Result[i]);
+                if (i < results.Count && seen.Add(results[i].TmdbId))
+                    interleaved.Add(results[i]);
             }
         }
-
         return interleaved;
     }
 
@@ -156,6 +178,45 @@ public class TmdbService
         List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
 
         _cache.Set(cacheKey, results, TimeSpan.FromHours(2));
+        return results;
+    }
+
+    private async Task<List<SearchResult>> DiscoverHighlyRatedForProviderAsync(int providerId, string mediaType,
+        List<int>? genreIds, bool englishOnly, CancellationToken cancellationToken)
+    {
+        string genres = genreIds?.Count > 0 ? string.Join("|", genreIds) : "";
+        string langSuffix = englishOnly ? ":en" : "";
+        string cacheKey = $"discover-toprated:{providerId}:{mediaType}:{genres}{langSuffix}";
+
+        if (_cache.TryGetValue(cacheKey, out List<SearchResult>? cached))
+            return cached!;
+
+        string dateParam = mediaType == MediaTypes.Tv ? "first_air_date" : "primary_release_date";
+        string olderThan = DateTime.UtcNow.AddDays(-HighlyRatedOlderThanDays).ToString("yyyy-MM-dd");
+
+        // sort by rating, gate on a vote-count floor so a handful of perfect scores on an
+        // obscure title can't top the list, and cap the release date so these are genuinely
+        // back-catalog (the New band already covers the last 60 days).
+        string url = $"discover/{mediaType}?api_key={_apiKey}" +
+                     $"&with_watch_providers={providerId}" +
+                     $"&with_watch_monetization_types=flatrate|ads" +
+                     $"&watch_region=US&sort_by=vote_average.desc&language=en-US" +
+                     $"&vote_count.gte={HighlyRatedMinVoteCount}" +
+                     $"&vote_average.gte={HighlyRatedMinVoteAverage}" +
+                     $"&{dateParam}.lte={olderThan}";
+
+        if (!string.IsNullOrEmpty(genres))
+            url += $"&with_genres={genres}";
+
+        if (englishOnly)
+            url += "&with_original_language=en";
+
+        TmdbPagedResponse<TmdbMultiResult>? response = await GetAsync<TmdbPagedResponse<TmdbMultiResult>>(url, cancellationToken);
+        if (response == null) return [];
+
+        List<SearchResult> results = [.. response.Results.Select(r => { r.MediaType = mediaType; return MapToSearchResult(r); })];
+
+        _cache.Set(cacheKey, results, TimeSpan.FromHours(12));  // back catalog changes slowly
         return results;
     }
 

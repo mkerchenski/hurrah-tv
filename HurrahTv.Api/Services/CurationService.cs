@@ -132,7 +132,7 @@ public partial class CurationService
             return new CurationResult { Error = "Add a few more shows to your list to unlock AI recommendations" };
 
         // phase 1: gather candidate pool from TMDb (excluding watchlist)
-        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(providerIds, watchlist, englishOnly, cancellationToken);
+        List<SearchResult> candidatePool = await GatherCandidatePoolAsync(userId, providerIds, watchlist, englishOnly, cancellationToken);
 
         if (candidatePool.Count < 10)
             return new CurationResult { Error = "Not enough content available right now — try adding more streaming services", CandidateCount = candidatePool.Count };
@@ -149,21 +149,30 @@ public partial class CurationService
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
     }
 
-    private async Task<List<SearchResult>> GatherCandidatePoolAsync(List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
+    private async Task<List<SearchResult>> GatherCandidatePoolAsync(string userId, List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
     {
         HashSet<int> watchlistIds = [.. watchlist.Select(i => i.TmdbId)];
 
-        // fetch recent TV and movies in parallel across user's services
+        // genre-weight the deep-cut band toward the user's stated genre preferences
+        // (empty = no genre filter). TMDb treats with_genres as an OR list, so a mix of
+        // tv/movie genre ids across both media types is harmless.
+        List<int> genreIds = await _db.GetUserGenresAsync(userId, cancellationToken);
+
+        // three bands in parallel across the user's services. The highly-rated back-catalog
+        // band (#135) gives the AI non-recent, well-reviewed material so the rotating hero
+        // can surface deep cuts, not just the latest hits.
         Task<List<SearchResult>> newTv = _tmdb.NewOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> newMovies = _tmdb.NewOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> popularTv = _tmdb.PopularOnServicesAsync(providerIds, "tv", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
         Task<List<SearchResult>> popularMovies = _tmdb.PopularOnServicesAsync(providerIds, "movie", deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
-        await Task.WhenAll(newTv, newMovies, popularTv, popularMovies);
+        Task<List<SearchResult>> topTv = _tmdb.HighlyRatedOnServicesAsync(providerIds, "tv", genreIds, deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        Task<List<SearchResult>> topMovies = _tmdb.HighlyRatedOnServicesAsync(providerIds, "movie", genreIds, deep: true, englishOnly: englishOnly, cancellationToken: cancellationToken);
+        await Task.WhenAll(newTv, newMovies, popularTv, popularMovies, topTv, topMovies);
 
         // combine and deduplicate, excluding watchlist items
         HashSet<int> seen = [.. watchlistIds];
         List<SearchResult> pool = [];
-        foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result })
+        foreach (List<SearchResult> batch in new[] { newTv.Result, newMovies.Result, popularTv.Result, popularMovies.Result, topTv.Result, topMovies.Result })
         {
             foreach (SearchResult r in batch)
             {
@@ -196,7 +205,9 @@ public partial class CurationService
             {{candidateList}}
 
             ## YOUR TASK
-            Pick the 12-15 best shows from the candidates for this user. Rank them by how strongly you'd recommend them. For each, write a short reason (10-20 words) explaining WHY this user specifically would like it.
+            Pick the 25-30 best shows from the candidates for this user. For each, give:
+            - a match score 0-100 — how confident you are THIS user will love it. Be discriminating and use the full range: reserve 90+ for near-certain hits, put genuine stretches in the 50s-60s.
+            - a short reason (10-20 words) explaining WHY this user specifically would like it.
 
             Think beyond genre. Look for:
             - Unexpected connections (they like medical dramas AND comedies → dark comedy about doctors)
@@ -205,14 +216,14 @@ public partial class CurationService
             - Non-obvious patterns in their taste
 
             Rules:
-            - STRONGLY prefer shows from 2024-2026. Legacy shows only if the taste connection is truly compelling.
+            - Mix eras. Lean toward fresh, recent shows, but include standout older titles when the taste connection is strong — variety matters more than recency.
             - Be opinionated and specific in your reasons. Don't hedge.
             - The list is for adding to their watchlist, not necessarily watching tonight.
 
             Respond with ONLY a JSON array (no markdown, no explanation):
-            [{"id":1,"reason":"Why this user specifically would love this show"}]
+            [{"id":1,"score":92,"reason":"Why this user specifically would love this show"}]
 
-            The "id" is the candidate number (# before each show). Order by recommendation strength (best first).
+            The "id" is the candidate number (# before each show). Order best-first by score.
             """;
 
         await AiCurationGate.WaitAsync(cancellationToken);
@@ -221,10 +232,11 @@ public partial class CurationService
             // forward CT so Home-page navigation aborts the paid AI inference. Same
             // pattern as GetShowMatchAsync (#117/#122) — /rows is the most expensive
             // AI path (12-15 picks, larger token budget than /match). pins #126.
+            // 25-30 picks, each id+score+reason, needs more headroom than the old 12-15 list
             Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
-                MaxTokens = 1024,
+                MaxTokens = 2048,
                 Messages = [new MessageParam { Role = Role.User, Content = prompt }]
             }, cancellationToken: cancellationToken);
 
@@ -249,10 +261,11 @@ public partial class CurationService
 
             List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, CaseInsensitive) ?? [];
 
-            // build a single flat curated list
+            // build the scored reservoir — a single ranked list the hero rotation draws from
             List<int> tmdbIds = [];
             Dictionary<int, string> reasons = [];
             Dictionary<int, string> itemMediaTypes = [];
+            Dictionary<int, int> scores = [];
 
             foreach (AIPick pick in picks)
             {
@@ -263,6 +276,7 @@ public partial class CurationService
                     {
                         tmdbIds.Add(candidate.TmdbId);
                         itemMediaTypes[candidate.TmdbId] = candidate.MediaType;
+                        scores[candidate.TmdbId] = Math.Clamp(pick.Score, 0, 100);
                         if (!string.IsNullOrEmpty(pick.Reason))
                             reasons[candidate.TmdbId] = pick.Reason;
                     }
@@ -277,7 +291,8 @@ public partial class CurationService
                 Subtitle = "Personalized picks based on your taste",
                 TmdbIds = tmdbIds,
                 Reasons = reasons,
-                ItemMediaTypes = itemMediaTypes
+                ItemMediaTypes = itemMediaTypes,
+                Scores = scores
             }];
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -512,6 +527,7 @@ public partial class CurationService
     private class AIPick
     {
         public int Id { get; set; }
+        public int Score { get; set; }
         public string Reason { get; set; } = "";
     }
 
@@ -528,6 +544,7 @@ public class AICuratedRow
     public List<int> TmdbIds { get; set; } = [];
     public Dictionary<int, string> Reasons { get; set; } = []; // TmdbId → reason
     public Dictionary<int, string> ItemMediaTypes { get; set; } = [];
+    public Dictionary<int, int> Scores { get; set; } = []; // TmdbId → AI match score 0-100 (#135)
 }
 
 public class CurationResult
