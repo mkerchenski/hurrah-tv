@@ -13,6 +13,11 @@ public partial class CurationService
     private const decimal InputCostPerToken = 0.0000008m;  // haiku: $0.80/MTok in
     private const decimal OutputCostPerToken = 0.000004m;  // haiku: $4.00/MTok out
 
+    // regenerate the reservoir when it's older than this even if the watchlist is unchanged,
+    // so the rotating hero gets genuinely fresh material month-over-month and isn't frozen
+    // until the user next touches their list. tune against AIUsage spend. pins #135.
+    private const int ReservoirMaxAgeDays = 7;
+
     // bound concurrent paid AI inferences so a burst can't overshoot the monthly
     // budget by more than `(MatchSlots + CurationSlots) * per-call-cost`. The pre-AI
     // budget check (_db.GetMonthlyAICostAsync) races with detached AIUsage writes
@@ -25,11 +30,6 @@ public partial class CurationService
     // queue. Sized for Haiku throughput at a $50/mo cap: at ~$0.06/curation * 2 +
     // ~$0.005/match * 2 ≈ $0.13 worst-case overshoot, which is the bounded-
     // eventual-consistency option from #124.
-    // regenerate the reservoir when it's older than this even if the watchlist is unchanged,
-    // so the rotating hero gets genuinely fresh material month-over-month and isn't frozen
-    // until the user next touches their list. tune against AIUsage spend. pins #135.
-    private const int ReservoirMaxAgeDays = 7;
-
     private const int MaxConcurrentMatchInferences = 2;
     private const int MaxConcurrentCurationInferences = 2;
     private static readonly SemaphoreSlim AiMatchGate = new(MaxConcurrentMatchInferences, MaxConcurrentMatchInferences);

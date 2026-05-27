@@ -309,6 +309,7 @@ else
     private CuratedHero? _heroPick;
     private bool _heroLoading;
     private int _heroRequestSeq; // latest-wins guard so overlapping fetches don't both apply
+    private bool _disposed;      // LoadHero is fire-and-forget + slow; don't render after disposal
 
     // hero billboard — cached so it doesn't recompute on every render. recomputed in
     // ReapplyDerivedState after queue mutations and after the AI pick arrives.
@@ -545,7 +546,9 @@ else
         }
         finally
         {
-            if (seq == _heroRequestSeq)
+            // the hero fetch is the slowest call in the app; the user may navigate away before
+            // it returns. Don't touch state / render on a disposed component.
+            if (!_disposed && seq == _heroRequestSeq)
             {
                 _heroLoading = false;
                 _hero = SelectHero();
@@ -727,6 +730,7 @@ else
 
     public void Dispose()
     {
+        _disposed = true;
         QuickActionSvc.OnChanged -= OnQuickActionChanged;
         QuickActionSvc.OnItemUpdated -= OnItemUpdated;
         QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;

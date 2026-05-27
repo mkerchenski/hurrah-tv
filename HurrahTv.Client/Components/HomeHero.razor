@@ -149,31 +149,46 @@
     private async Task AddAndNotifyAsync()
     {
         if (Item is null || _adding || _added) return;
-        _adding = true;
-        StateHasChanged();
 
+        // snapshot the hero before the await — a background AI load / shuffle can swap Item
+        // mid-request, which would otherwise add the right title but show the wrong one in the toast.
+        HeroItem hero = Item;
         QueueItem stub = new()
         {
-            TmdbId = Item.TmdbId,
-            MediaType = Item.MediaType,
-            Title = Item.Title,
-            PosterPath = Item.PosterPath,
-            BackdropPath = Item.BackdropPathRaw
+            TmdbId = hero.TmdbId,
+            MediaType = hero.MediaType,
+            Title = hero.Title,
+            PosterPath = hero.PosterPath,
+            BackdropPath = hero.BackdropPathRaw
         };
-        QueueItem? added = await Api.AddToQueueAsync(stub);
-        _adding = false;
 
-        if (added is not null)
+        _adding = true;
+        StateHasChanged();
+        try
         {
-            _added = true;
-            QuickActionSvc.NotifyItemUpdated(added);
-            await Toast.ShowAsync($"Added “{Item.Title}” to your list");
+            // AddToQueueAsync doesn't swallow exceptions — a network failure throws, so the
+            // finally is what guarantees the button doesn't get stuck spinning.
+            QueueItem? added = await Api.AddToQueueAsync(stub);
+            if (added is not null)
+            {
+                _added = true;
+                QuickActionSvc.NotifyItemUpdated(added);
+                await Toast.ShowAsync($"Added “{hero.Title}” to your list");
+            }
+            else
+            {
+                await Toast.ShowAsync("Couldn't add to your list — try again");
+            }
         }
-        else
+        catch
         {
             await Toast.ShowAsync("Couldn't add to your list — try again");
         }
-        StateHasChanged();
+        finally
+        {
+            _adding = false;
+            StateHasChanged();
+        }
     }
 
     public enum HeroAction { Resume, Add }

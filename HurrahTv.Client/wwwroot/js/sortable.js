@@ -13,9 +13,9 @@ export function init(el, dotNetRef, callbackName, options) {
         touchStartThreshold: 5,
         // force the JS fallback drag on every platform. without it SortableJS uses the
         // native HTML5 drag-and-drop API, which never fires on touch — the row would lift
-        // (chosenClass) but no gap opens and it can't be dropped on mobile. the fallback
-        // is the same pointer-driven path desktop already uses, so behavior is identical
-        // across mouse + touch. pins #139.
+        // (chosenClass) but no gap opens and it can't be dropped on mobile. forceFallback makes
+        // mouse and touch share one pointer-driven path, so behavior is identical across both.
+        // pins #139.
         forceFallback: true,
         fallbackTolerance: 5,
         ghostClass: 'sortable-ghost',
