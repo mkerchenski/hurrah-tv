@@ -466,11 +466,11 @@
   .ml-8 {
     margin-left: calc(var(--spacing) * 8);
   }
-  .line-clamp-2 {
+  .line-clamp-3 {
     overflow: hidden;
     display: -webkit-box;
     -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
+    -webkit-line-clamp: 3;
   }
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -891,6 +891,12 @@
       border-color: color-mix(in oklab, var(--color-accent) 40%, transparent);
     }
   }
+  .border-black\/30 {
+    border-color: color-mix(in srgb, #000 30%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      border-color: color-mix(in oklab, var(--color-black) 30%, transparent);
+    }
+  }
   .border-blue-600\/40 {
     border-color: color-mix(in srgb, oklch(54.6% 0.245 262.881) 40%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -956,6 +962,9 @@
     @supports (color: color-mix(in lab, red, red)) {
       border-color: color-mix(in oklab, var(--color-yellow-600) 30%, transparent);
     }
+  }
+  .border-t-black {
+    border-top-color: var(--color-black);
   }
   .border-t-transparent {
     border-top-color: transparent;
@@ -1961,6 +1970,20 @@
       opacity: 50%;
     }
   }
+  .disabled\:opacity-60 {
+    &:disabled {
+      opacity: 60%;
+    }
+  }
+  .disabled\:hover\:bg-white {
+    &:disabled {
+      &:hover {
+        @media (hover: hover) {
+          background-color: var(--color-white);
+        }
+      }
+    }
+  }
   .disabled\:hover\:text-gray-500 {
     &:disabled {
       &:hover {
@@ -2041,6 +2064,11 @@
       margin-top: calc(var(--spacing) * -32);
     }
   }
+  .md\:mt-3 {
+    @media (width >= 48rem) {
+      margin-top: calc(var(--spacing) * 3);
+    }
+  }
   .md\:mt-5 {
     @media (width >= 48rem) {
       margin-top: calc(var(--spacing) * 5);
@@ -2084,6 +2112,14 @@
   .md\:-ml-1 {
     @media (width >= 48rem) {
       margin-left: calc(var(--spacing) * -1);
+    }
+  }
+  .md\:line-clamp-3 {
+    @media (width >= 48rem) {
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
     }
   }
   .md\:block {
@@ -2414,6 +2450,9 @@ body {
 }
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.text-shadow-hero {
+  text-shadow: 0 1px 3px rgb(0 0 0 / 0.75), 0 2px 18px rgb(0 0 0 / 0.6);
 }
 .service-badge:hover {
   filter: brightness(1.2);

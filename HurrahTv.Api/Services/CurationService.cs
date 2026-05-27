@@ -158,12 +158,16 @@ public partial class CurationService
 
     // one rotating hero pick for the Home page. The reservoir (above) is the expensive,
     // periodically-refreshed scored candidate set; selection is a cheap read-time concern
-    // that rotates daily and keeps a title out of the hero for a cooldown window. forceRefresh
-    // both regenerates the reservoir AND advances past today's already-shown pick. pins #135.
+    // that rotates daily and keeps a title out of the hero for a cooldown window. pins #135.
+    //
+    // The two refresh levers are independent so a "shuffle" is always responsive:
+    //   - advancePick (free): treat today's already-shown picks as ineligible so we move to
+    //     the next-best — every shuffle changes the pick, even when regen is rate-limited.
+    //   - regenerateReservoir (paid AI, rate-limited): pull genuinely new candidate material.
     public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds,
-        bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
+        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, CancellationToken cancellationToken = default)
     {
-        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, englishOnly, forceRefresh, cancellationToken);
+        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, englishOnly, regenerateReservoir, cancellationToken);
         AICuratedRow? row = reservoir.Rows.FirstOrDefault();
         if (row is null || row.TmdbIds.Count == 0)
             return new HeroResult { Error = reservoir.Error };
@@ -176,7 +180,7 @@ public partial class CurationService
             .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))];
 
         Dictionary<int, DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
-        HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !forceRefresh);
+        HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !advancePick);
         if (pick is null)
             return new HeroResult { Error = reservoir.Error };
 
@@ -249,7 +253,7 @@ public partial class CurationService
             ## YOUR TASK
             Pick the 25-30 best shows from the candidates for this user. For each, give:
             - a match score 0-100 — how confident you are THIS user will love it. Be discriminating and use the full range: reserve 90+ for near-certain hits, put genuine stretches in the 50s-60s.
-            - a short reason (10-20 words) explaining WHY this user specifically would like it.
+            - a reason (2-3 sentences, ~30-45 words) explaining WHY this user specifically would like it. Name the specific shows/tastes of theirs it connects to and what the payoff is. This is shown prominently in the home hero, so make it concrete and persuasive, not generic.
 
             Think beyond genre. Look for:
             - Unexpected connections (they like medical dramas AND comedies → dark comedy about doctors)
@@ -274,11 +278,11 @@ public partial class CurationService
             // forward CT so Home-page navigation aborts the paid AI inference. Same
             // pattern as GetShowMatchAsync (#117/#122) — /rows is the most expensive
             // AI path (12-15 picks, larger token budget than /match). pins #126.
-            // 25-30 picks, each id+score+reason, needs more headroom than the old 12-15 list
+            // 25-30 picks, each id+score + a 2-3 sentence reason — needs real output headroom
             Message response = await _client!.Messages.Create(new MessageCreateParams
             {
                 Model = _model,
-                MaxTokens = 2048,
+                MaxTokens = 3500,
                 Messages = [new MessageParam { Role = Role.User, Content = prompt }]
             }, cancellationToken: cancellationToken);
 

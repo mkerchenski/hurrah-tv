@@ -22,16 +22,14 @@ public static class CurationEndpoints
             {
                 string userId = user.GetUserId();
 
+                // a shuffle always advances the pick (free); only the paid reservoir regen is
+                // rate-limited, so a second shuffle inside the cooldown still moves to a new pick.
                 bool doRefresh = refresh == true;
-                if (doRefresh)
+                bool regenerate = false;
+                if (doRefresh && !cache.TryGetValue($"refresh-limit:{userId}", out _))
                 {
-                    // share the /refresh anti-abuse limiter; silently fall back to today's
-                    // pick (no regen) when a refresh lands inside the cooldown.
-                    string rateLimitKey = $"refresh-limit:{userId}";
-                    if (cache.TryGetValue(rateLimitKey, out _))
-                        doRefresh = false;
-                    else
-                        cache.Set(rateLimitKey, true, RefreshCooldown);
+                    cache.Set($"refresh-limit:{userId}", true, RefreshCooldown);
+                    regenerate = true;
                 }
 
                 Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
@@ -41,7 +39,7 @@ public static class CurationEndpoints
 
                 List<int> providerIds = providerTask.Result;
                 HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds,
-                    settingsTask.Result.EnglishOnly, forceRefresh: doRefresh, cancellationToken: ct);
+                    settingsTask.Result.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, cancellationToken: ct);
 
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
 

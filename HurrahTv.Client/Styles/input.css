@@ -84,6 +84,12 @@ body {
     padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* keeps the hero eyebrow/title/reason legible over arbitrary (and sometimes light or
+   busy) backdrop imagery, on top of the gradient scrim. #135 */
+.text-shadow-hero {
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.75), 0 2px 18px rgb(0 0 0 / 0.6);
+}
+
 .service-badge:hover {
     filter: brightness(1.2);
 }
