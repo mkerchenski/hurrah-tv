@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Anthropic;
 using Anthropic.Models.Messages;
+using HurrahTv.Shared.Curation;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
@@ -24,6 +25,11 @@ public partial class CurationService
     // queue. Sized for Haiku throughput at a $50/mo cap: at ~$0.06/curation * 2 +
     // ~$0.005/match * 2 ≈ $0.13 worst-case overshoot, which is the bounded-
     // eventual-consistency option from #124.
+    // regenerate the reservoir when it's older than this even if the watchlist is unchanged,
+    // so the rotating hero gets genuinely fresh material month-over-month and isn't frozen
+    // until the user next touches their list. tune against AIUsage spend. pins #135.
+    private const int ReservoirMaxAgeDays = 7;
+
     private const int MaxConcurrentMatchInferences = 2;
     private const int MaxConcurrentCurationInferences = 2;
     private static readonly SemaphoreSlim AiMatchGate = new(MaxConcurrentMatchInferences, MaxConcurrentMatchInferences);
@@ -107,7 +113,8 @@ public partial class CurationService
             ? null
             : await _db.GetCurationCacheAsync(userId, cancellationToken);
         if (cached != null && cached.Value.watchlistHash == currentHash && cached.Value.rowsJson != null
-            && cached.Value.rowsJson != "[]")
+            && cached.Value.rowsJson != "[]"
+            && cached.Value.generatedAt is { } gen && gen > DateTime.UtcNow.AddDays(-ReservoirMaxAgeDays))
         {
             List<AICuratedRow> cachedRows = JsonSerializer.Deserialize<List<AICuratedRow>>(cached.Value.rowsJson) ?? [];
             if (cachedRows.Count > 0)
@@ -147,6 +154,41 @@ public partial class CurationService
         await _db.SetCurationCacheAsync(userId, rowsJsonStr, currentHash, cancellationToken);
 
         return new CurationResult { Rows = rows, FromCache = false, WatchlistChanged = watchlistChanged, CandidateCount = candidatePool.Count };
+    }
+
+    // one rotating hero pick for the Home page. The reservoir (above) is the expensive,
+    // periodically-refreshed scored candidate set; selection is a cheap read-time concern
+    // that rotates daily and keeps a title out of the hero for a cooldown window. forceRefresh
+    // both regenerates the reservoir AND advances past today's already-shown pick. pins #135.
+    public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds,
+        bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
+    {
+        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, englishOnly, forceRefresh, cancellationToken);
+        AICuratedRow? row = reservoir.Rows.FirstOrDefault();
+        if (row is null || row.TmdbIds.Count == 0)
+            return new HeroResult { Error = reservoir.Error };
+
+        // drop anything added to the watchlist since the reservoir was cached — same safety
+        // net as the /rows endpoint's ExcludeShows.
+        HashSet<int> onWatchlist = [.. watchlist.Select(i => i.TmdbId)];
+        List<HeroCandidate> candidates = [.. row.TmdbIds
+            .Where(id => !onWatchlist.Contains(id))
+            .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))];
+
+        Dictionary<int, DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
+        HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !forceRefresh);
+        if (pick is null)
+            return new HeroResult { Error = reservoir.Error };
+
+        await _db.RecordHeroImpressionAsync(userId, pick.TmdbId, cancellationToken);
+
+        return new HeroResult
+        {
+            TmdbId = pick.TmdbId,
+            MediaType = pick.MediaType,
+            Reason = row.Reasons.GetValueOrDefault(pick.TmdbId, ""),
+            Score = pick.Score
+        };
     }
 
     private async Task<List<SearchResult>> GatherCandidatePoolAsync(string userId, List<int> providerIds, List<QueueItem> watchlist, bool englishOnly, CancellationToken cancellationToken)
@@ -554,4 +596,15 @@ public class CurationResult
     public bool WatchlistChanged { get; set; }
     public string? Error { get; set; }
     public int CandidateCount { get; set; }
+}
+
+// the chosen hero before TMDb hydration — the endpoint resolves TmdbId into a SearchResult.
+public class HeroResult
+{
+    public int? TmdbId { get; set; }
+    public string MediaType { get; set; } = "";
+    public string Reason { get; set; } = "";
+    public int Score { get; set; }
+    public string? Error { get; set; }
+    public bool HasPick => TmdbId is not null;
 }

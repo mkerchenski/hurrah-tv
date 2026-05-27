@@ -124,6 +124,60 @@ public static class CurationEndpoints
             }
         });
 
+        // single rotating AI hero pick for the home page (replaces the curated-rows section).
+        // ?refresh=true regenerates the reservoir and advances past today's pick (rate-limited).
+        group.MapGet("/hero", async (ClaimsPrincipal user, DbService db, CurationService curation,
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, bool? refresh, CancellationToken ct) =>
+        {
+            try
+            {
+                string userId = user.GetUserId();
+
+                bool doRefresh = refresh == true;
+                if (doRefresh)
+                {
+                    // share the /refresh anti-abuse limiter; silently fall back to today's
+                    // pick (no regen) when a refresh lands inside the cooldown.
+                    string rateLimitKey = $"refresh-limit:{userId}";
+                    if (cache.TryGetValue(rateLimitKey, out _))
+                        doRefresh = false;
+                    else
+                        cache.Set(rateLimitKey, true, RefreshCooldown);
+                }
+
+                Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
+                Task<List<int>> providerTask = db.GetUserServicesAsync(userId, ct);
+                Task<UserSettings> settingsTask = db.GetUserSettingsAsync(userId, ct);
+                await Task.WhenAll(watchlistTask, providerTask, settingsTask);
+
+                List<int> providerIds = providerTask.Result;
+                HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds,
+                    settingsTask.Result.EnglishOnly, forceRefresh: doRefresh, cancellationToken: ct);
+
+                CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
+
+                return Results.Ok(new CuratedHeroResponse
+                {
+                    Hero = hero,
+                    AiEnabled = curation.IsEnabled,
+                    Error = result.Error
+                });
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return Results.StatusCode(StatusCodes.Status499ClientClosedRequest);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Curation hero endpoint failed");
+                return Results.Ok(new CuratedHeroResponse
+                {
+                    AiEnabled = curation.IsEnabled,
+                    Error = "Curation temporarily unavailable"
+                });
+            }
+        });
+
         // personalized match for a specific show
         group.MapGet("/match/{mediaType}/{tmdbId:int}", async (string mediaType, int tmdbId,
             ClaimsPrincipal user, DbService db, CurationService curation, TmdbService tmdb,
@@ -190,6 +244,22 @@ public static class CurationEndpoints
     {
         foreach (AICuratedRow row in result.Rows)
             row.TmdbIds = [.. row.TmdbIds.Where(id => !excludeIds.Contains(id))];
+    }
+
+    // hydrate the chosen hero's TmdbId into a SearchResult with the user's service badges —
+    // single-item version of ResolveRowsAsync.
+    private static async Task<CuratedHero?> ResolveHeroAsync(HeroResult result, List<int> providerIds, TmdbService tmdb, CancellationToken cancellationToken)
+    {
+        if (!result.HasPick) return null;
+
+        ShowDetails? details = await tmdb.GetDetailsAsync(result.TmdbId!.Value, result.MediaType, cancellationToken);
+        if (details == null) return null;
+
+        HashSet<int> providerSet = [.. providerIds];
+        List<AvailableService> providers = await tmdb.GetWatchProvidersAsync(result.TmdbId.Value, details.MediaType, cancellationToken);
+        details.AvailableOn = [.. providers.Where(p => (p.Type is ProviderType.Flatrate or ProviderType.Ads) && providerSet.Contains(p.ProviderId))];
+
+        return new CuratedHero { Result = details, Reason = result.Reason, Score = result.Score };
     }
 
     private static async Task<List<CuratedRowResponse>> ResolveRowsAsync(
