@@ -11,6 +11,7 @@ TMDb's watch provider data (sourced from JustWatch) has significant gaps:
 - **Non-US originals** (Japanese anime, Korean dramas) often have zero US provider data
 - **Very new releases** may not be catalogued yet by JustWatch
 - **Region-exclusive content** on niche platforms may not appear
+- **Live-TV / next-day-VOD content** — late-night talk shows on Hulu (Kimmel, Fallon, Colbert) are silently invisible. JustWatch tracks Hulu's on-demand catalog (`provider_id: 15`) but doesn't surface Hulu's live-TV / next-day overlap, so `watch/providers` returns `{}` for Jimmy Kimmel Live even though users actively watch it on Hulu daily. Verified empirically against `#145` (2026-05-28): `availableonjson = "[]"` even after a fresh refresh.
 - TMDb returns `"results":{}` (empty object) — not a US entry with empty arrays, but literally no region data at all
 
 The provider fetch code must handle this gracefully at every layer:
