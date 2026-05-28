@@ -277,15 +277,18 @@ public class WatchlistFiltersTests
         Assert.Contains(item, result.AvailableNow);
     }
 
-    // bypass is bounded by the 18h staleness window — a Watching show whose latest
-    // episode aired hours ago (fresh) and is marked watched still respects the gate,
-    // because we have no reason to think TMDb's data is stale yet.
+    // bypass uses calendar-day comparison — a Watching show whose latest known episode
+    // aired today (same calendar date as todayUtc) and is marked watched still respects
+    // the gate, because no plausible new episode exists yet. Pins the lower boundary of
+    // the calendar-day rule. Catches the same-day-trip Copilot flagged on PR #156:
+    // TMDb's air_date is date-only and lands at midnight UTC, so an hour-based threshold
+    // would trip later the same day even though no new episode is out.
     [Fact]
-    public void AvailableNow_Excludes_Watching_Item_With_FreshWatchedLatestEpisode()
+    public void AvailableNow_Excludes_Watching_Item_That_Watched_TodaysEpisode()
     {
         QueueItem item = TvItem(
             status: QueueStatus.Watching,
-            latestEpisode: Today.AddHours(-6),
+            latestEpisode: Today,
             latestWatched: true);
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
@@ -341,32 +344,4 @@ public class WatchlistFiltersTests
         Assert.DoesNotContain(item, result.AvailableLater);
     }
 
-    // pin the exact 18h fence with both sides — `(todayUtc - led).TotalHours > 18`.
-    // 17h must NOT trigger the bypass; 19h MUST. Catches a regression that flips the
-    // operator (>= vs >) or shifts the constant (12, 24, etc.) without updating tests.
-    [Fact]
-    public void AvailableNow_Excludes_Watching_Item_Just_Below_18h_Boundary()
-    {
-        QueueItem item = TvItem(
-            status: QueueStatus.Watching,
-            latestEpisode: Today.AddHours(-17),
-            latestWatched: true);
-        WatchlistFilters.Partition result = WatchlistFilters.Apply(
-            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
-
-        Assert.DoesNotContain(item, result.AvailableNow);
-    }
-
-    [Fact]
-    public void AvailableNow_Includes_Watching_Item_Just_Above_18h_Boundary()
-    {
-        QueueItem item = TvItem(
-            status: QueueStatus.Watching,
-            latestEpisode: Today.AddHours(-19),
-            latestWatched: true);
-        WatchlistFilters.Partition result = WatchlistFilters.Apply(
-            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
-
-        Assert.Contains(item, result.AvailableNow);
-    }
 }

@@ -67,13 +67,16 @@ public static class WatchlistFilters
             // chip is off, since "later" is forward-looking and independent of watch state.
             if (isWatching || isStreamable)
             {
-                // for Watching, bypass IsLatestEpisodeWatched when LatestEpisodeDate is more
-                // than 18h stale — TMDb's episode-data lag hides daily talk shows the day after
-                // the user marks the previous episode watched (#145 mode B). The 12h
-                // LastEpisodeCheckAt refresh on /api/queue limits how often this safety net fires.
+                // for Watching, bypass IsLatestEpisodeWatched once the calendar day has
+                // advanced past LatestEpisodeDate.Date — TMDb's air_date is date-only and
+                // parsed as midnight UTC, so an hour-based threshold could trip the SAME
+                // day the user marked the episode watched and resurface a caught-up show.
+                // Calendar-day comparison fires only when a new episode is plausibly
+                // available (#145 mode B). The 12h LastEpisodeCheckAt refresh on /api/queue
+                // keeps LatestEpisodeDate fresh enough for daily shows TMDb tracks promptly.
                 bool overrideLatestWatched = isWatching
                     && item.LatestEpisodeDate is { } led
-                    && (todayUtc - led).TotalHours > 18;
+                    && led.Date < today;
 
                 if (isStatusActive(item.Status)
                     && (!item.IsLatestEpisodeWatched || overrideLatestWatched)
