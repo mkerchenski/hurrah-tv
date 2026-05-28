@@ -58,8 +58,11 @@
                        same URL is redundant — that was #138. *@
                     @if (Item.PrimaryAction != HeroAction.Resume)
                     {
-                        <button @onclick="OnSecondary"
-                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
+                        @* self-stretch matches the primary button's height even when "More info"
+                           text is hidden below the sm: breakpoint (icon-only is ~1-2px shorter
+                           than text-bearing buttons, leaving this one visibly short on mobile). *@
+                        <button @onclick="OnSecondary" title="More info" aria-label="More info"
+                                class="bg-surface-100/70 backdrop-blur text-white hover:bg-surface-200/70 font-semibold self-stretch px-4 md:px-6 py-2 md:py-2.5 rounded-lg text-sm md:text-base flex items-center gap-2 transition-colors">
                             <span class="icon-[heroicons--information-circle] w-4 h-4 md:w-5 md:h-5"></span>
                             <span class="hidden sm:inline">More info</span>
                         </button>
