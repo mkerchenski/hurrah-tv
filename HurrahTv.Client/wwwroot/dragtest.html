@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>Drag test (#139)</title>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; margin: 0; padding: 12px; background:#0f0f0f; color:#eee; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p { font-size: 13px; color:#aaa; margin: 4px 0 10px; }
+  #cfg { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  #cfg button { font-size:12px; padding:7px 9px; border-radius:6px; border:1px solid #444; background:#1c1c1c; color:#eee; }
+  #cfg button.on { background:#1f6feb; border-color:#1f6feb; }
+  .row { display:flex; align-items:center; gap:12px; background:#1a1a1a; margin:8px 0; padding:14px 12px; border-radius:8px; }
+  .drag-handle { touch-action:none; cursor:grab; padding:12px; background:#333; border:none; color:#fff; border-radius:6px; font-size:16px; line-height:1; }
+  .ta-none .row { touch-action:none; }       /* "rows touch-action:none" toggle */
+  .ghost { opacity:0.35; }
+  .drag, .fallback { cursor:grabbing; }
+  #order { font-family:monospace; color:#7fd1ff; }
+  #log { white-space:pre-wrap; font-family:ui-monospace,monospace; font-size:12px; background:#161616; border:1px solid #2a2a2a; border-radius:6px; padding:8px; margin-top:10px; max-height:45vh; overflow:auto; }
+  #clear { font-size:12px; padding:6px 10px; margin-top:8px; background:#1c1c1c; color:#eee; border:1px solid #444; border-radius:6px; }
+</style>
+</head>
+<body>
+<h1>Queue drag test — #139</h1>
+<p>Drag a row by the <b>≡</b> handle. If a gap opens and the order changes, that combo works — note which toggles are ON. The defaults match the live app.</p>
+
+<div id="cfg"></div>
+<div id="list"></div>
+<p>Order: <span id="order"></span></p>
+<div style="display:flex; gap:6px; margin-top:8px;">
+  <button id="copy">copy log</button>
+  <button id="share">share log</button>
+  <button id="clear">clear</button>
+</div>
+<pre id="log"></pre>
+
+<script>
+const logEl = document.getElementById('log');
+const orderEl = document.getElementById('order');
+const list = document.getElementById('list');
+const cfg = document.getElementById('cfg');
+const ts = () => new Date().toISOString().slice(14, 23);
+// cap the log so a long debugging session can't grow textContent unbounded
+// (mobile browsers slow noticeably with very large text nodes)
+const MAX_LOG_LINES = 250;
+const log = (m) => {
+  const lines = (ts() + '  ' + m + '\n' + logEl.textContent).split('\n');
+  logEl.textContent = lines.slice(0, MAX_LOG_LINES).join('\n');
+};
+document.getElementById('clear').onclick = () => logEl.textContent = '';
+document.getElementById('copy').onclick = async (e) => {
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(logEl.textContent);
+    const prev = btn.textContent; btn.textContent = 'copied ✓'; setTimeout(() => btn.textContent = prev, 1200);
+  } catch {
+    // fallback: select the log so the user can long-press → copy manually
+    const r = document.createRange(); r.selectNodeContents(logEl);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent = 'select & long-press copy';
+  }
+};
+const shareBtn = document.getElementById('share');
+if (navigator.share) {
+  shareBtn.onclick = () => navigator.share({ title: 'dragtest log (#139)', text: logEl.textContent }).catch(() => {});
+} else {
+  shareBtn.style.display = 'none';
+}
+
+// defaults mirror the live app: forceFallback on, supportPointer at SortableJS default (on),
+// handle-only, no delay, touch-action:none only on the handle.
+const state = { forceFallback: true, supportPointer: true, handleOnly: true, delay: 0, taNone: false };
+
+function buildList() {
+  list.innerHTML = '';
+  for (let i = 1; i <= 6; i++) {
+    const d = document.createElement('div');
+    d.className = 'row'; d.dataset.itemId = i;
+    d.innerHTML = '<button class="drag-handle">≡</button><span>Item ' + i + '</span>';
+    list.appendChild(d);
+  }
+  renderOrder();
+}
+function renderOrder() { orderEl.textContent = [...list.children].map(c => c.dataset.itemId).join(', '); }
+
+let moveCount = 0, rawTouchmoves = 0;
+document.addEventListener('touchmove', () => { rawTouchmoves++; }, { passive: true });
+
+function initSortable() {
+  if (window._s) { try { window._s.destroy(); } catch (e) {} }
+  list.classList.toggle('ta-none', state.taNone);
+  window._s = Sortable.create(list, {
+    handle: state.handleOnly ? '.drag-handle' : undefined,
+    animation: 150,
+    delay: state.delay,
+    delayOnTouchOnly: true,
+    touchStartThreshold: 5,
+    forceFallback: state.forceFallback,
+    supportPointer: state.supportPointer,
+    fallbackTolerance: 5,
+    fallbackClass: 'fallback',
+    ghostClass: 'ghost', chosenClass: 'chosen', dragClass: 'drag',
+    onChoose: () => log('onChoose'),
+    onStart: () => { moveCount = 0; rawTouchmoves = 0; log('onStart  ▶ drag started'); },
+    onMove: (e) => { moveCount++; if (moveCount <= 3 || moveCount % 6 === 0) log('onMove #' + moveCount + ' over item ' + (e.related && e.related.dataset ? e.related.dataset.itemId : '?')); return true; },
+    onChange: (e) => log('onChange ✅ GAP MOVED → index ' + e.newIndex),
+    onEnd: (e) => { log('onEnd old=' + e.oldIndex + ' new=' + e.newIndex + '  | onMove×' + moveCount + ' rawTouchmove×' + rawTouchmoves + (e.oldIndex === e.newIndex ? '  ❌ NO REORDER' : '  ✅ REORDERED')); renderOrder(); }
+  });
+  renderCfg();
+}
+
+function renderCfg() {
+  const items = [
+    ['forceFallback', 'forceFallback'],
+    ['supportPointer', 'supportPointer'],
+    ['handleOnly', 'handle-only'],
+    ['taNone', 'rows touch-action:none'],
+    ['delayBtn', 'delay ' + state.delay + 'ms']
+  ];
+  cfg.innerHTML = '';
+  for (const [key, label] of items) {
+    const b = document.createElement('button');
+    if (key === 'delayBtn') {
+      b.textContent = label;
+      b.onclick = () => { state.delay = state.delay === 0 ? 150 : 0; initSortable(); };
+    } else {
+      b.textContent = label + ': ' + (state[key] ? 'ON' : 'OFF');
+      if (state[key]) b.className = 'on';
+      b.onclick = () => { state[key] = !state[key]; initSortable(); };
+    }
+    cfg.appendChild(b);
+  }
+}
+
+log('SortableJS ' + (window.Sortable ? Sortable.version : 'NOT LOADED'));
+log('maxTouchPoints=' + navigator.maxTouchPoints + '  pointer=' + ('PointerEvent' in window) + '  touch=' + ('ontouchstart' in window));
+log(navigator.userAgent);
+buildList();
+initSortable();
+</script>
+</body>
+</html>
