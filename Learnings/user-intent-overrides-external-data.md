@@ -37,12 +37,14 @@ bool isWatching = item.Status == QueueStatus.Watching;
 // actually watch" (the noise filter is still useful for WantToWatch / Finished).
 if (isWatching || isStreamable)
 {
-    // for Watching, additionally bypass IsLatestEpisodeWatched when
-    // LatestEpisodeDate is more than 18h stale — TMDb's episode-data lag is
-    // another external-data gap that hides committed shows.
+    // for Watching, additionally bypass IsLatestEpisodeWatched once the calendar
+    // day has advanced past LatestEpisodeDate — TMDb's episode-data lag is
+    // another external-data gap that hides committed shows. Calendar-day rather
+    // than hour-based because TMDb's air_date is date-only — see
+    // [[tmdb-air-date-is-date-only]] for the same-day-trip Copilot caught on PR #156.
     bool overrideLatestWatched = isWatching
         && item.LatestEpisodeDate is { } led
-        && (todayUtc - led).TotalHours > 18;
+        && led.Date < today;
 
     if (isStatusActive(item.Status)
         && (!item.IsLatestEpisodeWatched || overrideLatestWatched)
