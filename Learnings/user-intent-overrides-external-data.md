@@ -18,7 +18,7 @@ When the user has explicitly committed to something — opted in, said "yes I wa
 
 Concretely, for any filter that gates an active-user surface on external/cached/derived data, ask:
 
-1. **What does the user already told us?** Status flags, subscriptions, dismissals, recent actions.
+1. **What has the user already told us?** Status flags, subscriptions, dismissals, recent actions.
 2. **Is the gate trying to keep noise out, or is it trying to verify a positive claim?** Noise-out is fine for unselected items; positive-verification often misfires on incomplete external data.
 3. **What does the user lose if the gate fires a false negative?** If they lose visibility on something they actively committed to, that's worse than a small amount of noise.
 

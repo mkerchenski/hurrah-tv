@@ -259,11 +259,12 @@ public class WatchlistFiltersTests
         Assert.True(result.HasMovieContent);
     }
 
-    // pins #145 mode B (Kimmel-class) — a Watching daily show with the latest known
-    // episode marked watched and more than 18h stale must STILL appear in Available
-    // Now. The 18h heuristic catches TMDb's episode-data lag: by the time TMDb has
-    // published today's Kimmel, more than 18h have passed since yesterday's marked-
-    // watched episode. Without the override the show is hidden all day.
+    // pins #145 mode B (Kimmel-class) — a Watching daily show whose latest known
+    // episode aired on a previous calendar day and is marked watched must STILL
+    // appear in Available Now. Catches TMDb's episode-data lag: by the time TMDb
+    // has published today's Kimmel, the previous episode the user marked watched
+    // is yesterday's calendar date. Without the override the show is hidden all
+    // day until TMDb refreshes.
     [Fact]
     public void AvailableNow_Includes_Watching_Item_With_StaleWatchedLatestEpisode_PinsIssue145()
     {
@@ -324,6 +325,23 @@ public class WatchlistFiltersTests
             providerId: Hulu); // user only has Netflix
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+    }
+
+    // pins the empty-userServices boundary: IsStreamableOn returns false when the
+    // user has no configured services (see IsStreamableOn_NoUserServices_ReturnsFalse),
+    // but the Watching override should still surface the item. The user-intent rule
+    // is unconditional — a future refactor that re-checks streamability before the
+    // Watching branch would silently regress this. (Copilot flagged the gap on PR #156.)
+    [Fact]
+    public void AvailableNow_Includes_Watching_Item_When_UserServices_Are_Empty()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            latestEpisode: Today.AddDays(-1));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, userServices: []);
 
         Assert.Contains(item, result.AvailableNow);
     }
