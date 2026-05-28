@@ -258,4 +258,86 @@ public class WatchlistFiltersTests
         Assert.True(result.HasTvContent);
         Assert.True(result.HasMovieContent);
     }
+
+    // pins #145 mode B (Kimmel-class) — a Watching daily show with the latest known
+    // episode marked watched and more than 18h stale must STILL appear in Available
+    // Now. The 18h heuristic catches TMDb's episode-data lag: by the time TMDb has
+    // published today's Kimmel, more than 18h have passed since yesterday's marked-
+    // watched episode. Without the override the show is hidden all day.
+    [Fact]
+    public void AvailableNow_Includes_Watching_Item_With_StaleWatchedLatestEpisode_PinsIssue145()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            latestEpisode: Today.AddDays(-1),
+            latestWatched: true);
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+    }
+
+    // bypass is bounded by the 18h staleness window — a Watching show whose latest
+    // episode aired hours ago (fresh) and is marked watched still respects the gate,
+    // because we have no reason to think TMDb's data is stale yet.
+    [Fact]
+    public void AvailableNow_Excludes_Watching_Item_With_FreshWatchedLatestEpisode()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            latestEpisode: Today.AddHours(-6),
+            latestWatched: true);
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableNow);
+    }
+
+    // non-Watching statuses keep the full strict gate — only Watching opts into the
+    // permissive override. A WantToWatch item with the latest episode marked watched
+    // stays hidden regardless of how stale the date is.
+    [Fact]
+    public void AvailableNow_Excludes_NonWatching_Item_With_StaleWatchedLatestEpisode()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.WantToWatch,
+            latestEpisode: Today.AddDays(-3),
+            latestWatched: true);
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableNow);
+    }
+
+    // pins #145 mode B — a Watching show whose TMDb providers don't list any of the
+    // user's services must STILL surface in Available Now. TMDb's data quirks for talk
+    // shows (Kimmel on Hulu) and gray-zone content shouldn't hide what the user committed to.
+    [Fact]
+    public void AvailableNow_Includes_Watching_Item_Not_Streamable_On_UserServices_PinsIssue145()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            latestEpisode: Today.AddDays(-1),
+            providerId: Hulu); // user only has Netflix
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+    }
+
+    // Available Later is a stronger claim — "available on a user service soon" — so it
+    // retains the strict streamability gate even for Watching items. Mirrors the plan's
+    // decision #4: the override is Available-Now-scoped, not blanket.
+    [Fact]
+    public void AvailableLater_Excludes_Watching_Item_With_NonStreamable_UpcomingEpisode()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            nextEpisode: Today.AddDays(3),
+            providerId: Hulu); // user only has Netflix
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableLater);
+    }
 }

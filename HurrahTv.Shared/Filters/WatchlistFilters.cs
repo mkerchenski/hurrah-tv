@@ -54,21 +54,38 @@ public static class WatchlistFilters
 
             if (!isTv) continue;
 
-            // streamability parses AvailableOnJson — keep it inside the single pass so each
-            // item is touched at most once regardless of how many target rows it qualifies for.
-            if (!item.IsStreamableOn(userServices)) continue;
+            // streamability parses AvailableOnJson — compute once and reuse for both rows below.
+            bool isStreamable = item.IsStreamableOn(userServices);
+            bool isWatching = item.Status == QueueStatus.Watching;
 
+            // Available Now: Watching status bypasses the streamability gate (the user committed;
+            // we trust them even when TMDb has no recognized providers — pins #145 mode B for
+            // shows like Kimmel where TMDb doesn't list Hulu). Non-Watching items keep the strict
+            // gate so the row stays "things you can actually watch".
             // chip filter gates AvailableNow (the active watchlist) but not AvailableLater —
             // a new-season premiere on a Finished show should still surface when the Finished
             // chip is off, since "later" is forward-looking and independent of watch state.
-            if (isStatusActive(item.Status)
-                && !item.IsLatestEpisodeWatched
-                && HasAiredOrIsActivelyWatching(item, today))
+            if (isWatching || isStreamable)
             {
-                availableNow.Add(item);
+                // for Watching, bypass IsLatestEpisodeWatched when LatestEpisodeDate is more
+                // than 18h stale — TMDb's episode-data lag hides daily talk shows the day after
+                // the user marks the previous episode watched (#145 mode B). The 6-hour episode
+                // refresh on /api/queue (Phase 3) limits how often this safety net fires.
+                bool overrideLatestWatched = isWatching
+                    && item.LatestEpisodeDate is { } led
+                    && (todayUtc - led).TotalHours > 18;
+
+                if (isStatusActive(item.Status)
+                    && (!item.IsLatestEpisodeWatched || overrideLatestWatched)
+                    && HasAiredOrIsActivelyWatching(item, today))
+                {
+                    availableNow.Add(item);
+                }
             }
 
-            if (item.NextEpisodeDate is { } next && next.Date > today && next.Date <= windowEnd)
+            // Available Later still requires streamability — "available on a user service soon"
+            // is a stronger claim than Available Now's "you've committed to this".
+            if (isStreamable && item.NextEpisodeDate is { } next && next.Date > today && next.Date <= windowEnd)
             {
                 availableLater.Add(item);
             }
