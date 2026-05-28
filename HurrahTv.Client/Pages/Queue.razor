@@ -109,8 +109,12 @@ else
         <div role="status" aria-live="polite" class="sr-only">@_reorderAnnouncement</div>
         @foreach (QueueItem item in _visibleItems)
         {
+                @* no-callout suppresses iOS Safari's native long-press image callout on the poster <img>;
+                   without it, mid-drag the callout hijacks the touch sequence and SortableJS stops
+                   getting touchmoves → no gap opens → drop reverts. The standalone /dragtest.html
+                   (no <img>) confirmed SortableJS itself is fine on iOS. pins #139. *@
                 <div @key="item.Id" data-item-id="@item.Id"
-                     class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group">
+                     class="flex items-center gap-3 md:gap-4 bg-surface-50 rounded-lg p-2.5 md:p-3 hover:bg-surface-100 transition-colors group no-callout">
 
                     @if (_activeTab == WantToWatchTab)
                     {
