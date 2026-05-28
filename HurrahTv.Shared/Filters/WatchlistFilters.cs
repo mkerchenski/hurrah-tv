@@ -69,8 +69,8 @@ public static class WatchlistFilters
             {
                 // for Watching, bypass IsLatestEpisodeWatched when LatestEpisodeDate is more
                 // than 18h stale — TMDb's episode-data lag hides daily talk shows the day after
-                // the user marks the previous episode watched (#145 mode B). The 6-hour episode
-                // refresh on /api/queue (Phase 3) limits how often this safety net fires.
+                // the user marks the previous episode watched (#145 mode B). The 12h
+                // LastEpisodeCheckAt refresh on /api/queue limits how often this safety net fires.
                 bool overrideLatestWatched = isWatching
                     && item.LatestEpisodeDate is { } led
                     && (todayUtc - led).TotalHours > 18;
