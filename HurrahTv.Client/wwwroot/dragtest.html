@@ -31,7 +31,11 @@
 <div id="cfg"></div>
 <div id="list"></div>
 <p>Order: <span id="order"></span></p>
-<button id="clear">clear log</button>
+<div style="display:flex; gap:6px; margin-top:8px;">
+  <button id="copy">copy log</button>
+  <button id="share">share log</button>
+  <button id="clear">clear</button>
+</div>
 <pre id="log"></pre>
 
 <script>
@@ -48,6 +52,24 @@ const log = (m) => {
   logEl.textContent = lines.slice(0, MAX_LOG_LINES).join('\n');
 };
 document.getElementById('clear').onclick = () => logEl.textContent = '';
+document.getElementById('copy').onclick = async (e) => {
+  const btn = e.currentTarget;
+  try {
+    await navigator.clipboard.writeText(logEl.textContent);
+    const prev = btn.textContent; btn.textContent = 'copied ✓'; setTimeout(() => btn.textContent = prev, 1200);
+  } catch {
+    // fallback: select the log so the user can long-press → copy manually
+    const r = document.createRange(); r.selectNodeContents(logEl);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    btn.textContent = 'select & long-press copy';
+  }
+};
+const shareBtn = document.getElementById('share');
+if (navigator.share) {
+  shareBtn.onclick = () => navigator.share({ title: 'dragtest log (#139)', text: logEl.textContent }).catch(() => {});
+} else {
+  shareBtn.style.display = 'none';
+}
 
 // defaults mirror the live app: forceFallback on, supportPointer at SortableJS default (on),
 // handle-only, no delay, touch-action:none only on the handle.
