@@ -55,5 +55,9 @@ public class AvailableService
     public string LogoPath { get; set; } = "";
     public string Type { get; set; } = "";
 
+    // region-level JustWatch landing URL for the title (TMDb results.US.link).
+    // not per-provider — every service on a title shares the same link. empty when TMDb omits it.
+    public string Link { get; set; } = "";
+
     public string LogoUrl(string size = "w92") => TmdbImage.Url(LogoPath, size);
 }

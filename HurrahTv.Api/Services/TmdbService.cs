@@ -436,6 +436,9 @@ public class TmdbService
         List<AvailableService> providers = [];
         string[] types = ProviderType.All;
 
+        // region-level JustWatch landing link for the title — shared by every provider (#140)
+        string link = usData.TryGetProperty("link", out JsonElement lk) ? lk.GetString() ?? "" : "";
+
         foreach (string type in types)
         {
             if (!usData.TryGetProperty(type, out JsonElement arr)) continue;
@@ -450,7 +453,8 @@ public class TmdbService
                     ProviderId = id,
                     ProviderName = p.GetProperty("provider_name").GetString() ?? "",
                     LogoPath = p.TryGetProperty("logo_path", out JsonElement lp) ? lp.GetString() ?? "" : "",
-                    Type = type
+                    Type = type,
+                    Link = link
                 });
             }
         }
