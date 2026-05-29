@@ -436,8 +436,11 @@ public class TmdbService
         List<AvailableService> providers = [];
         string[] types = ProviderType.All;
 
-        // region-level JustWatch landing link for the title — shared by every provider (#140)
+        // region-level JustWatch landing link for the title — shared by every provider (#140).
+        // only accept https:// — the client renders this straight into an href, and Blazor does
+        // not block non-http(s) schemes (javascript:, data:) in attributes. drop anything else.
         string link = usData.TryGetProperty("link", out JsonElement lk) ? lk.GetString() ?? "" : "";
+        if (!link.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) link = "";
 
         foreach (string type in types)
         {
