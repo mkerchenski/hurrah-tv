@@ -39,3 +39,25 @@ Get-CimInstance Win32_Process -Filter "Name='dotnet.exe' OR Name='HurrahTv.Api.e
 This is platform-specific: on macOS/Linux the loader doesn't hold an exclusive
 write lock, so the same parallel `dotnet test` generally succeeds. The symptom is
 Windows-only, which is why it isn't in the (cross-platform) CLAUDE.md test notes.
+
+## Verifying without stopping the dev servers
+
+Stopping the watch isn't always desirable — e.g. you're verifying a change mid-review,
+or the servers belong to the user's session. Redirect the build/test **output** to a
+throwaway directory so MSBuild never tries to overwrite the locked `bin/`:
+
+```powershell
+dotnet build HurrahTv.Api/HurrahTv.Api.csproj    -o "$env:TEMP\hv-verify-api" -v q
+dotnet build HurrahTv.Client/HurrahTv.Client.csproj -o "$env:TEMP\hv-verify-client" -v q
+dotnet test  HurrahTv.Api.Tests/HurrahTv.Api.Tests.csproj -o "$env:TEMP\hv-verify-tests" --filter "FullyQualifiedName~SomeTest"
+```
+
+`-o` sends that project's output **and its dependencies' copies** (including `HurrahTv.Shared.dll`)
+to the temp path, so the running `dotnet watch` keeps its lock on the real `bin/` undisturbed and
+the verification still type-checks against `Shared`. The full-solution `dotnet build HurrahTv.slnx`
+can't be redirected this way (it writes each project's own `bin/`), so for a whole-solution build
+you still have to stop the servers — but for verifying a specific change, per-project `-o` is the
+non-disruptive path. Delete the temp dirs afterward.
+
+The bare formatter gate (`dotnet format --verify-no-changes`) is also lock-free — it loads the
+Roslyn workspace without writing `bin/`, so it runs fine while watch is live.
