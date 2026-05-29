@@ -674,6 +674,9 @@
   .shrink-0 {
     flex-shrink: 0;
   }
+  .grow {
+    flex-grow: 1;
+  }
   .-translate-x-1\/2 {
     --tw-translate-x: calc(calc(1 / 2 * 100%) * -1);
     translate: var(--tw-translate-x) var(--tw-translate-y);
@@ -1617,6 +1620,13 @@
     &:is(:where(.group):hover *) {
       @media (hover: hover) {
         background-color: var(--color-accent);
+      }
+    }
+  }
+  .group-hover\:text-gray-300 {
+    &:is(:where(.group):hover *) {
+      @media (hover: hover) {
+        color: var(--color-gray-300);
       }
     }
   }

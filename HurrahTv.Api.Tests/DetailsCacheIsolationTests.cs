@@ -66,6 +66,30 @@ public class DetailsCacheIsolationTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal(NetflixId, aAgain.AvailableOn[0].ProviderId);
     }
 
+    [Fact]
+    public async Task Providers_CarryRegionLevelJustWatchLink_SharedAcrossServices()
+    {
+        // pins #140 — TMDb's results.US.link (a region-level JustWatch landing URL) used to be
+        // dropped by ParseProviders. It must now surface on every AvailableService, and since
+        // it's region-level (not per-provider) both Netflix and Hulu carry the identical link.
+        const string expectedLink = "https://www.themoviedb.org/tv/1234/watch?locale=US";
+
+        WebApplicationFactory<Program> factory = fx.Factory.WithWebHostBuilder(b =>
+            b.ConfigureTestServices(services => services.AddHttpClient<TmdbService>()
+                .ConfigurePrimaryHttpMessageHandler(() => new MultiProviderTmdbHandler())));
+
+        // user with both services so the endpoint keeps both providers in AvailableOn.
+        await SeedUserServiceAsync("user-C", NetflixId);
+        await SeedUserServiceAsync("user-C", HuluId);
+
+        HttpClient userC = AuthClient(factory, "user-C");
+        ShowDetails? response = await userC.GetFromJsonAsync<ShowDetails>($"/api/details/tv/{StubTmdbId}");
+
+        Assert.NotNull(response);
+        Assert.Equal(2, response!.AvailableOn.Count);
+        Assert.All(response.AvailableOn, svc => Assert.Equal(expectedLink, svc.Link));
+    }
+
     private async Task SeedUserServiceAsync(string userId, int providerId)
     {
         using NpgsqlConnection db = new(fx.ConnectionString);
@@ -116,6 +140,7 @@ internal sealed class MultiProviderTmdbHandler : HttpMessageHandler
             "watch/providers": {
                 "results": {
                     "US": {
+                        "link": "https://www.themoviedb.org/tv/1234/watch?locale=US",
                         "flatrate": [
                             { "provider_id": 8,  "provider_name": "Netflix", "logo_path": "/n.png" },
                             { "provider_id": 15, "provider_name": "Hulu",    "logo_path": "/h.png" }
