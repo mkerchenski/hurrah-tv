@@ -299,8 +299,10 @@ else
                     {
                         @if (!string.IsNullOrEmpty(svc.Link))
                         {
+                            @* svc.Link is the region-level JustWatch page (all providers), not a
+                               provider-specific deep link — keep the tooltip destination-neutral *@
                             <a href="@svc.Link" target="_blank" rel="noopener noreferrer"
-                               title="Watch @_details.Title on @svc.ProviderName"
+                               title="Find where to watch @_details.Title"
                                class="group flex items-center gap-2 bg-surface-50 hover:bg-surface-100 transition-colors px-3 py-2 rounded-lg">
                                 @if (!string.IsNullOrEmpty(svc.LogoUrl()))
                                 {
