@@ -34,23 +34,31 @@ That's also why two adjacent icons can differ in size: the "More info" button se
 (→ icon `14px` on mobile) while the shuffle button sets no font-size (→ inherits the hero's
 larger size). Same `w-5` on both, different rendered size.
 
-## The fix / how to apply
+## Resolution (#159)
 
-- **To size an icon, set its `font-size`** (`text-lg`, `text-xl`, `text-2xl`, or `text-[20px]`)
-  on the icon span — not `w-`/`h-`.
-- **To make two icons match, give them the identical font-size class.** Don't rely on matching
-  `w-N`; rely on matching `text-*`. See `HomeHero.razor` where the info and shuffle glyphs both
-  use `text-xl sm:text-lg` with a "bump both together" comment.
+**Fixed.** `build-icons.mjs` now emits the generated rules inside `@layer components`, so
+Tailwind's `w-`/`h-` utilities (which v4 emits into `@layer utilities`) win — `width: 1em`/
+`height: 1em` are now *defaults* that apply only when no `w-`/`h-` utility is present.
+
+The naïve fix the original write-up suggested — "emit the icon rule before Tailwind utilities"
+(i.e. swap the `<link>` order) — **would not have worked.** Tailwind v4 wraps utilities in
+`@layer utilities`, and **unlayered styles outrank every layered style regardless of source
+order.** So an unlayered `width: 1em` beats a layered `.w-5` even if `icons.css` loads first.
+The cascade lever that actually works is *layer order*: app.css declares
+`@layer theme, base, components, utilities;`, so putting the icon rules in `components` makes
+the `utilities`-layer `w-`/`h-` win deterministically (and `hidden`/`flex` now override the
+icon's `display: inline-block` too). `index.html` must keep `app.css` before `icons.css` so the
+layer order is declared before the icon rules add to `components`.
+
+## How to apply (post-#159)
+
+- **Size an icon the normal Tailwind way: `w-N h-N`** (`w-5 h-5`, `w-6 h-6`). This is now the
+  canonical, grep-able knob — what every contributor already assumed worked.
+- **`font-size` is still the fallback** for an icon span with no `w-`/`h-` class (`1em`). The
+  HomeHero info + shuffle glyphs use `text-xl sm:text-lg` for responsive sizing and are
+  unaffected — but new icons should prefer `w-N h-N`.
 - For an icon-only-at-one-breakpoint control, tie its horizontal padding to the *same*
   breakpoint that reveals the label (`px-3 sm:px-4` alongside `hidden sm:inline`) so the
   icon-only form stays a tight square.
-
-## Root cause worth fixing
-
-The real bug is that `w-N` silently does nothing on icons — everyone reasonably assumes it
-works. Options if we want `w-N` to behave: have `build-icons.mjs` emit the icon rule *before*
-Tailwind utilities, or drop the `width/height: 1em` from the generated rule so the utilities
-take over. Either is a broad visual change (every icon would re-derive its size), so it needs
-a deliberate sweep, not a drive-by. Tracked separately.
 
 Related: [[blazor-css-cache-busting]], [[tailwind-peer-pattern]].
