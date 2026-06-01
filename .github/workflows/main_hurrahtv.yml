@@ -14,6 +14,16 @@ on:
 permissions:
   contents: read
 
+# Serialize every staging deploy and the prod swap into one queue so they can never
+# overlap. Two near-simultaneous merges to main used to race their staging deploys —
+# the later-finishing (older-commit) deploy clobbered the newer one on the slot, so a
+# swap then promoted a build missing the most recent PR. cancel-in-progress: false
+# queues runs in trigger order (latest-pending wins) rather than cancelling a deploy
+# mid-flight, which could leave the slot half-written. swap.yml shares this group.
+concurrency:
+  group: hurrahtv-deploy-pipeline
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
