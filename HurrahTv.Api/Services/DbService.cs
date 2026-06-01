@@ -302,9 +302,7 @@ public class DbService(IConfiguration config)
 
         // conflict — the title is already queued. Return the existing row so the add is
         // idempotent (the caller surfaces it as success, not a 409). pins #155.
-        return await db.QuerySingleOrDefaultAsync<QueueItem>(
-            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, item.TmdbId, item.MediaType });
+        return await SelectQueueItemAsync(db, userId, item.TmdbId, item.MediaType);
     }
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
@@ -425,9 +423,7 @@ public class DbService(IConfiguration config)
             return row;
         }
 
-        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
-            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+        QueueItem? existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType);
 
         if (existing != null)
             return await ApplyUpdatePolicy(existing);
@@ -462,9 +458,7 @@ public class DbService(IConfiguration config)
         {
             // lost the insert race — the row exists now. Re-read and apply the same policy
             // the fast path would have, so a concurrent /seen + /ensure can't diverge.
-            existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
-                "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-                new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+            existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType);
             return existing is null ? null : await ApplyUpdatePolicy(existing);
         }
 
@@ -1098,4 +1092,11 @@ public class DbService(IConfiguration config)
         await conn.OpenAsync(cancellationToken);
         return conn;
     }
+
+    // single-row lookup by the natural key (UserId, TmdbId, MediaType). Shared by the add
+    // and upsert paths and their ON CONFLICT re-reads so the query lives in one place.
+    private static Task<QueueItem?> SelectQueueItemAsync(NpgsqlConnection db, string userId, int tmdbId, string mediaType) =>
+        db.QuerySingleOrDefaultAsync<QueueItem>(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
 }
