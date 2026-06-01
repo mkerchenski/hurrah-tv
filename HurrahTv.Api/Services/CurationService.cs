@@ -117,7 +117,10 @@ public partial class CurationService
             && cached.Value.generatedAt is { } gen && gen > DateTime.UtcNow.AddDays(-ReservoirMaxAgeDays))
         {
             List<AICuratedRow> cachedRows = JsonSerializer.Deserialize<List<AICuratedRow>>(cached.Value.rowsJson) ?? [];
-            if (cachedRows.Count > 0)
+            // require non-empty Picks: a pre-#146 cache row (old TmdbIds/Scores shape)
+            // deserializes into an empty Picks list, so this forces a one-time regenerate
+            // after deploy rather than serving a hero-less reservoir for up to a week.
+            if (cachedRows.Count > 0 && cachedRows.All(r => r.Picks.Count > 0))
                 return new CurationResult { Rows = cachedRows, FromCache = true, WatchlistChanged = false };
         }
 
@@ -169,18 +172,18 @@ public partial class CurationService
     {
         CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, regenerateReservoir, cancellationToken);
         AICuratedRow? row = reservoir.Rows.FirstOrDefault();
-        if (row is null || row.TmdbIds.Count == 0)
+        if (row is null || row.Picks.Count == 0)
             return new HeroResult { Error = reservoir.Error };
 
         // drop anything already on the watchlist, so a title the user has (or just added) can't
         // come back as a recommendation. Keyed on (TmdbId, MediaType) because TMDb ids are
         // namespaced per media type — a movie and a TV show can share a numeric id.
         HashSet<(int, string)> onWatchlist = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
-        List<HeroCandidate> candidates = [.. row.TmdbIds
-            .Select(id => new HeroCandidate(id, row.ItemMediaTypes.GetValueOrDefault(id, MediaTypes.Tv), row.Scores.GetValueOrDefault(id)))
-            .Where(c => !onWatchlist.Contains((c.TmdbId, c.MediaType)))];
+        List<HeroCandidate> candidates = [.. row.Picks
+            .Where(p => !onWatchlist.Contains((p.TmdbId, p.MediaType)))
+            .Select(p => new HeroCandidate(p.TmdbId, p.MediaType, p.Score))];
 
-        Dictionary<int, DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
+        Dictionary<(int TmdbId, string MediaType), DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
         HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !advancePick);
         if (pick is null)
             return new HeroResult { Error = reservoir.Error };
@@ -188,13 +191,15 @@ public partial class CurationService
         // the impression is recorded by the caller AFTER it confirms the pick hydrated (so a TMDb
         // failure can't burn a strong pick's cooldown without ever showing it), and only when it
         // isn't already today's pick (avoids a redundant write on every page load).
-        bool alreadyShownToday = lastShown.TryGetValue(pick.TmdbId, out DateTime last) && last.Date == DateTime.UtcNow.Date;
+        bool alreadyShownToday = lastShown.TryGetValue((pick.TmdbId, pick.MediaType), out DateTime last) && last.Date == DateTime.UtcNow.Date;
+
+        string reason = row.Picks.FirstOrDefault(p => p.TmdbId == pick.TmdbId && p.MediaType == pick.MediaType)?.Reason ?? "";
 
         return new HeroResult
         {
             TmdbId = pick.TmdbId,
             MediaType = pick.MediaType,
-            Reason = row.Reasons.GetValueOrDefault(pick.TmdbId, ""),
+            Reason = reason,
             Score = pick.Score,
             ShouldRecordImpression = !alreadyShownToday
         };
@@ -320,38 +325,35 @@ public partial class CurationService
 
             List<AIPick> picks = JsonSerializer.Deserialize<List<AIPick>>(text, CaseInsensitive) ?? [];
 
-            // build the scored reservoir — a single ranked list the hero rotation draws from
-            List<int> tmdbIds = [];
-            Dictionary<int, string> reasons = [];
-            Dictionary<int, string> itemMediaTypes = [];
-            Dictionary<int, int> scores = [];
+            // build the scored reservoir — a single ranked (best-first) list the hero rotation
+            // draws from. Dedup on (TmdbId, MediaType): a movie and a TV show sharing a numeric
+            // id are distinct picks, so a TmdbId-only key would drop one of the pair (#146).
+            List<AICuratedPick> reservoirPicks = [];
+            HashSet<(int, string)> seen = [];
 
             foreach (AIPick pick in picks)
             {
                 if (pick.Id >= 1 && pick.Id <= candidates.Count)
                 {
                     SearchResult candidate = candidates[pick.Id - 1];
-                    if (!tmdbIds.Contains(candidate.TmdbId))
+                    if (seen.Add((candidate.TmdbId, candidate.MediaType)))
                     {
-                        tmdbIds.Add(candidate.TmdbId);
-                        itemMediaTypes[candidate.TmdbId] = candidate.MediaType;
-                        scores[candidate.TmdbId] = Math.Clamp(pick.Score, 0, 100);
-                        if (!string.IsNullOrEmpty(pick.Reason))
-                            reasons[candidate.TmdbId] = pick.Reason;
+                        reservoirPicks.Add(new AICuratedPick(
+                            candidate.TmdbId,
+                            candidate.MediaType,
+                            Math.Clamp(pick.Score, 0, 100),
+                            pick.Reason ?? ""));
                     }
                 }
             }
 
-            if (tmdbIds.Count == 0) return [];
+            if (reservoirPicks.Count == 0) return [];
 
             return [new AICuratedRow
             {
                 Title = "Curated for You",
                 Subtitle = "Personalized picks based on your taste",
-                TmdbIds = tmdbIds,
-                Reasons = reasons,
-                ItemMediaTypes = itemMediaTypes,
-                Scores = scores
+                Picks = reservoirPicks
             }];
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -595,15 +597,17 @@ public partial class CurationService
     private partial void LogCurationUsage(string userId, int inputTokens, int outputTokens, decimal cost);
 }
 
-// cached row data
+// a single scored pick in the cached reservoir. Carries MediaType per pick so two titles
+// sharing a numeric TMDb id across media types stay distinct — the old parallel int-keyed
+// dicts collapsed them onto one key, dropping one of the pair (#146).
+public record AICuratedPick(int TmdbId, string MediaType, int Score, string Reason);
+
+// cached row data — an ordered (best-first) reservoir the hero rotation draws from.
 public class AICuratedRow
 {
     public string Title { get; set; } = "";
     public string Subtitle { get; set; } = "";
-    public List<int> TmdbIds { get; set; } = [];
-    public Dictionary<int, string> Reasons { get; set; } = []; // TmdbId → reason
-    public Dictionary<int, string> ItemMediaTypes { get; set; } = [];
-    public Dictionary<int, int> Scores { get; set; } = []; // TmdbId → AI match score 0-100 (#135)
+    public List<AICuratedPick> Picks { get; set; } = [];
 }
 
 public class CurationResult

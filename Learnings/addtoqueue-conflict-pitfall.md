@@ -1,32 +1,40 @@
-# AddToQueueAsync Returns Null on Conflict — Silent Failure Pitfall
+# AddToQueueAsync Is Idempotent — Returns the Existing Item on Conflict
 
 > **Area:** API | UI
-> **Date:** 2026-04-05
+> **Date:** 2026-04-05 · **Updated:** 2026-06-01 (#155)
 
-## Context
-PosterCard's "thumbs up" button and Details page's "set sentiment" both tried to add an item to the queue first, then update its sentiment. `AddToQueueAsync` returns `null` on HTTP 409 (item already exists). Both callers guarded with `if (added == null) return;` — which silently dropped the sentiment update for items already in the queue.
+## Current behavior (post-#155)
 
-## Learning
-`AddToQueueAsync` is a create-only operation. It returns `null` on conflict, meaning "this item already exists." Code that chains operations after it (set sentiment, update status) must handle the null case by finding the existing item instead of bailing out.
+`AddToQueueAsync` is **idempotent**. Adding a title already in the queue returns the
+*existing* `QueueItem` (HTTP 201 with the row), not `null`/409. The DB enforces this with a
+`UNIQUE (UserId, TmdbId, MediaType)` index, and the insert is `INSERT … ON CONFLICT DO NOTHING`
+with a re-read of the existing row on conflict. The method only returns `null` on a genuine
+failure (the pathological case where the row vanishes between insert and re-read → endpoint
+returns `Results.Problem`).
 
-Two patterns that work:
-1. **Use an upsert endpoint** (`MarkAsSeenAsync` calls `/api/queue/seen` which does INSERT...ON CONFLICT UPDATE) — this always returns the item
-2. **Fall back to finding the existing item** on null: fetch the queue and find by TmdbId+MediaType
+So a create-then-update chain just works — no fallback fetch needed:
 
-Pattern that silently fails:
 ```csharp
-// BAD — sentiment never set for existing items
-QueueItem? added = await Api.AddToQueueAsync(item);
-if (added != null)
-    await Api.UpdateSentimentAsync(added.Id, sentiment);
-
-// GOOD — falls back to finding existing item
+// GOOD (post-#155) — the add returns the existing row on a dup, so the chain is safe
 QueueItem? item = await Api.AddToQueueAsync(newItem);
-if (item == null)
-    item = await FindExistingItemAsync(tmdbId, mediaType);
-if (item != null)
+if (item is not null)
     await Api.UpdateSentimentAsync(item.Id, sentiment);
 ```
 
+A `null`-fallback to a secondary "find the existing item" fetch is now **dead code for the
+duplicate case** (it only guards the pathological-failure null). New callers should not add one.
+Existing fallbacks in `Details.razor` are harmless but redundant.
+
+## Historical pitfall (pre-#155) — kept for context
+
+`AddToQueueAsync` used to be create-only: it returned `null` on HTTP 409 ("already exists").
+PosterCard's thumbs-up and Details' set-sentiment both did `if (added == null) return;`, which
+silently dropped the sentiment update for items already in the queue. The fix at the time was to
+either route through an upsert endpoint (`/api/queue/seen`) or fall back to finding the existing
+item on `null`. #155 removed the root cause by making the add idempotent at the DB level.
+
 ## Broader pattern
-Any time you chain a create + update, handle the "already exists" case. This applies to any endpoint that returns null/409 on duplicate.
+
+Prefer making a create idempotent at the DB layer (`UNIQUE` + `ON CONFLICT`) over teaching every
+caller to handle a duplicate-signalling `null`/409. The constraint is the single source of truth;
+callers stay simple. See [[partial-dto-put-full-row-upsert]] for the related upsert-return shape.

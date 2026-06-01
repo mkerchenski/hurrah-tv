@@ -72,8 +72,10 @@ public static class QueueEndpoints
                 return Results.BadRequest("Invalid status");
 
             string userId = user.GetUserId();
+            // idempotent: a duplicate add returns the existing row (not a 409) so a double-tap
+            // or a re-add from another surface is a no-op success, not an error. pins #155.
             QueueItem? added = await db.AddToQueueAsync(item, userId);
-            return added != null ? Results.Created($"/api/queue/{added.Id}", added) : Results.Conflict("Already in queue");
+            return added != null ? Results.Created($"/api/queue/{added.Id}", added) : Results.Problem("Failed to add to queue");
         });
 
         group.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, DbService db) =>

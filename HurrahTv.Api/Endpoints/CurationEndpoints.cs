@@ -49,7 +49,7 @@ public static class CurationEndpoints
                 // strong pick's 14-day cooldown without ever showing it. ShouldRecordImpression is
                 // false when it's already today's pick, avoiding a redundant write per page load.
                 if (hero is not null && result.ShouldRecordImpression)
-                    await db.RecordHeroImpressionAsync(userId, result.TmdbId!.Value, ct);
+                    await db.RecordHeroImpressionAsync(userId, result.TmdbId!.Value, result.MediaType, ct);
 
                 return Results.Ok(new CuratedHeroResponse
                 {

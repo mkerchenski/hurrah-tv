@@ -27,7 +27,7 @@ public static class HeroSelector
     // something rather than going blank.
     public static HeroCandidate? Select(
         IReadOnlyList<HeroCandidate> reservoir,
-        IReadOnlyDictionary<int, DateTime> lastShownUtc,
+        IReadOnlyDictionary<(int TmdbId, string MediaType), DateTime> lastShownUtc,
         DateTime todayUtc,
         int cooldownDays = DefaultCooldownDays,
         bool keepTodaysPickEligible = true)
@@ -38,7 +38,9 @@ public static class HeroSelector
 
         bool IsEligible(HeroCandidate c)
         {
-            if (!lastShownUtc.TryGetValue(c.TmdbId, out DateTime shown)) return true; // never featured
+            // keyed by (TmdbId, MediaType): a movie and a TV show can share a numeric id, so a
+            // TmdbId-only lookup would let one media type's cooldown suppress the other (#146).
+            if (!lastShownUtc.TryGetValue((c.TmdbId, c.MediaType), out DateTime shown)) return true; // never featured
             DateTime shownDay = shown.Date;
             // shown today normally stays eligible (so a same-day re-fetch is stable), but a
             // manual refresh passes keepTodaysPickEligible=false to advance past today's pick.
@@ -58,7 +60,7 @@ public static class HeroSelector
         // featured longest ago (never-shown items are always eligible above, so they
         // can't reach this branch).
         return reservoir
-            .OrderBy(c => lastShownUtc.TryGetValue(c.TmdbId, out DateTime shown) ? shown : DateTime.MinValue)
+            .OrderBy(c => lastShownUtc.TryGetValue((c.TmdbId, c.MediaType), out DateTime shown) ? shown : DateTime.MinValue)
             .ThenByDescending(c => c.Score)
             .ThenBy(c => c.TmdbId)
             .First();
