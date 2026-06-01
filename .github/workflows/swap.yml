@@ -6,6 +6,12 @@ on:
 permissions:
   contents: read
 
+# Shares main_hurrahtv.yml's concurrency group so a swap never runs while a staging
+# deploy is in flight (and vice versa) — prevents swapping a slot that's mid-deploy.
+concurrency:
+  group: hurrahtv-deploy-pipeline
+  cancel-in-progress: false
+
 jobs:
   swap:
     runs-on: ubuntu-latest
