@@ -310,6 +310,10 @@ else
     private bool _heroLoading;
     private int _heroRequestSeq; // latest-wins guard so overlapping fetches don't both apply
     private bool _disposed;      // LoadHero is fire-and-forget + slow; don't render after disposal
+    // page-scoped CTS, cancelled in Dispose(), so navigating away mid-fetch aborts the
+    // server-side paid AI inference (the /hero endpoint forwards the token to Claude), not
+    // just the client-side render. Mirrors Details.razor's _loadCts pattern. pins #131.
+    private readonly CancellationTokenSource _cts = new();
 
     // hero billboard — cached so it doesn't recompute on every render. recomputed in
     // ReapplyDerivedState after queue mutations and after the AI pick arrives.
@@ -536,13 +540,15 @@ else
         int seq = ++_heroRequestSeq;
         try
         {
-            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh);
+            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, _cts.Token);
             if (seq == _heroRequestSeq && response?.Hero is not null)
                 _heroPick = response.Hero;
         }
         catch
         {
-            // hero is non-critical — leave any existing pick / fallback in place
+            // hero is non-critical — leave any existing pick / fallback in place. Also the
+            // catch-all swallows the OperationCanceledException raised when _cts is cancelled
+            // on disposal, so navigating away never surfaces as an error.
         }
         finally
         {
@@ -731,6 +737,8 @@ else
     public void Dispose()
     {
         _disposed = true;
+        _cts.Cancel();
+        _cts.Dispose();
         QuickActionSvc.OnChanged -= OnQuickActionChanged;
         QuickActionSvc.OnItemUpdated -= OnItemUpdated;
         QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;

@@ -89,13 +89,37 @@ public class DbService(IConfiguration config)
             );
 
             -- per-user record of when a title was last featured in the Home hero, so the
-            -- daily rotation can keep a title out of the hero for a cooldown window (#135)
+            -- daily rotation can keep a title out of the hero for a cooldown window (#135).
+            -- keyed by (TmdbId, MediaType): TMDb ids are namespaced per media type, so a
+            -- movie and a TV show sharing a numeric id must not share a cooldown (#146).
             CREATE TABLE IF NOT EXISTS CurationHeroImpressions (
                 UserId VARCHAR(50) NOT NULL,
                 TmdbId INT NOT NULL,
+                MediaType VARCHAR(10) NOT NULL,
                 ShownAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                PRIMARY KEY (UserId, TmdbId)
+                PRIMARY KEY (UserId, TmdbId, MediaType)
             );
+
+            -- one-time migration for pre-#146 databases where the table predates the
+            -- MediaType column / composite PK. Impression rows are ephemeral cooldown
+            -- state (a 14-day window), so a recreate is safe — at worst a hero repeats
+            -- once post-deploy. Guarded on the column so it's a no-op once migrated.
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'curationheroimpressions' AND column_name = 'mediatype'
+                ) THEN
+                    DROP TABLE CurationHeroImpressions;
+                    CREATE TABLE CurationHeroImpressions (
+                        UserId VARCHAR(50) NOT NULL,
+                        TmdbId INT NOT NULL,
+                        MediaType VARCHAR(10) NOT NULL,
+                        ShownAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        PRIMARY KEY (UserId, TmdbId, MediaType)
+                    );
+                END IF;
+            END $$;
 
             -- watchlist evolution: add new columns to QueueItems
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastSeasonWatched INT NULL;
@@ -170,6 +194,26 @@ public class DbService(IConfiguration config)
             -- backdrop image for hero billboard on Home; existing rows default to empty and
             -- will get backfilled via TMDb on the next AddToQueue / EnsureQueueItem touch
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS BackdropPath VARCHAR(500) NOT NULL DEFAULT '';
+
+            -- queue dedup (#155). Collapse any pre-constraint duplicate rows, keeping the
+            -- earliest AddedAt (tie-break: lowest Id) per (UserId, TmdbId, MediaType), then
+            -- enforce uniqueness at the DB level so races and alternative insert paths can't
+            -- land a second row. Cleanup MUST run before the index or index creation fails on
+            -- the existing dupes. Both are idempotent — no-ops once the data is clean.
+            DELETE FROM QueueItems
+            WHERE Id IN (
+                SELECT Id FROM (
+                    SELECT Id, ROW_NUMBER() OVER (
+                        PARTITION BY UserId, TmdbId, MediaType
+                        ORDER BY AddedAt ASC, Id ASC
+                    ) AS rn
+                    FROM QueueItems
+                ) ranked
+                WHERE rn > 1
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS UX_QueueItems_User_Tmdb_Media
+                ON QueueItems(UserId, TmdbId, MediaType);
             """, transaction: tx);
 
         // bootstrap admins — runs on every startup, idempotent. Owner is always admin in every environment.
@@ -219,23 +263,21 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
 
-        // check for duplicate
-        int? existing = await db.QuerySingleOrDefaultAsync<int?>(
-            "SELECT Id FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, item.TmdbId, item.MediaType });
-
-        if (existing != null) return null;
-
-        // get next position
+        // next position — only consumed when the INSERT actually lands a row
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
             "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
 
         item.Position = maxPos + 1;
 
-        int id = await db.QuerySingleAsync<int>("""
+        // ON CONFLICT DO NOTHING makes the add idempotent at the DB level (#155) — a race
+        // (double-tap, two tabs) or an alternative insert path can't create a second
+        // (UserId, TmdbId, MediaType) row. RETURNING yields the new Id only when a row was
+        // actually inserted; a conflict returns no row, so we re-read the existing one below.
+        int? id = await db.QuerySingleOrDefaultAsync<int?>("""
             INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, BackdropPath, Position, Status, Sentiment, AvailableOnJson, AddedAt)
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @BackdropPath, @Position, @Status, @Sentiment, @AvailableOnJson, @AddedAt)
+            ON CONFLICT (UserId, TmdbId, MediaType) DO NOTHING
             RETURNING Id
             """, new
         {
@@ -252,8 +294,17 @@ public class DbService(IConfiguration config)
             AddedAt = DateTime.UtcNow
         });
 
-        item.Id = id;
-        return item;
+        if (id is not null)
+        {
+            item.Id = id.Value;
+            return item;
+        }
+
+        // conflict — the title is already queued. Return the existing row so the add is
+        // idempotent (the caller surfaces it as success, not a 409). pins #155.
+        return await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, item.TmdbId, item.MediaType });
     }
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
@@ -341,47 +392,57 @@ public class DbService(IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
 
-        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
-            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
-
-        if (existing != null)
+        // applies the status / backdrop-backfill policy to a row that already exists. Shared
+        // between the fast path (row found by the initial SELECT) and the race-lost path (the
+        // INSERT below hit the unique constraint), so both behave identically. pins #155.
+        async Task<QueueItem> ApplyUpdatePolicy(QueueItem row)
         {
             // backfill backdrop on existing rows that pre-date the column — same row touch as status update
-            bool needsBackdropBackfill = string.IsNullOrEmpty(existing.BackdropPath) && !string.IsNullOrEmpty(backdropPath);
-            bool willUpdate = shouldUpdate == null || shouldUpdate(existing.Status);
+            bool needsBackdropBackfill = string.IsNullOrEmpty(row.BackdropPath) && !string.IsNullOrEmpty(backdropPath);
+            bool willUpdate = shouldUpdate == null || shouldUpdate(row.Status);
             if (willUpdate && needsBackdropBackfill)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status, BackdropPath = @BackdropPath WHERE Id = @Id",
-                    new { Status = (int)targetStatus, BackdropPath = backdropPath, existing.Id });
-                existing.Status = targetStatus;
-                existing.BackdropPath = backdropPath;
+                    new { Status = (int)targetStatus, BackdropPath = backdropPath, row.Id });
+                row.Status = targetStatus;
+                row.BackdropPath = backdropPath;
             }
             else if (willUpdate)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
-                    new { Status = (int)targetStatus, existing.Id });
-                existing.Status = targetStatus;
+                    new { Status = (int)targetStatus, row.Id });
+                row.Status = targetStatus;
             }
             else if (needsBackdropBackfill)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET BackdropPath = @BackdropPath WHERE Id = @Id",
-                    new { BackdropPath = backdropPath, existing.Id });
-                existing.BackdropPath = backdropPath;
+                    new { BackdropPath = backdropPath, row.Id });
+                row.BackdropPath = backdropPath;
             }
-            return existing;
+            return row;
         }
+
+        QueueItem? existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+
+        if (existing != null)
+            return await ApplyUpdatePolicy(existing);
 
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
             "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
             new { UserId = userId });
 
-        int id = await db.QuerySingleAsync<int>("""
+        // ON CONFLICT DO NOTHING guards against a concurrent caller inserting the same
+        // (UserId, TmdbId, MediaType) between our SELECT and INSERT — without it the new
+        // unique constraint (#155) would surface that race as a 500.
+        int? id = await db.QuerySingleOrDefaultAsync<int?>("""
             INSERT INTO QueueItems (UserId, TmdbId, MediaType, Title, PosterPath, BackdropPath, Position, Status, AvailableOnJson, AddedAt)
             VALUES (@UserId, @TmdbId, @MediaType, @Title, @PosterPath, @BackdropPath, @Position, @Status, @AvailableOnJson, @AddedAt)
+            ON CONFLICT (UserId, TmdbId, MediaType) DO NOTHING
             RETURNING Id
             """, new
         {
@@ -397,9 +458,19 @@ public class DbService(IConfiguration config)
             AddedAt = DateTime.UtcNow
         });
 
+        if (id is null)
+        {
+            // lost the insert race — the row exists now. Re-read and apply the same policy
+            // the fast path would have, so a concurrent /seen + /ensure can't diverge.
+            existing = await db.QuerySingleOrDefaultAsync<QueueItem>(
+                "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+                new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+            return existing is null ? null : await ApplyUpdatePolicy(existing);
+        }
+
         return new QueueItem
         {
-            Id = id,
+            Id = id.Value,
             TmdbId = tmdbId,
             MediaType = mediaType,
             Title = title,
@@ -669,25 +740,27 @@ public class DbService(IConfiguration config)
         return row;
     }
 
-    // hero rotation: last-shown timestamp per featured title, used to enforce the cooldown
-    public async Task<Dictionary<int, DateTime>> GetHeroImpressionsAsync(string userId, CancellationToken cancellationToken = default)
+    // hero rotation: last-shown timestamp per featured title, used to enforce the cooldown.
+    // keyed by (TmdbId, MediaType) — TMDb ids are namespaced per media type, so a movie and a
+    // TV show sharing a numeric id must each track their own cooldown (#146).
+    public async Task<Dictionary<(int TmdbId, string MediaType), DateTime>> GetHeroImpressionsAsync(string userId, CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new(
-            "SELECT TmdbId, ShownAt FROM CurationHeroImpressions WHERE UserId = @UserId",
+            "SELECT TmdbId, MediaType, ShownAt FROM CurationHeroImpressions WHERE UserId = @UserId",
             new { UserId = userId }, cancellationToken: cancellationToken);
-        IEnumerable<(int TmdbId, DateTime ShownAt)> rows = await db.QueryAsync<(int, DateTime)>(cmd);
-        return rows.ToDictionary(r => r.TmdbId, r => r.ShownAt);
+        IEnumerable<(int TmdbId, string MediaType, DateTime ShownAt)> rows = await db.QueryAsync<(int, string, DateTime)>(cmd);
+        return rows.ToDictionary(r => (r.TmdbId, r.MediaType), r => r.ShownAt);
     }
 
-    public async Task RecordHeroImpressionAsync(string userId, int tmdbId, CancellationToken cancellationToken = default)
+    public async Task RecordHeroImpressionAsync(string userId, int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new("""
-            INSERT INTO CurationHeroImpressions (UserId, TmdbId, ShownAt)
-            VALUES (@UserId, @TmdbId, NOW())
-            ON CONFLICT (UserId, TmdbId) DO UPDATE SET ShownAt = NOW()
-            """, new { UserId = userId, TmdbId = tmdbId }, cancellationToken: cancellationToken);
+            INSERT INTO CurationHeroImpressions (UserId, TmdbId, MediaType, ShownAt)
+            VALUES (@UserId, @TmdbId, @MediaType, NOW())
+            ON CONFLICT (UserId, TmdbId, MediaType) DO UPDATE SET ShownAt = NOW()
+            """, new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType }, cancellationToken: cancellationToken);
         await db.ExecuteAsync(cmd);
     }
 

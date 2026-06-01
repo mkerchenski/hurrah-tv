@@ -193,6 +193,50 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal([100, 200, 300], secondOrder);
     }
 
+    // pins #155 — duplicate adds are idempotent at the DB level. A double-tap, two tabs, or a
+    // re-add from another surface must collapse to ONE (UserId, TmdbId, MediaType) row, and the
+    // second add returns the existing item as success (not a 409).
+    [Fact]
+    public async Task DuplicateAdd_IsIdempotent_OneRow_SecondReturnsExisting()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-dedup");
+
+        QueueItem payload = NewQueueItem(tmdbId: 1399, title: "Game of Thrones");
+        HttpResponseMessage first = await client.PostAsJsonAsync("/api/queue", payload);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        QueueItem firstItem = (await first.Content.ReadFromJsonAsync<QueueItem>())!;
+
+        // second add of the same (TmdbId, MediaType) — must NOT be a 409, and must return the
+        // already-queued row rather than creating a duplicate.
+        HttpResponseMessage second = await client.PostAsJsonAsync("/api/queue", payload);
+        Assert.NotEqual(HttpStatusCode.Conflict, second.StatusCode);
+        Assert.True(second.IsSuccessStatusCode);
+        QueueItem secondItem = (await second.Content.ReadFromJsonAsync<QueueItem>())!;
+        Assert.Equal(firstItem.Id, secondItem.Id);
+
+        QueueResponse? list = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        Assert.Single(list!.Items);
+    }
+
+    // pins #155 — the UNIQUE constraint + ON CONFLICT must hold under a race. Fire several
+    // concurrent adds of the same title (the double-tap / two-tabs scenario) and assert exactly
+    // one row lands. Before the constraint, two SELECT-then-INSERT calls could both pass the
+    // application-level dup check and write two rows.
+    [Fact]
+    public async Task ConcurrentAdds_SameTitle_ResultInExactlyOneRow()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-race");
+        QueueItem payload = NewQueueItem(tmdbId: 1399, title: "Game of Thrones");
+
+        HttpResponseMessage[] responses = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ => client.PostAsJsonAsync("/api/queue", payload)));
+
+        Assert.All(responses, r => Assert.True(r.IsSuccessStatusCode, $"unexpected {(int)r.StatusCode}"));
+
+        QueueResponse? list = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        Assert.Single(list!.Items);
+    }
+
     private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)
     {
         HttpResponseMessage resp = await client.PostAsJsonAsync("/api/queue", payload);
