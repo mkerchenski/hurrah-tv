@@ -295,18 +295,17 @@ public class WatchlistFiltersTests
         Assert.Contains(item, result.AvailableNow);
     }
 
-    // bypass uses calendar-day comparison — a Watching show whose latest known episode
-    // aired today (same calendar date as todayUtc) and is marked watched still respects
-    // the gate, because no plausible new episode exists yet. Pins the lower boundary of
-    // the calendar-day rule. Catches the same-day-trip Copilot flagged on PR #156:
-    // TMDb's air_date is date-only and lands at midnight UTC, so an hour-based threshold
-    // would trip later the same day even though no new episode is out.
+    // #170: the override fires only on NextEpisodeDate having aired, so a caught-up Watching
+    // show with NO scheduled next episode (hiatus, or a season finale TMDb hasn't followed
+    // with a next season) leaves Available Now once the latest is marked watched — there's
+    // genuinely nothing new to surface. Pins the null-NextEpisodeDate branch of the override.
     [Fact]
-    public void AvailableNow_Excludes_Watching_Item_That_Watched_TodaysEpisode()
+    public void AvailableNow_Excludes_Watching_Watched_WithNoUpcomingEpisode()
     {
         QueueItem item = TvItem(
             status: QueueStatus.Watching,
-            latestEpisode: Today,
+            latestEpisode: Today.AddDays(-3),
+            nextEpisode: null,
             latestWatched: true);
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
