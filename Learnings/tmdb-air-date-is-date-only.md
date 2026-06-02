@@ -3,6 +3,30 @@
 > **Area:** TMDb | Data | Date
 > **Date:** 2026-05-28
 > **Resolves:** mkerchenski/hurrah-tv#145
+> **Corrected in part by:** mkerchenski/hurrah-tv#170 (see "Correction (#170)" below — the
+> override predicate this learning endorsed was too broad; the core date-only lesson stands)
+
+## Correction (#170)
+
+The date-only / no-hour-math **core lesson below is still correct** — that's why #145 moved off
+`(todayUtc - led).TotalHours > 18`. But two things this file got wrong or omitted:
+
+1. **The endorsed override predicate (`led.Date < today`) was far too broad.** It's true for
+   nearly every show whose latest episode aired before today, so the override fired constantly
+   and nullified the `IsLatestEpisodeWatched` gate it was bypassing — marking the latest episode
+   watched stopped removing Watching shows from Available Now. The "Test boundary" table below
+   even labels the weekly-show-stays-visible row an *"acceptable false-positive per the plan"* —
+   that "acceptable" case is exactly what a user reported as the #170 bug. The resurface signal
+   must be **positive evidence of a newer episode**, i.e. `NextEpisodeDate.Date <= today`, not
+   "the latest aired on a prior day." See [[state-gate-override-needs-positive-signal]].
+
+2. **A bare `DateTime.TryParse` of a date-only string yields `Kind=Unspecified`, not UTC.** This
+   file says the value is "parsed as midnight UTC" — true for the *date* but not the *Kind*.
+   `WatchlistFilters` compares `LatestEpisodeDate.Date` / `NextEpisodeDate.Date` against
+   `todayUtc.Date`; an `Unspecified`-Kind value can drift a calendar day near midnight UTC. Parse
+   TMDb date-only fields with `CultureInfo.InvariantCulture` + `DateTimeStyles.AssumeUniversal |
+   DateTimeStyles.AdjustToUniversal` so they store and round-trip as `Kind=Utc` (fixed at the
+   `TmdbService.GetEpisodeDatesAsync` parse site, #170).
 
 ## Context
 
