@@ -67,17 +67,18 @@ public static class WatchlistFilters
             // chip is off, since "later" is forward-looking and independent of watch state.
             if (isWatching || isStreamable)
             {
-                // for Watching, resurface a caught-up show (latest episode marked watched)
-                // ONLY when a genuinely newer episode has aired that the 12h /api/queue
-                // refresh hasn't folded into LatestEpisode* yet — i.e. NextEpisodeDate's air
-                // day has arrived. The original #145 override keyed on
-                // "LatestEpisodeDate.Date < today", which matched essentially every show with
-                // a past episode, so marking the latest watched never removed the show from
-                // Available Now (#170). NextEpisodeDate passing is the precise mode-B signal;
-                // AvailableLater handles the still-upcoming (next.Date > today) case.
+                // for Watching, resurface a caught-up show (latest episode marked watched) ONLY
+                // when a genuinely newer episode has aired that the 12h /api/queue refresh hasn't
+                // folded into LatestEpisode* yet — i.e. NextEpisodeDate's air day has fully
+                // PASSED (< today). air_date is date-only, so a NextEpisodeDate of *today* hasn't
+                // necessarily aired (a daily show airing tonight) — using <= today resurfaced a
+                // caught-up daily show on its air day before the episode was watchable (#172).
+                // Strictly-past means a full calendar day has elapsed, so it definitely aired and
+                // our data is merely stale. The original #145 override keyed on LatestEpisodeDate,
+                // which matched nearly every show and never removed watched shows (#170).
                 bool overrideLatestWatched = isWatching
                     && item.NextEpisodeDate is { } nextAired
-                    && nextAired.Date <= today;
+                    && nextAired.Date < today;
 
                 if (isStatusActive(item.Status)
                     && (!item.IsLatestEpisodeWatched || overrideLatestWatched)

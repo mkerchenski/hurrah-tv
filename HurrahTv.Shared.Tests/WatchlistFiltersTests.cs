@@ -275,14 +275,31 @@ public class WatchlistFiltersTests
         Assert.True(result.HasMovieContent);
     }
 
-    // pins #145 mode B (Kimmel-class), corrected by #170 — a Watching daily show stays in
-    // Available Now after the user watches the latest known episode ONLY because a new
-    // episode airs today (NextEpisodeDate == today), catching TMDb's episode-data lag before
-    // the 12h refresh advances LatestEpisode*. #145's original signal ("latest aired on a
-    // prior calendar day") matched essentially every show, so caught-up shows never left
-    // Available Now — see AvailableNow_Excludes_Watching_LatestEpisode_Watched_When_No_NewerEpisode.
+    // pins #145 mode B (Kimmel-class), corrected by #170/#172 — a caught-up Watching show
+    // resurfaces ONLY when a newer episode's air day has *fully passed* (NextEpisodeDate.Date
+    // < today), meaning it definitely aired and the 12h refresh simply hasn't advanced
+    // LatestEpisode* yet. Strictly-past, not <= today, so a show airing later *today* doesn't
+    // resurface before its episode is watchable (#172).
     [Fact]
-    public void AvailableNow_Includes_Watching_DailyShow_WithEpisodeAiringToday_PinsIssue145()
+    public void AvailableNow_Includes_Watching_Watched_WhenNextEpisodeDayHasPassed_PinsIssue145()
+    {
+        QueueItem item = TvItem(
+            status: QueueStatus.Watching,
+            latestEpisode: Today.AddDays(-2),
+            nextEpisode: Today.AddDays(-1),  // its air day fully elapsed → genuinely aired, refresh lagging
+            latestWatched: true);
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+    }
+
+    // pins #172 — a daily show whose next episode airs *today* (but hasn't aired yet) must NOT
+    // resurface after the user watches the prior episode. air_date is date-only, so
+    // NextEpisodeDate == today can't be assumed watchable; <= today wrongly kept caught-up
+    // daily shows in Available Now all day.
+    [Fact]
+    public void AvailableNow_Excludes_Watching_Watched_WhenNextEpisodeAirsLaterToday()
     {
         QueueItem item = TvItem(
             status: QueueStatus.Watching,
@@ -292,7 +309,7 @@ public class WatchlistFiltersTests
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
 
-        Assert.Contains(item, result.AvailableNow);
+        Assert.DoesNotContain(item, result.AvailableNow);
     }
 
     // #170: the override fires only on NextEpisodeDate having aired, so a caught-up Watching
