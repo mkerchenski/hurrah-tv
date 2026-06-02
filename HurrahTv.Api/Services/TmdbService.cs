@@ -501,8 +501,13 @@ public class TmdbService
         int? lastSeason = null, lastEpisode = null;
         if (json.TryGetProperty("last_episode_to_air", out JsonElement lastEp) && lastEp.ValueKind != JsonValueKind.Null)
         {
+            // air_date is date-only; parse as midnight UTC so it stores + round-trips with
+            // Kind=Utc. The Home watchlist filter compares LatestEpisodeDate.Date against
+            // todayUtc.Date — an Unspecified-Kind value could drift a calendar day near
+            // midnight UTC. pins the date-only convention in tmdb-air-date-is-date-only.
             if (lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
-                && DateTime.TryParse(lastDate.GetString(), out DateTime parsedLast))
+                && DateTime.TryParse(lastDate.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedLast))
             {
                 lastAired = parsedLast;
             }
@@ -518,8 +523,11 @@ public class TmdbService
         int? nextSeason = null, nextEpisode = null;
         if (json.TryGetProperty("next_episode_to_air", out JsonElement nextEp) && nextEp.ValueKind != JsonValueKind.Null)
         {
+            // same date-only → midnight UTC convention as last_episode_to_air above; the filter
+            // also compares NextEpisodeDate.Date against todayUtc.Date (#170 override).
             if (nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
-                && DateTime.TryParse(nextDate.GetString(), out DateTime parsedNext))
+                && DateTime.TryParse(nextDate.GetString(), CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedNext))
             {
                 nextAir = parsedNext;
             }
