@@ -180,6 +180,23 @@ public class TrailerFiltersTests
     }
 
     [Fact]
+    public void Unofficial_Is_Not_Treated_As_Named_Official()
+    {
+        // pins #111: "official" is matched as a whole word, so "Unofficial Trailer" must not
+        // get the named-official boost — it ranks as a plain unflagged video (tier 0) and
+        // loses to a real flagged official.
+        List<TrailerDto> input =
+        [
+            Video(key: "unofficial", name: "Unofficial Trailer", official: false),
+            Video(key: "official", name: "Launch Trailer", official: true),
+        ];
+
+        List<TrailerDto> result = TrailerFilters.PickTop(input);
+
+        Assert.Equal(["official", "unofficial"], result.Select(t => t.Key));
+    }
+
+    [Fact]
     public void Caps_At_MaxTrailers()
     {
         List<TrailerDto> input = [.. Enumerable.Range(0, 10).Select(i => Video(key: $"t{i}"))];

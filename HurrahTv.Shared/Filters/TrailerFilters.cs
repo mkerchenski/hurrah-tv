@@ -18,6 +18,11 @@ public static partial class TrailerFilters
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DemotedMarkerPattern();
 
+    // "official" as a whole word — \b so "Unofficial Trailer" is NOT treated as official
+    // (no word boundary before "official" inside "Unofficial"). pins #111.
+    [GeneratedRegex(@"\bofficial\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex OfficialNamePattern();
+
     // pick top trailers: YouTube only, Type=Trailer, most-official first, then newest.
     // we drop teasers/clips/featurettes so the section is "the official trailer" and
     // not a grab-bag — single-rule predicate keeps the surface coherent.
@@ -36,7 +41,7 @@ public static partial class TrailerFilters
     // higher rank wins; ties break on newest (PublishedAt). pins #111.
     private static int OfficialRank(TrailerDto v)
     {
-        bool namedOfficial = v.Name.Contains("official", StringComparison.OrdinalIgnoreCase);
+        bool namedOfficial = OfficialNamePattern().IsMatch(v.Name);
         bool marked = DemotedMarkerPattern().IsMatch(v.Name);
         return (v.Official, namedOfficial, marked) switch
         {

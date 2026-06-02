@@ -113,15 +113,18 @@ else if (_details != null)
                     {
                         <button type="button" class="group block w-full h-full cursor-pointer"
                                 @onclick="PlayTrailer" aria-label="@($"Play {activeLabel}")">
-                            @* @key remounts a fresh img per trailer so an errored (hidden)
-                               thumbnail doesn't carry display:none to the next chip. onerror
-                               hides deleted/private YouTube thumbnails; the bg-black container
-                               and play overlay still render and stay clickable. pins #111. *@
+                            @* deleted/private YouTube videos fail two ways: a 404 (caught by
+                               onerror) or a successfully-loaded gray 120x90 placeholder (caught
+                               by onload — a real hqdefault.jpg is 480 wide). either way we hide
+                               the img; the bg-black container and play overlay still render and
+                               stay clickable. @key remounts a fresh img per trailer so a hidden
+                               state doesn't carry display:none to the next chip. pins #111. *@
                             <img @key="active.Key"
                                  src="@($"https://img.youtube.com/vi/{Uri.EscapeDataString(active.Key)}/hqdefault.jpg")"
-                                 alt="" loading="lazy"
+                                 alt="" loading="lazy" draggable="false"
                                  onerror="this.style.display='none'"
-                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                 onload="if(this.naturalWidth<=120)this.style.display='none'"
+                                 class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity no-callout" />
                             <div class="absolute inset-0 flex items-center justify-center">
                                 <div class="bg-black/60 group-hover:bg-accent rounded-full w-16 h-16 md:w-20 md:h-20
                                             flex items-center justify-center transition-colors shadow-2xl">
