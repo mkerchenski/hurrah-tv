@@ -113,8 +113,14 @@ else if (_details != null)
                     {
                         <button type="button" class="group block w-full h-full cursor-pointer"
                                 @onclick="PlayTrailer" aria-label="@($"Play {activeLabel}")">
-                            <img src="@($"https://img.youtube.com/vi/{Uri.EscapeDataString(active.Key)}/hqdefault.jpg")"
+                            @* @key remounts a fresh img per trailer so an errored (hidden)
+                               thumbnail doesn't carry display:none to the next chip. onerror
+                               hides deleted/private YouTube thumbnails; the bg-black container
+                               and play overlay still render and stay clickable. pins #111. *@
+                            <img @key="active.Key"
+                                 src="@($"https://img.youtube.com/vi/{Uri.EscapeDataString(active.Key)}/hqdefault.jpg")"
                                  alt="" loading="lazy"
+                                 onerror="this.style.display='none'"
                                  class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                             <div class="absolute inset-0 flex items-center justify-center">
                                 <div class="bg-black/60 group-hover:bg-accent rounded-full w-16 h-16 md:w-20 md:h-20
