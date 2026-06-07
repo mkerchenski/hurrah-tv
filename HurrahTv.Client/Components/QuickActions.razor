@@ -20,23 +20,34 @@
                 </div>
             </div>
 
-            <!-- episode watched — only for TV shows in the queue with a recently-aired,
-                 not-yet-watched latest episode. Self-gated: no caller flag needed. -->
+            <!-- episode watched — for TV shows you're Watching whose latest aired episode
+                 isn't marked watched yet. Self-gated, no recency window (#168). Once marked,
+                 the gate hides it on reopen (the modal closes optimistically on tap). -->
             @if (ShouldShowEpisodeWatched())
             {
-                <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50
-                               @(_episodeWatched ? "bg-green-600/30 text-green-400 ring-1 ring-green-500/50" : "bg-surface-200 text-gray-300 hover:text-white")"
+                <button class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50 bg-surface-200 text-gray-300 hover:text-white"
                         disabled="@(_busy && _pendingAction != "episode")"
-                        @onclick="ToggleEpisodeWatched" @onclick:stopPropagation="true">
+                        @onclick="MarkEpisodeWatched" @onclick:stopPropagation="true">
                     @if (_pendingAction == "episode")
                     {
                         <span class="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
                     }
                     else
                     {
-                        <span class="@(_episodeWatched ? "icon-[heroicons--check-circle-20-solid]" : "icon-[heroicons--check-circle]") w-4 h-4"></span>
+                        <span class="icon-[heroicons--check-circle] w-4 h-4"></span>
                     }
-                    @(_episodeWatched ? "Episode Marked Watched" : "Episode Watched")
+                    Episode Watched
+                </button>
+            }
+            else if (ShouldShowEpisodePending())
+            {
+                <!-- latest-episode metadata not refreshed from TMDb yet — explain the gap
+                     rather than silently hiding the action (#168). -->
+                <button disabled
+                        class="w-full py-2.5 rounded-lg text-sm font-medium mb-4 flex items-center justify-center gap-1.5 bg-surface-200/50 text-gray-500 cursor-default"
+                        @onclick:stopPropagation="true">
+                    <span class="icon-[heroicons--arrow-path] w-4 h-4"></span>
+                    Episode info updating…
                 </button>
             }
 
@@ -109,6 +120,7 @@
     private QueueStatus _currentStatus;
     private int? _currentSentiment;
     private SearchResult? _searchResult;
+    private QueueItem? _item; // backing item for queue-surface gates; null on the browse surface
 
     private static readonly (int Level, string ActiveCss, string InactiveCss, string Icon, string Label)[] _sentimentOptions =
     [
@@ -122,20 +134,19 @@
     private int _episodeSeason;
     private int _episodeNumber;
     private bool _episodeWatched;
-    private DateTime? _latestEpisodeDate;
 
-    // mirrors the Continue Watching filter; 7-day window matches DbService.GetQueueAsync.
-    // UTC on both sides so users west of UTC don't get a negative-days window for episodes
-    // that aired late-UTC the prior calendar day local-time.
-    private bool ShouldShowEpisodeWatched()
-    {
-        if (_queueId <= 0 || _mediaType != MediaTypes.Tv) return false;
-        if (_currentStatus != QueueStatus.Watching) return false;
-        if (!_hasEpisodeData || _episodeWatched) return false;
-        if (_latestEpisodeDate is not DateTime aired) return false;
-        int days = (int)(DateTime.UtcNow.Date - aired.ToUniversalTime().Date).TotalDays;
-        return days >= 0 && days <= 7;
-    }
+    // gate lives on QueueItem (CanMarkLatestEpisodeWatched) so it's unit-tested in Shared.
+    private bool ShouldShowEpisodeWatched() =>
+        _item is { } item && item.CanMarkLatestEpisodeWatched(DateTime.UtcNow);
+
+    // a Watching TV item whose episode metadata hasn't been refreshed from TMDb yet — show a
+    // disabled "updating" hint instead of silently hiding the action (#168). Distinct from the
+    // already-watched case, which intentionally shows nothing.
+    private bool ShouldShowEpisodePending() =>
+        _item is { } item
+        && item.MediaType == MediaTypes.Tv
+        && item.Status == QueueStatus.Watching
+        && !_hasEpisodeData;
 
     private void RunAction(string actionKey, Func<Task> action)
     {
@@ -188,12 +199,12 @@
         _currentStatus = item.Status;
         _currentSentiment = item.Sentiment;
         _searchResult = null;
+        _item = item;
         _hasEpisodeData = item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue;
         _episodeTmdbId = item.TmdbId;
         _episodeSeason = item.LatestEpisodeSeason ?? 0; // 0 only when HasValue==false; Season 0 (specials) is HasValue==true
         _episodeNumber = item.LatestEpisodeNumber ?? 0;
         _episodeWatched = item.IsLatestEpisodeWatched;
-        _latestEpisodeDate = item.LatestEpisodeDate;
         _visible = true;
         StateHasChanged();
     }
@@ -207,44 +218,39 @@
         _currentStatus = default;
         _currentSentiment = null;
         _searchResult = result;
+        _item = null;
         _hasEpisodeData = false;
         _episodeTmdbId = 0;
         _episodeSeason = 0;
         _episodeNumber = 0;
         _episodeWatched = false;
-        _latestEpisodeDate = null;
         _visible = true;
         StateHasChanged();
     }
 
-    private void ToggleEpisodeWatched()
+    private void MarkEpisodeWatched()
     {
-        // data not yet populated — skip; refresh will rehydrate and reopen will work
-        if (!_hasEpisodeData) return;
+        // gate already excludes watched + unpopulated items, but guard the action path too
+        if (!_hasEpisodeData || _episodeWatched) return;
 
-        bool previous = _episodeWatched;
-        bool target = !previous;
         int tmdbId = _episodeTmdbId;
         int season = _episodeSeason;
         int episode = _episodeNumber;
-        _episodeWatched = target;
+        _episodeWatched = true;
 
         RunAction("episode", async () =>
         {
             try
             {
-                if (target)
-                    await Api.MarkEpisodeWatchedAsync(tmdbId, season, episode);
-                else
-                    await Api.UnmarkEpisodeWatchedAsync(tmdbId, season, episode);
+                await Api.MarkEpisodeWatchedAsync(tmdbId, season, episode);
                 // targeted update — Home updates its watched-set in place, no refetch needed
-                QuickActionSvc.NotifyEpisodeWatchedChanged(tmdbId, season, episode, target);
+                QuickActionSvc.NotifyEpisodeWatchedChanged(tmdbId, season, episode, true);
             }
             catch
             {
                 // revert local state so the modal shows the truth on reopen; the broad
                 // NotifyChanged from ExecuteActionAsync's failure path also fires
-                _episodeWatched = previous;
+                _episodeWatched = false;
                 throw;
             }
         });
