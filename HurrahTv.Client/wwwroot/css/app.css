@@ -705,6 +705,9 @@
   .fade-in {
     animation: fadeIn 0.3s ease-in;
   }
+  .cursor-default {
+    cursor: default;
+  }
   .cursor-grab {
     cursor: grab;
   }
@@ -1127,6 +1130,12 @@
   }
   .bg-surface-200 {
     background-color: var(--color-surface-200);
+  }
+  .bg-surface-200\/50 {
+    background-color: color-mix(in srgb, #2e2e2e 50%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-surface-200) 50%, transparent);
+    }
   }
   .bg-white {
     background-color: var(--color-white);

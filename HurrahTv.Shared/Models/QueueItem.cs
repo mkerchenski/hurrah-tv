@@ -46,6 +46,22 @@ public class QueueItem
     public bool HasEpisodeThisMonth => LatestEpisodeDate.HasValue
         && LatestEpisodeDate.Value >= DateTime.UtcNow.AddDays(-30)
         && LatestEpisodeDate.Value <= DateTime.UtcNow;
+
+    // "Episode Watched" quick action gate: a TV show you're Watching whose latest aired
+    // episode has populated metadata and hasn't been marked watched yet. Deliberately has
+    // NO recency window — Available Now membership doesn't imply the 7-day Continue-Watching
+    // window, so the old 7-day fence silently hid the action on shows whose latest episode
+    // aired more than a week ago (#168). Today-inclusive: air_date is date-only, and we'd
+    // rather over-show than hide a live-watched episode dated today. Typed date comparison,
+    // not a signed day-diff, so a future-stamped LatestEpisodeDate can't pass (#49/#70).
+    public bool CanMarkLatestEpisodeWatched(DateTime todayUtc) =>
+        MediaType == MediaTypes.Tv
+        && Status == QueueStatus.Watching
+        && LatestEpisodeSeason.HasValue
+        && LatestEpisodeNumber.HasValue
+        && !IsLatestEpisodeWatched
+        && LatestEpisodeDate is { } aired
+        && aired.Date <= todayUtc.Date;
 }
 
 public enum QueueStatus
