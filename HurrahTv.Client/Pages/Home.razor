@@ -645,9 +645,12 @@ else
         // (no paid regen). Set _heroLoading first so SelectHero renders the skeleton during the
         // refetch instead of flashing the now-filtered-out pick or a watchlist fallback.
         _heroLoading = true;
+        // the hero fetch and the watchlist reload are independent (the server reads its own
+        // watchlist for the hero, not the client's), so kick the hero off concurrently rather
+        // than after the awaited reload — the new pick lands sooner.
+        _ = LoadHero();
         try { await ReloadWatchlist(); }
         catch { }
-        _ = LoadHero();
     });
 
     // user changed services in Settings — refresh the cached list and re-run the partition
