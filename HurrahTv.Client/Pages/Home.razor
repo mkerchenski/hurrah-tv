@@ -540,7 +540,7 @@ else
         int seq = ++_heroRequestSeq;
         try
         {
-            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, _cts.Token);
+            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, MediaFilter.MediaType, _cts.Token);
             if (seq == _heroRequestSeq && response?.Hero is not null)
                 _heroPick = response.Hero;
         }
@@ -640,8 +640,14 @@ else
 
     private void OnMediaFilterChanged() => _ = InvokeAsync(async () =>
     {
+        // re-fetch a media-appropriate AI hero for the new filter (#147). The single client-held
+        // pick may be the other media type; the server re-selects from the SAME cached reservoir
+        // (no paid regen). Set _heroLoading first so SelectHero renders the skeleton during the
+        // refetch instead of flashing the now-filtered-out pick or a watchlist fallback.
+        _heroLoading = true;
         try { await ReloadWatchlist(); }
         catch { }
+        _ = LoadHero();
     });
 
     // user changed services in Settings — refresh the cached list and re-run the partition

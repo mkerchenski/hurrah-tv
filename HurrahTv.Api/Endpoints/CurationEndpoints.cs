@@ -16,11 +16,15 @@ public static class CurationEndpoints
         // single rotating AI hero pick for the home page (replaces the curated-rows section).
         // ?refresh=true regenerates the reservoir and advances past today's pick (rate-limited).
         group.MapGet("/hero", async (ClaimsPrincipal user, DbService db, CurationService curation,
-            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, bool? refresh, CancellationToken ct) =>
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, bool? refresh, string? mediaType, CancellationToken ct) =>
         {
             try
             {
                 string userId = user.GetUserId();
+
+                // active Home media filter — narrows the cached reservoir to a movie/TV pick (#147).
+                // anything other than a valid media type means "all" (no narrowing).
+                string filter = MediaTypes.IsValid(mediaType) ? mediaType! : "all";
 
                 // a shuffle always advances the pick (free); only the paid reservoir regen is
                 // rate-limited, so a second shuffle inside the cooldown still moves to a new pick.
@@ -41,7 +45,7 @@ public static class CurationEndpoints
                 DbService.UserPreferences prefs = prefsTask.Result;
                 List<int> providerIds = prefs.ProviderIds;
                 HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds, prefs.GenreIds,
-                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, cancellationToken: ct);
+                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter, cancellationToken: ct);
 
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
 
