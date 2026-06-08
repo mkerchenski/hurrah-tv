@@ -262,11 +262,17 @@ public class DbService(IConfiguration config)
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
+
+        // serialize concurrent adds for THIS user so two distinct-title adds can't read the
+        // same MAX(Position) and collide on Position. xact-scoped — auto-released on commit.
+        // keyed per-user (not global) so unrelated users never contend. pins #163.
+        await LockUserQueueAsync(db, userId, tx);
 
         // next position — only consumed when the INSERT actually lands a row
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
             "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, tx);
 
         item.Position = maxPos + 1;
 
@@ -292,18 +298,27 @@ public class DbService(IConfiguration config)
             item.Sentiment,
             item.AvailableOnJson,
             AddedAt = DateTime.UtcNow
-        });
+        }, tx);
 
         if (id is not null)
         {
+            await tx.CommitAsync();
             item.Id = id.Value;
             return item;
         }
 
         // conflict — the title is already queued. Return the existing row so the add is
         // idempotent (the caller surfaces it as success, not a 409). pins #155.
-        return await SelectQueueItemAsync(db, userId, item.TmdbId, item.MediaType);
+        QueueItem? existing = await SelectQueueItemAsync(db, userId, item.TmdbId, item.MediaType, tx);
+        await tx.CommitAsync();
+        return existing;
     }
+
+    // per-user transaction-scoped advisory lock. hashtext(userId) maps the string UserId to the
+    // bigint key pg_advisory_xact_lock expects; the lock is released automatically when tx
+    // commits or rolls back, so callers never have to unlock explicitly. pins #163.
+    private static Task<int> LockUserQueueAsync(NpgsqlConnection db, string userId, NpgsqlTransaction tx) =>
+        db.ExecuteAsync("SELECT pg_advisory_xact_lock(hashtext(@UserId))", new { UserId = userId }, tx);
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
     {
@@ -428,9 +443,15 @@ public class DbService(IConfiguration config)
         if (existing != null)
             return await ApplyUpdatePolicy(existing);
 
+        // insert branch — serialize per-user so concurrent distinct-title adds can't read the
+        // same MAX(Position) and collide. only the insert path takes the lock; the fast path
+        // above mutates a single row by Id and never allocates a Position. pins #163.
+        using NpgsqlTransaction tx = await db.BeginTransactionAsync();
+        await LockUserQueueAsync(db, userId, tx);
+
         int maxPos = await db.QuerySingleOrDefaultAsync<int>(
             "SELECT COALESCE(MAX(Position), 0) FROM QueueItems WHERE UserId = @UserId",
-            new { UserId = userId });
+            new { UserId = userId }, tx);
 
         // ON CONFLICT DO NOTHING guards against a concurrent caller inserting the same
         // (UserId, TmdbId, MediaType) between our SELECT and INSERT — without it the new
@@ -452,15 +473,18 @@ public class DbService(IConfiguration config)
             Status = (int)targetStatus,
             AvailableOnJson = availableOnJson,
             AddedAt = DateTime.UtcNow
-        });
+        }, tx);
 
         if (id is null)
         {
             // lost the insert race — the row exists now. Re-read and apply the same policy
             // the fast path would have, so a concurrent /seen + /ensure can't diverge.
-            existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType);
+            existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType, tx);
+            await tx.CommitAsync();
             return existing is null ? null : await ApplyUpdatePolicy(existing);
         }
+
+        await tx.CommitAsync();
 
         return new QueueItem
         {
@@ -1095,8 +1119,8 @@ public class DbService(IConfiguration config)
 
     // single-row lookup by the natural key (UserId, TmdbId, MediaType). Shared by the add
     // and upsert paths and their ON CONFLICT re-reads so the query lives in one place.
-    private static Task<QueueItem?> SelectQueueItemAsync(NpgsqlConnection db, string userId, int tmdbId, string mediaType) =>
+    private static Task<QueueItem?> SelectQueueItemAsync(NpgsqlConnection db, string userId, int tmdbId, string mediaType, NpgsqlTransaction? tx = null) =>
         db.QuerySingleOrDefaultAsync<QueueItem>(
             "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
-            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType });
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType }, tx);
 }
