@@ -708,8 +708,10 @@ else
                 PrimaryAction: HomeHero.HeroAction.Resume);
         }
 
-        // 3. a TV show whose latest episode aired in the last 7 days (regardless of status)
-        QueueItem? recent = _allItems
+        // 3. a TV show whose latest episode aired in the last 7 days (regardless of status).
+        // inherently TV-only ("new episode this week" has no movie analogue), so it's suppressed
+        // under the Movies filter — otherwise the hero would leak a TV show under Movies (#167).
+        QueueItem? recent = MediaFilter.MediaType == "movie" ? null : _allItems
             .Where(i => i.MediaType == MediaTypes.Tv
                 && i.HasNewEpisode
                 && i.Status != QueueStatus.NotForMe
