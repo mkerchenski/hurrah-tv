@@ -2,6 +2,8 @@
 
 Welcome. This doc is the canonical "how we work" guide. Read it once end-to-end on your first day; reference it whenever you're unsure about the workflow.
 
+New here? [`ONBOARDING.md`](ONBOARDING.md) is a 5-minute orientation that maps out which doc to read when — skim it first, then come back here.
+
 If you want to run the project locally, start with [`README.md`](README.md) for prereqs and setup commands. This doc picks up where that leaves off.
 
 > **A note on scope:** Hurrah.tv is a small passion project, not an open-source community. The "All rights reserved" license is intentional. If you're reading this as an external visitor, feel free to look around — but PRs from outside the team won't be merged.
