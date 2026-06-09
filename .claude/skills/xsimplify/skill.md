@@ -64,7 +64,13 @@ Union of those two = the elevation surface. If both empty → "No changes to ele
 
 ### Step 4 — Scan relevant learnings
 
-Before deciding on elevation, glob `Learnings/**/*.md` for any past discoveries that bear on what should or shouldn't live in Shared. Read anything related to DTO contracts, JSON serialization, WASM datetime handling, or app-specific patterns that turned out to be deliberately non-shared. If a learning warns against promoting a shape, respect it.
+Before deciding on elevation, build a cheap one-line title index of `Learnings/` (don't read all 80+ files), then `Read` only the few entries whose titles bear on what should or shouldn't live in Shared — DTO contracts, JSON serialization, WASM datetime handling, or app-specific patterns that turned out to be deliberately non-shared:
+
+```bash
+grep -rH -m1 '^# ' Learnings/ | sed 's/:# /  —  /'
+```
+
+If a learning warns against promoting a shape, respect it.
 
 ### Step 5 — HurrahTv.Shared elevation pass
 

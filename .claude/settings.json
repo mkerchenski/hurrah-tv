@@ -1,5 +1,18 @@
 {
   "enabledPlugins": {
     "chrome-devtools-mcp@chrome-devtools-plugins": true
+  },
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(npm --version)",
+      "Bash(psql --version)",
+      "Bash(dotnet format *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(gh issue *)",
+      "Bash(curl:*)",
+      "Bash(az postgres flexible-server firewall-rule *)"
+    ]
   }
 }

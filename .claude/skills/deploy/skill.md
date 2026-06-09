@@ -15,7 +15,7 @@ Single App Service serves both the Blazor WASM client (static files) and the .NE
 | Component | Azure Resource | Staging URL | Production URL |
 |-----------|---------------|-------------|---------------|
 | App (API + WASM) | HurrahTv-Api | hurrahtv-api-staging.azurewebsites.net | hurrah.tv |
-| Database | hurrahtv (Azure SQL) | shared | shared |
+| Database | Azure Database for PostgreSQL Flexible Server | shared | shared |
 
 **Deploy flow:**
 1. Push to `main` → GitHub Actions builds both projects and deploys to the **staging slot**

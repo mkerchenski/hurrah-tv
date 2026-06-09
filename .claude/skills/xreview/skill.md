@@ -8,6 +8,8 @@ argument-hint: [--staged|--unpushed]
 
 Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 4 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
 
+The fan-out-and-score core (the 4 specialized reviewers + per-finding scoring) runs as a deterministic **workflow** — `.claude/workflows/xreview.js`, invoked with `Workflow({name: "xreview", args: {...}})`. The workflow pipelines each dimension straight into scoring, so a finding starts scoring the moment its reviewer finishes. The system `review` skill runs concurrently in the main loop as a separate parallel voice; its findings are merged in afterward. The interactive parts — mode selection, dotnet format, inline fixes, README check, issue filing — stay in the main loop where they belong.
+
 ## Output rules (apply to every step below)
 
 1. **NEVER post to GitHub automatically.** Do not post PR comments, reviews, or any content to GitHub without an explicit user instruction. Always present findings in the CLI first.
@@ -44,10 +46,16 @@ Wait for mode response before proceeding.
 
 ### Step 1-Quick — fast subset
 
-1. Gather the diff for the parsed scope (default: union as defined in Step 1-Review).
+1. Gather the diff for the parsed scope (default: union as defined in Step 1-Review section 1) and externalize it (Step 1-Review section 3). Build the learnings index (section 1).
 2. Empty-diff handling: if empty, report "No changes to review" and stop.
-3. Launch only **Agent 1 (CLAUDE.md Compliance)** and **Agent 4 (Bug Scan)** as Sonnet subagents in parallel. Use the prompts from Step 1-Review section 4. Skip dotnet format. Skip the other 2 agents and the README check.
-4. Score and present per Step 1-Review sections 5–6, but with a smaller findings table.
+3. Run the xreview workflow with the **narrow** two-dimension subset — explicitly pass `dimensions: ["claudemd", "bugs"]`. Skip dotnet format, skip the system `review` call, skip the README check.
+   ```
+   Workflow({ name: "xreview", args: {
+     diffPath, filesPath, claudeMdPath, learningsIndex,
+     dimensions: ["claudemd", "bugs"]
+   }})
+   ```
+4. The workflow returns `{ confirmed }` already scored and filtered to ≥ 50. Present per Step 1-Review section 6, with the smaller findings table.
 5. Apply Step 8 (default-fix) and Step 9 (follow-up surfacing) — same default-act behavior as the full review, just over a narrower finding set.
 
 ---
@@ -74,8 +82,13 @@ The default is the union of the first two. If both empty → "No changes to revi
 
 Also gather:
 - `git diff --name-only [range]` for changed files
-- The CLAUDE.md content
-- Any `Learnings/*.md` in scope of the diff
+- The CLAUDE.md path (pass the path to the workflow — agents read it; don't paste 200 lines into every prompt)
+- **Learnings title index** — build a cheap one-line index, NOT a wholesale read. There are 80+ files in `Learnings/`; reading them all across every reviewer is the dominant cost. Capture the index string and pass it to the workflow so each agent reads only the 2–5 entries whose titles match its specialty:
+  ```bash
+  # filename + first-line title for every learning, one line each
+  grep -rH -m1 '^# ' Learnings/ | sed 's/:# /  —  /'
+  ```
+  (Each line is `Learnings/<name>.md  —  <Title>`. An agent picks the relevant few by title and `Read`s only those.)
 - **Linked GitHub issues** (only when scope is `--unpushed` or includes commits): parse commit messages for `#NNN` references and pull each issue's body so reviewer agents can compare the diff against acceptance criteria. Hurrah.Tv conventionally uses `closes #NN` / `fixes #NN` to auto-close on merge:
   ```bash
   git log <range> --format=%B | grep -oE '#[0-9]+' | sort -u
@@ -118,120 +131,32 @@ git diff [range] > "$TMPDIR/hurrahtv-review-diff.txt"
 git diff --name-only [range] > "$TMPDIR/hurrahtv-review-files.txt"
 ```
 
-(`$TMPDIR` on macOS/Linux; `$env:TEMP` in PowerShell on Windows. Capture the absolute path of each file before launching subagents.)
+(`$TMPDIR` on macOS/Linux; `$env:TEMP` in PowerShell on Windows. Capture the absolute path of each file. Also capture the absolute path to `CLAUDE.md` and the learnings-index string from section 1 — these are the workflow's args.)
 
-#### 4. Launch in parallel: 4 agents + system review
+#### 4. Run the review workflow + system review concurrently
 
-In a single message, launch all 4 agents as **Sonnet** subagents (with `run_in_background: true`) plus invoke the system review skill. Each agent gets the diff path, the changed-files path, the CLAUDE.md content, and its specific prompt below.
+The 4 specialized reviewers and their per-finding scoring run as the **`xreview` workflow** (`.claude/workflows/xreview.js`). The four dimension prompts and the 0–100 scoring rubric live there canonically — don't duplicate them here. In a **single message**, do both of these so they run concurrently:
 
-Also call `Skill(skill="review")` as a parallel voice — the system review skill adds a generic PR-review pass alongside the hurrah-tv-specialized agents.
+1. **Launch the workflow** with all four dimensions:
+   ```
+   Workflow({ name: "xreview", args: {
+     diffPath:       "<abs path to hurrahtv-review-diff.txt>",
+     filesPath:      "<abs path to hurrahtv-review-files.txt>",
+     claudeMdPath:   "<abs path to CLAUDE.md>",
+     learningsIndex: "<the grep index string from section 1>",
+     dimensions:     ["claudemd", "blazor", "apidata", "bugs"],
+     issueContext:   "<linked-issue acceptance criteria from section 1, or omit>"
+   }})
+   ```
+   It pipelines each dimension straight into scoring (Sonnet reviewers → Haiku scorers) and returns `{ confirmed }` already filtered to score ≥ 50 and sorted descending. The workflow backgrounds; you're notified when it completes.
 
-**Common prompt prefix for every agent:**
-```
-Review this diff for {your specialty}.
-Diff path: {absolute path to hurrahtv-review-diff.txt}
-Files path: {absolute path to hurrahtv-review-files.txt}
-CLAUDE.md content: {paste here or read from file}
-Read the full source of any changed files where the diff is insufficient.
+2. **Invoke `Skill(skill="review")`** as the separate parallel voice — the system review's generic PR-review pass. It runs inline in the main loop while the workflow churns.
 
-Relevant learnings — before reviewing, glob and read Learnings/**/*.md and apply
-any that bear on your specialty (Blazor lifecycle, WASM datetime, TMDb API, AI
-curation, Postgres). If a learning conflicts with the diff, that's a finding worth flagging.
+**Always pass `dimensions` explicitly** — the workflow throws if it's missing rather than defaulting to "review everything," so a dropped arg surfaces loudly instead of silently widening scope. Tell the system review (and remember for the merge) to **ignore changes from dotnet format** — those are mechanical.
 
-Report ONLY issues found in the diff, not pre-existing concerns. Format: list of
-{file, line, issue, severity, explanation}.
-```
+#### 5. Merge & score the system-review findings
 
-##### Agent 1: CLAUDE.md Compliance
-
-```
-Review for violations of the project's CLAUDE.md conventions.
-
-Key patterns to check:
-- Code style: 4-space indentation, no XML doc comments, lowercase comments, Type over var
-- No unnecessary abstractions, no over-engineering — three similar lines is better than premature abstraction
-- Comments only where logic isn't self-explanatory; don't explain WHAT (well-named identifiers do that)
-- Pre-computed counts: no `Count()` per render inside a loop
-- Self-gating predicates over caller-supplied visibility flags
-- Mutating endpoints return the updated entity
-- Background work uses IServiceScopeFactory, not captured request-scoped services
-
-Report ONLY violations clearly present in the diff. Do not flag pre-existing code.
-```
-
-##### Agent 2: Blazor WASM & Lifecycle
-
-```
-Review for Blazor WebAssembly issues.
-
-Concerns:
-- Component lifecycle: OnInitializedAsync vs OnParametersSetAsync usage
-- Disposal: event handlers, timers, and singleton subscriptions unsubscribed in Dispose
-- StateHasChanged: called correctly, not from background threads without InvokeAsync
-- DI scope: Singleton consuming Scoped fails the DI validator (e.g. MediaFilterService → ApiClient)
-- Two-way binding pitfalls
-- HttpClient usage in WASM — auth handler attached, base address set
-- Fire-and-forget — backgrounded tasks captured via _ = ... so they're not awaited synchronously
-- Optimistic UI: mutate local state before API confirm; revert on failure
-- Skeleton placeholders: any new async-loaded section should reserve its final shape
-
-severity: high | medium | low.
-```
-
-##### Agent 3: API & Data Safety
-
-```
-Review for API and data safety issues.
-
-Concerns:
-- SQL injection: raw string concatenation in Dapper queries (use parameterized only)
-- Postgres bigint → int32 mapping: COUNT(*), SUM() etc. need ::int cast or DTO must use long
-- Missing input validation on endpoints (TmdbId > 0, MediaTypes.IsValid, enum bounds)
-- Authentication: every user-facing endpoint has RequireAuthorization() or is intentionally AllowAnonymous
-- Authorization policies: Admin policy is DB-backed (re-check per request), not just JWT-claim
-- CORS configuration not weakened
-- TMDb / Anthropic / Twilio API keys not exposed to the client
-- Schema migrations: idempotent (IF NOT EXISTS), safe on existing data, backfill considered
-- Background TmdbService work: fresh DI scope, no captured request services
-- Error handling: bad-request validation returns 400 with explanation, not 500
-
-Report ONLY confirmed or highly-likely issues. No theoretical concerns.
-severity: critical | high | medium.
-```
-
-##### Agent 4: Bug & Logic Scan
-
-```
-Review for bugs, logic errors, and regressions.
-
-Concerns:
-- Null reference exceptions
-- Off-by-one errors, incorrect loop bounds
-- Async/await: missing await, fire-and-forget tasks that should be awaited, deadlocks
-- Exception handling: swallowing exceptions, catching too broadly
-- Logic inversions, negation errors
-- Edge cases: empty collections, zero values, boundaries, network failures
-- Regressions: does the change break existing behavior on Home / Queue / Details?
-- Resource management: IDisposable not disposed, connections leaked
-- JSON serialization mismatches between Shared DTO and how Dapper / API actually populate it
-- DateTime UTC vs local mismatches (see Learnings/wasm-datetime-source-matters.md)
-
-Ignore: version numbers, csproj metadata, cosmetic changes.
-Report ONLY issues with real impact.
-severity: critical | high | medium | low.
-```
-
-#### 5. Score issues
-
-For each issue reported by any agent, launch a parallel **Haiku** subagent to score 0–100:
-
-- **0**: false positive, doesn't hold up, or pre-existing
-- **25**: might be real but unverified; stylistic and not in CLAUDE.md
-- **50**: verified real but minor; nitpick relative to the change
-- **75**: verified, important — directly impacts functionality or violates CLAUDE.md
-- **100**: definitely real, confirmed with evidence, will happen in practice
-
-Filter to score ≥ 50 (per Output Rules).
+The workflow's `confirmed` findings are already scored. The system `review` findings are not — score each against the **same rubric** (it lives in `xreview.js`; reproduced intent: 0 = false-positive/pre-existing, 50 = real but minor, 75 = important, 100 = confirmed-will-happen), keep only ≥ 50, and merge into one list. De-dupe where the system review and a specialized dimension flagged the same `file:line` — keep the higher score and note both reviewers. The merged, score-sorted list feeds section 6.
 
 #### 6. Present results
 

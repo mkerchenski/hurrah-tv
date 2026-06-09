@@ -53,7 +53,10 @@ If the task turns out more complex mid-implementation, suggest switching to `pla
 
 Run these in parallel:
 
-1. **Scan learnings** — `Glob Learnings/**/*.md` then read any whose title bears on the feature area (Blazor lifecycle, WASM datetime, TMDb, AI curation, Postgres, etc.).
+1. **Scan learnings (selectively)** — there are 80+ files in `Learnings/`; don't read them wholesale. Build a cheap one-line title index first, then `Read` only the 2–5 entries whose titles bear on the feature area (Blazor lifecycle, WASM datetime, TMDb, AI curation, Postgres, etc.):
+   ```bash
+   grep -rH -m1 '^# ' Learnings/ | sed 's/:# /  —  /'
+   ```
 2. **Check existing plans** — `Glob Plans/*.md`. **If a plan in the same area already exists, prefer updating it over creating a new one.** Note related plans for the system plan skill to reference.
 3. **Check existing GitHub issues** — query `mkerchenski/hurrah-tv` so the plan can link to or replace already-tracked work:
    ```bash
