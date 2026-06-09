@@ -706,7 +706,8 @@ else
 
         // 2. an item the user is actively watching, with a backdrop available
         QueueItem? watching = _availableNowItems.FirstOrDefault(i =>
-            i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath));
+            i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath)
+            && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType));
         if (watching is not null)
         {
             return new HomeHero.HeroItem(
