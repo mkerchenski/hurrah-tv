@@ -704,7 +704,7 @@ else
         // during the load window; the fallbacks below only apply once curation has resolved.
         if (_heroLoading) return null;
 
-        // 2. an item the user is actively watching, with a backdrop available
+        // 2. an item the user is actively watching, with a backdrop available, matching the active media filter
         QueueItem? watching = _availableNowItems.FirstOrDefault(i =>
             i.Status == QueueStatus.Watching && !string.IsNullOrEmpty(i.BackdropPath)
             && (MediaFilter.MediaType == "all" || i.MediaType == MediaFilter.MediaType));
