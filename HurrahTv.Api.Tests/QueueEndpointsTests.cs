@@ -237,6 +237,29 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Single(list!.Items);
     }
 
+    // pins #163 — concurrent adds of DISTINCT titles for one user must land on distinct
+    // Position values. Before the per-user advisory lock, both calls read the same
+    // COALESCE(MAX(Position),0) before either INSERT committed and wrote the same Position,
+    // leaving GetQueueAsync's Position-keyed ORDER BY to pick an arbitrary relative order.
+    [Fact]
+    public async Task ConcurrentAdds_DistinctTitles_GetDistinctPositions()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-pos-race");
+
+        const int n = 8;
+        HttpResponseMessage[] responses = await Task.WhenAll(
+            Enumerable.Range(0, n).Select(i =>
+                client.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1000 + i, title: $"Show {i}"))));
+
+        Assert.All(responses, r => Assert.True(r.IsSuccessStatusCode, $"unexpected {(int)r.StatusCode}"));
+
+        QueueResponse? list = await client.GetFromJsonAsync<QueueResponse>("/api/queue");
+        Assert.Equal(n, list!.Items.Count);
+
+        int[] positions = [.. list.Items.Select(i => i.Position)];
+        Assert.Equal(n, positions.Distinct().Count());
+    }
+
     private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)
     {
         HttpResponseMessage resp = await client.PostAsJsonAsync("/api/queue", payload);

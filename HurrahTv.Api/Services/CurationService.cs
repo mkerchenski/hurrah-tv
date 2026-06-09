@@ -168,7 +168,7 @@ public partial class CurationService
     //     the next-best — every shuffle changes the pick, even when regen is rate-limited.
     //   - regenerateReservoir (paid AI, rate-limited): pull genuinely new candidate material.
     public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds,
-        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, CancellationToken cancellationToken = default)
+        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, string mediaType = MediaTypes.All, CancellationToken cancellationToken = default)
     {
         CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, regenerateReservoir, cancellationToken);
         AICuratedRow? row = reservoir.Rows.FirstOrDefault();
@@ -178,9 +178,12 @@ public partial class CurationService
         // drop anything already on the watchlist, so a title the user has (or just added) can't
         // come back as a recommendation. Keyed on (TmdbId, MediaType) because TMDb ids are
         // namespaced per media type — a movie and a TV show can share a numeric id.
+        // mediaType narrows the SAME cached reservoir to the active Home filter (#147) — a filter
+        // toggle re-selects from existing material, never triggers a paid regen.
         HashSet<(int, string)> onWatchlist = [.. watchlist.Select(i => (i.TmdbId, i.MediaType))];
         List<HeroCandidate> candidates = [.. row.Picks
             .Where(p => !onWatchlist.Contains((p.TmdbId, p.MediaType)))
+            .Where(p => mediaType == MediaTypes.All || p.MediaType == mediaType)
             .Select(p => new HeroCandidate(p.TmdbId, p.MediaType, p.Score))];
 
         Dictionary<(int TmdbId, string MediaType), DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);

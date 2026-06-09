@@ -144,11 +144,11 @@ public class ApiClient(HttpClient http)
     // curation — single rotating AI hero pick for Home (#135). refresh=true asks the server
     // for a different pick (manual escape hatch). Returns null on any failure; Home falls back
     // to a watchlist-derived hero, so there's no user-facing error path here.
-    public async Task<CuratedHeroResponse?> GetCuratedHeroAsync(bool refresh = false, CancellationToken cancellationToken = default)
+    public async Task<CuratedHeroResponse?> GetCuratedHeroAsync(bool refresh = false, string mediaType = "all", CancellationToken cancellationToken = default)
     {
         try
         {
-            return await _http.GetFromJsonAsync<CuratedHeroResponse>($"api/curation/hero?refresh={refresh}", cancellationToken);
+            return await _http.GetFromJsonAsync<CuratedHeroResponse>($"api/curation/hero?refresh={refresh}&mediaType={mediaType}", cancellationToken);
         }
         // only rethrow caller-driven cancellation. HttpClient.Timeout surfaces as
         // TaskCanceledException with our token NOT cancelled — keep the "errors return null"

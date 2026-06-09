@@ -540,7 +540,7 @@ else
         int seq = ++_heroRequestSeq;
         try
         {
-            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, _cts.Token);
+            CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, MediaFilter.MediaType, _cts.Token);
             if (seq == _heroRequestSeq && response?.Hero is not null)
                 _heroPick = response.Hero;
         }
@@ -640,8 +640,22 @@ else
 
     private void OnMediaFilterChanged() => _ = InvokeAsync(async () =>
     {
+        // re-fetch a media-appropriate AI hero for the new filter (#147). The single client-held
+        // pick may be the other media type; the server re-selects from the SAME cached reservoir
+        // (no paid regen). Recompute _hero with _heroLoading set BEFORE the async work so the slot
+        // reflects the new filter immediately — keeping the current pick only if it still matches,
+        // else showing the skeleton — instead of flashing the now-filtered-out pick during the
+        // in-flight refetch. The flag gates a derived value (_hero), so it must be set before that
+        // value is recomputed, not just before the async call (see #135 learning).
+        _heroLoading = true;
+        _hero = SelectHero();
+        StateHasChanged();
+        // the hero fetch and the watchlist reload are independent (the server reads its own
+        // watchlist for the hero, not the client's), so kick the hero off concurrently rather
+        // than after the awaited reload — the new pick lands sooner.
+        _ = LoadHero();
         try { await ReloadWatchlist(); }
-        catch { }
+        catch { /* leave stale data in place on network failure */ }
     });
 
     // user changed services in Settings — refresh the cached list and re-run the partition
@@ -708,8 +722,10 @@ else
                 PrimaryAction: HomeHero.HeroAction.Resume);
         }
 
-        // 3. a TV show whose latest episode aired in the last 7 days (regardless of status)
-        QueueItem? recent = _allItems
+        // 3. a TV show whose latest episode aired in the last 7 days (regardless of status).
+        // inherently TV-only ("new episode this week" has no movie analogue), so it's suppressed
+        // under the Movies filter — otherwise the hero would leak a TV show under Movies (#167).
+        QueueItem? recent = MediaFilter.MediaType == "movie" ? null : _allItems
             .Where(i => i.MediaType == MediaTypes.Tv
                 && i.HasNewEpisode
                 && i.Status != QueueStatus.NotForMe
