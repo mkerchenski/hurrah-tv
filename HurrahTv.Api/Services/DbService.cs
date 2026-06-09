@@ -319,8 +319,8 @@ public class DbService(IConfiguration config)
     // scale), so distinct users effectively never contend (a 64-bit collision is astronomically
     // unlikely). The lock is released automatically when tx commits or rolls back, so callers
     // never have to unlock explicitly. pins #163.
-    private static Task<int> LockUserQueueAsync(NpgsqlConnection db, string userId, NpgsqlTransaction tx) =>
-        db.ExecuteAsync("SELECT pg_advisory_xact_lock(hashtextextended(@UserId, 0))", new { UserId = userId }, tx);
+    private static async Task LockUserQueueAsync(NpgsqlConnection db, string userId, NpgsqlTransaction tx) =>
+        await db.ExecuteAsync("SELECT pg_advisory_xact_lock(hashtextextended(@UserId, 0))", new { UserId = userId }, tx);
 
     public async Task<bool> RemoveFromQueueAsync(int id, string userId)
     {
