@@ -524,11 +524,85 @@ else
     {
         if (_details == null) return;
 
-        if (_queueItem != null)
+        // snapshot the navigation identity — OnParametersSetAsync nulls _queueItem on navigation,
+        // so after an await we must confirm we're still on the same title before mutating state.
+        int startTmdbId = TmdbId;
+        string startMediaType = MediaType;
+        try
         {
-            if (_queueItem.Status == status)
-                return;
-            QueueItem? updated = await Api.UpdateStatusAsync(_queueItem.Id, status);
+            if (_queueItem != null)
+            {
+                QueueItem existing = _queueItem;
+                if (existing.Status == status)
+                    return;
+                QueueItem? updated = await Api.UpdateStatusAsync(existing.Id, status);
+                if (Navigated(startTmdbId, startMediaType)) return;
+                if (updated != null)
+                {
+                    _queueItem = updated;
+                    QuickActionSvc.NotifyItemUpdated(updated);
+                }
+                else
+                {
+                    existing.Status = status; // optimistic fallback
+                }
+            }
+            else
+            {
+                QueueItem item = _details.ToQueueItem();
+                item.Status = status;
+                // idempotent post-#155: AddToQueueAsync returns the existing row on a duplicate,
+                // so null here means a genuine add failure, not a conflict to recover from.
+                QueueItem? added = await Api.AddToQueueAsync(item);
+                if (Navigated(startTmdbId, startMediaType)) return;
+                if (added == null)
+                {
+                    await Toast.ShowAsync("Couldn't update your list — try again");
+                    return;
+                }
+                _queueItem = added;
+                QuickActionSvc.NotifyItemUpdated(added);
+            }
+        }
+        catch
+        {
+            // a network failure throws out of Update/AddToQueueAsync; without this the click
+            // fails silently (Blazor swallows event-handler exceptions). Matches HomeHero.
+            await Toast.ShowAsync("Couldn't update your list — try again");
+            return;
+        }
+        if (!_disposed) StateHasChanged();
+    }
+
+    private async Task SetSentiment(int sentiment)
+    {
+        if (_details == null) return;
+
+        int startTmdbId = TmdbId;
+        string startMediaType = MediaType;
+        try
+        {
+            if (_queueItem == null)
+            {
+                // idempotent post-#155 — null means a genuine add failure, so surface it and bail.
+                QueueItem? added = await Api.AddToQueueAsync(_details.ToQueueItem());
+                if (Navigated(startTmdbId, startMediaType)) return;
+                if (added == null)
+                {
+                    await Toast.ShowAsync("Couldn't update your list — try again");
+                    return;
+                }
+                _queueItem = added;
+                // commit the add to the UI before the sentiment call — if that throws, the item
+                // is still shown as added (it exists server-side) rather than silently vanishing.
+                QuickActionSvc.NotifyItemUpdated(added);
+                StateHasChanged();
+            }
+
+            QueueItem current = _queueItem;
+            int? newSentiment = current.Sentiment == sentiment ? null : sentiment;
+            QueueItem? updated = await Api.UpdateSentimentAsync(current.Id, newSentiment);
+            if (Navigated(startTmdbId, startMediaType)) return;
             if (updated != null)
             {
                 _queueItem = updated;
@@ -536,54 +610,22 @@ else
             }
             else
             {
-                _queueItem.Status = status; // optimistic fallback
+                current.Sentiment = newSentiment; // optimistic fallback
             }
         }
-        else
+        catch
         {
-            QueueItem item = _details.ToQueueItem();
-            item.Status = status;
-            _queueItem = await Api.AddToQueueAsync(item);
-            if (_queueItem == null)
-                _queueItem = await FindQueueItemAsync();
-            if (_queueItem != null)
-                QuickActionSvc.NotifyItemUpdated(_queueItem);
+            await Toast.ShowAsync("Couldn't update your list — try again");
+            return;
         }
-        StateHasChanged();
+        if (!_disposed) StateHasChanged();
     }
 
-    private async Task SetSentiment(int sentiment)
-    {
-        if (_details == null) return;
-
-        if (_queueItem == null)
-        {
-            _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
-            if (_queueItem == null)
-                _queueItem = await FindQueueItemAsync();
-            if (_queueItem == null) return;
-        }
-
-        int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
-        QueueItem? updated = await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
-        if (updated != null)
-        {
-            _queueItem = updated;
-            QuickActionSvc.NotifyItemUpdated(updated);
-        }
-        else
-        {
-            _queueItem.Sentiment = newSentiment; // optimistic fallback
-        }
-        StateHasChanged();
-    }
-
-    private async Task<QueueItem?> FindQueueItemAsync()
-    {
-        // item already exists in queue (409 conflict) — fetch it
-        List<QueueItem> queue = await Api.GetQueueAsync();
-        return queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
-    }
+    // true if the component was disposed or navigated to a different title while an await was in
+    // flight — OnParametersSetAsync resets _queueItem on navigation, so a continuation that
+    // mutates it would NRE or clobber the new title's state. Callers bail silently when true.
+    private bool Navigated(int startTmdbId, string startMediaType) =>
+        _disposed || TmdbId != startTmdbId || MediaType != startMediaType;
 
     private static bool IsRecent(string? dateStr)
     {
