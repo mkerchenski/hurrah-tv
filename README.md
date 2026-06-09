@@ -4,6 +4,8 @@ AI-curated streaming across all your services. One smart watchlist that learns w
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) ![Blazor WASM](https://img.shields.io/badge/Blazor-WebAssembly-512BD4) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1) ![Claude AI](https://img.shields.io/badge/Claude_AI-Anthropic-D4A574)
 
+> **New to the project?** Start with [`ONBOARDING.md`](ONBOARDING.md) — a 5-minute orientation and a map to the docs below.
+
 ## What it does
 
 Hurrah.tv is an opinionated streaming platform that curates content across Netflix, Hulu, Disney+, Prime Video, Max, Peacock, Paramount+, and Apple TV+. It learns from your watch history and preferences to build a personalized home feed — like opening one app instead of eight.
