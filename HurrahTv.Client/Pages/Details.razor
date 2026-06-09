@@ -543,9 +543,9 @@ else
         {
             QueueItem item = _details.ToQueueItem();
             item.Status = status;
+            // AddToQueueAsync is idempotent post-#155 — returns the existing row on a duplicate,
+            // so null here means a genuine add failure, not a conflict to recover from.
             _queueItem = await Api.AddToQueueAsync(item);
-            if (_queueItem == null)
-                _queueItem = await FindQueueItemAsync();
             if (_queueItem != null)
                 QuickActionSvc.NotifyItemUpdated(_queueItem);
         }
@@ -558,9 +558,8 @@ else
 
         if (_queueItem == null)
         {
+            // idempotent post-#155 — null means a genuine add failure, so bail.
             _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
-            if (_queueItem == null)
-                _queueItem = await FindQueueItemAsync();
             if (_queueItem == null) return;
         }
 
@@ -576,13 +575,6 @@ else
             _queueItem.Sentiment = newSentiment; // optimistic fallback
         }
         StateHasChanged();
-    }
-
-    private async Task<QueueItem?> FindQueueItemAsync()
-    {
-        // item already exists in queue (409 conflict) — fetch it
-        List<QueueItem> queue = await Api.GetQueueAsync();
-        return queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
     }
 
     private static bool IsRecent(string? dateStr)
