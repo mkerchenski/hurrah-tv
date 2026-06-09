@@ -545,7 +545,7 @@ else
             {
                 QueueItem item = _details.ToQueueItem();
                 item.Status = status;
-                // AddToQueueAsync is idempotent post-#155 — returns the existing row on a duplicate,
+                // idempotent post-#155: AddToQueueAsync returns the existing row on a duplicate,
                 // so null here means a genuine add failure, not a conflict to recover from.
                 _queueItem = await Api.AddToQueueAsync(item);
                 if (_queueItem == null)
@@ -581,6 +581,10 @@ else
                     await Toast.ShowAsync("Couldn't update your list — try again");
                     return;
                 }
+                // commit the add to the UI before the sentiment call — if that throws, the item
+                // is still shown as added (it exists server-side) rather than silently vanishing.
+                QuickActionSvc.NotifyItemUpdated(_queueItem);
+                StateHasChanged();
             }
 
             int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
