@@ -410,7 +410,12 @@ public class DbService(IConfiguration config)
         // applies the status / backdrop-backfill policy to a row that already exists. Shared
         // between the fast path (row found by the initial SELECT) and the race-lost path (the
         // INSERT below hit the unique constraint), so both behave identically. pins #155.
-        async Task<QueueItem> ApplyUpdatePolicy(QueueItem row)
+        // INVARIANT (#183): every branch sets an absolute value keyed by primary Id and is
+        // idempotent — so it's safe to run outside the advisory lock (fast path) or enlisted in the
+        // caller's tx (race-lost path). A future read-modify-write or relative-update policy would
+        // NOT be safe this way and MUST run inside the tx/lock on both paths. The optional tx must
+        // be passed when an open transaction exists on db, or Npgsql throws.
+        async Task<QueueItem> ApplyUpdatePolicy(QueueItem row, NpgsqlTransaction? tx = null)
         {
             // backfill backdrop on existing rows that pre-date the column — same row touch as status update
             bool needsBackdropBackfill = string.IsNullOrEmpty(row.BackdropPath) && !string.IsNullOrEmpty(backdropPath);
@@ -419,7 +424,7 @@ public class DbService(IConfiguration config)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status, BackdropPath = @BackdropPath WHERE Id = @Id",
-                    new { Status = (int)targetStatus, BackdropPath = backdropPath, row.Id });
+                    new { Status = (int)targetStatus, BackdropPath = backdropPath, row.Id }, tx);
                 row.Status = targetStatus;
                 row.BackdropPath = backdropPath;
             }
@@ -427,14 +432,14 @@ public class DbService(IConfiguration config)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET Status = @Status WHERE Id = @Id",
-                    new { Status = (int)targetStatus, row.Id });
+                    new { Status = (int)targetStatus, row.Id }, tx);
                 row.Status = targetStatus;
             }
             else if (needsBackdropBackfill)
             {
                 await db.ExecuteAsync(
                     "UPDATE QueueItems SET BackdropPath = @BackdropPath WHERE Id = @Id",
-                    new { BackdropPath = backdropPath, row.Id });
+                    new { BackdropPath = backdropPath, row.Id }, tx);
                 row.BackdropPath = backdropPath;
             }
             return row;
@@ -442,6 +447,9 @@ public class DbService(IConfiguration config)
 
         QueueItem? existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType);
 
+        // fast path — no transaction/lock: the policy only issues single-row "UPDATE ... WHERE Id"
+        // statements (atomic in Postgres) and allocates no Position, so there's no MAX-read race to
+        // serialize. Safe given the idempotent-by-Id invariant documented on ApplyUpdatePolicy.
         if (existing != null)
             return await ApplyUpdatePolicy(existing);
 
@@ -481,9 +489,12 @@ public class DbService(IConfiguration config)
         {
             // lost the insert race — the row exists now. Re-read and apply the same policy
             // the fast path would have, so a concurrent /seen + /ensure can't diverge.
+            // Run the policy enlisted in tx, BEFORE commit, so the mutation stays covered by the
+            // advisory lock instead of landing after the lock is released (#183).
             existing = await SelectQueueItemAsync(db, userId, tmdbId, mediaType, tx);
+            QueueItem? result = existing is null ? null : await ApplyUpdatePolicy(existing, tx);
             await tx.CommitAsync();
-            return existing is null ? null : await ApplyUpdatePolicy(existing);
+            return result;
         }
 
         await tx.CommitAsync();

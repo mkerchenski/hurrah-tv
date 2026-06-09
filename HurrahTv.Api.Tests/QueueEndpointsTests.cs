@@ -260,6 +260,56 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal(n, positions.Distinct().Count());
     }
 
+    // pins #183 — UpsertWithStatusAsync's ApplyUpdatePolicy was refactored to thread the caller's
+    // transaction through (so the race-lost path's UPDATE stays inside the advisory lock). These
+    // pin that the policy behavior #155 codified is unchanged on the fast path (existing row): a
+    // forgotten tx arg or a broken reorder would surface as a wrong status / missing backfill here.
+    [Fact]
+    public async Task Seen_OnExistingItem_TransitionsToFinished_AndBackfillsBackdrop()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-seen");
+
+        // add as WantToWatch with no backdrop, then /seen with a backdrop → status flips to
+        // Finished AND the empty backdrop is backfilled (the willUpdate && needsBackdropBackfill branch)
+        QueueItem added = (await PostAsync(client, NewQueueItem(tmdbId: 1399, title: "Game of Thrones")))!;
+        Assert.Equal(QueueStatus.WantToWatch, added.Status);
+        Assert.Equal("", added.BackdropPath);
+
+        HttpResponseMessage seenResp = await client.PostAsJsonAsync("/api/queue/seen",
+            new SeenRequest(1399, MediaTypes.Tv, "Game of Thrones", "/poster.jpg", "[]", BackdropPath: "/backdrop.jpg"));
+        Assert.Equal(HttpStatusCode.OK, seenResp.StatusCode);
+        QueueItem seen = (await seenResp.Content.ReadFromJsonAsync<QueueItem>())!;
+
+        Assert.Equal(added.Id, seen.Id); // same row — fast path, no duplicate
+        Assert.Equal(QueueStatus.Finished, seen.Status);
+        Assert.Equal("/backdrop.jpg", seen.BackdropPath);
+    }
+
+    // pins #183 — /ensure never changes status (shouldUpdate => false) but must still backfill a
+    // missing backdrop (the needsBackdropBackfill-only branch). Guards the backdrop-only path of
+    // ApplyUpdatePolicy under the tx-threading refactor.
+    [Fact]
+    public async Task Ensure_OnExistingItem_LeavesStatus_ButBackfillsBackdrop()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-ensure");
+
+        QueueItem added = (await PostAsync(client, NewQueueItem(tmdbId: 1399, title: "Game of Thrones")))!;
+
+        // move it to Watching so we can prove /ensure does NOT touch status
+        HttpResponseMessage statusResp = await client.PutAsJsonAsync(
+            $"/api/queue/{added.Id}/status", new QueueStatusUpdate(QueueStatus.Watching));
+        Assert.Equal(HttpStatusCode.OK, statusResp.StatusCode);
+
+        HttpResponseMessage ensureResp = await client.PostAsJsonAsync("/api/queue/ensure",
+            new SeenRequest(1399, MediaTypes.Tv, "Game of Thrones", "/poster.jpg", "[]", BackdropPath: "/backdrop.jpg"));
+        Assert.Equal(HttpStatusCode.OK, ensureResp.StatusCode);
+        QueueItem ensured = (await ensureResp.Content.ReadFromJsonAsync<QueueItem>())!;
+
+        Assert.Equal(added.Id, ensured.Id);
+        Assert.Equal(QueueStatus.Watching, ensured.Status); // status untouched by /ensure
+        Assert.Equal("/backdrop.jpg", ensured.BackdropPath); // but backdrop backfilled
+    }
+
     private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)
     {
         HttpResponseMessage resp = await client.PostAsJsonAsync("/api/queue", payload);
