@@ -524,30 +524,44 @@ else
     {
         if (_details == null) return;
 
-        if (_queueItem != null)
+        try
         {
-            if (_queueItem.Status == status)
-                return;
-            QueueItem? updated = await Api.UpdateStatusAsync(_queueItem.Id, status);
-            if (updated != null)
+            if (_queueItem != null)
             {
-                _queueItem = updated;
-                QuickActionSvc.NotifyItemUpdated(updated);
+                if (_queueItem.Status == status)
+                    return;
+                QueueItem? updated = await Api.UpdateStatusAsync(_queueItem.Id, status);
+                if (updated != null)
+                {
+                    _queueItem = updated;
+                    QuickActionSvc.NotifyItemUpdated(updated);
+                }
+                else
+                {
+                    _queueItem.Status = status; // optimistic fallback
+                }
             }
             else
             {
-                _queueItem.Status = status; // optimistic fallback
+                QueueItem item = _details.ToQueueItem();
+                item.Status = status;
+                // AddToQueueAsync is idempotent post-#155 — returns the existing row on a duplicate,
+                // so null here means a genuine add failure, not a conflict to recover from.
+                _queueItem = await Api.AddToQueueAsync(item);
+                if (_queueItem == null)
+                {
+                    await Toast.ShowAsync("Couldn't update your list — try again");
+                    return;
+                }
+                QuickActionSvc.NotifyItemUpdated(_queueItem);
             }
         }
-        else
+        catch
         {
-            QueueItem item = _details.ToQueueItem();
-            item.Status = status;
-            // AddToQueueAsync is idempotent post-#155 — returns the existing row on a duplicate,
-            // so null here means a genuine add failure, not a conflict to recover from.
-            _queueItem = await Api.AddToQueueAsync(item);
-            if (_queueItem != null)
-                QuickActionSvc.NotifyItemUpdated(_queueItem);
+            // a network failure throws out of Update/AddToQueueAsync; without this the click
+            // fails silently (Blazor swallows event-handler exceptions). Matches HomeHero.
+            await Toast.ShowAsync("Couldn't update your list — try again");
+            return;
         }
         StateHasChanged();
     }
@@ -556,23 +570,35 @@ else
     {
         if (_details == null) return;
 
-        if (_queueItem == null)
+        try
         {
-            // idempotent post-#155 — null means a genuine add failure, so bail.
-            _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
-            if (_queueItem == null) return;
-        }
+            if (_queueItem == null)
+            {
+                // idempotent post-#155 — null means a genuine add failure, so surface it and bail.
+                _queueItem = await Api.AddToQueueAsync(_details.ToQueueItem());
+                if (_queueItem == null)
+                {
+                    await Toast.ShowAsync("Couldn't update your list — try again");
+                    return;
+                }
+            }
 
-        int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
-        QueueItem? updated = await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
-        if (updated != null)
-        {
-            _queueItem = updated;
-            QuickActionSvc.NotifyItemUpdated(updated);
+            int? newSentiment = _queueItem.Sentiment == sentiment ? null : sentiment;
+            QueueItem? updated = await Api.UpdateSentimentAsync(_queueItem.Id, newSentiment);
+            if (updated != null)
+            {
+                _queueItem = updated;
+                QuickActionSvc.NotifyItemUpdated(updated);
+            }
+            else
+            {
+                _queueItem.Sentiment = newSentiment; // optimistic fallback
+            }
         }
-        else
+        catch
         {
-            _queueItem.Sentiment = newSentiment; // optimistic fallback
+            await Toast.ShowAsync("Couldn't update your list — try again");
+            return;
         }
         StateHasChanged();
     }
