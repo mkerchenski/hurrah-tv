@@ -24,7 +24,7 @@ public static class CurationEndpoints
 
                 // active Home media filter — narrows the cached reservoir to a movie/TV pick (#147).
                 // anything other than a valid media type means "all" (no narrowing).
-                string filter = MediaTypes.IsValid(mediaType) ? mediaType! : "all";
+                string filter = MediaTypes.IsValid(mediaType) ? mediaType! : MediaTypes.All;
 
                 // a shuffle always advances the pick (free); only the paid reservoir regen is
                 // rate-limited, so a second shuffle inside the cooldown still moves to a new pick.

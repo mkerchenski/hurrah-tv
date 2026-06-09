@@ -32,4 +32,4 @@ const inst = window.Sortable.get(document.querySelector('[data-item-id]').parent
 const original = inst.options.onEnd;
 inst.options.onEnd = (evt) => { console.log(evt.oldDraggableIndex, evt.newDraggableIndex); return original(evt); };
 ```
-After a genuine fix to the file, the served `?` build must re-fingerprint before the browser will load it — restart the Client `dotnet watch` (ask the dev to do it; don't force-restart their session).
+After a genuine fix to the file, the build must re-fingerprint before the browser will load it — restart the Client `dotnet watch` (ask the dev to do it; don't force-restart their session).

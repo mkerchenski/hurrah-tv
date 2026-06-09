@@ -315,9 +315,10 @@ public class DbService(IConfiguration config)
     }
 
     // per-user transaction-scoped advisory lock. hashtextextended returns a 64-bit key (unlike
-    // hashtext's 32-bit value, which would share lock slots across unrelated users via collision),
-    // so distinct users never contend. The lock is released automatically when tx commits or rolls
-    // back, so callers never have to unlock explicitly. pins #163.
+    // hashtext's 32-bit value, whose narrow space made cross-user slot collisions plausible at
+    // scale), so distinct users effectively never contend (a 64-bit collision is astronomically
+    // unlikely). The lock is released automatically when tx commits or rolls back, so callers
+    // never have to unlock explicitly. pins #163.
     private static Task<int> LockUserQueueAsync(NpgsqlConnection db, string userId, NpgsqlTransaction tx) =>
         db.ExecuteAsync("SELECT pg_advisory_xact_lock(hashtextextended(@UserId, 0))", new { UserId = userId }, tx);
 

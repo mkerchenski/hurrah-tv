@@ -18,7 +18,7 @@ The intent (and the code comment) was "keyed per-user, so unrelated users never 
 
 Use **`hashtextextended(text, seed)`**, which returns `bigint` — the full 64-bit key space. Available since Postgres 11 (Azure PG Flexible Server qualifies). Verify quickly: `SELECT pg_typeof(hashtextextended('abc', 0));` → `bigint`.
 
-The 32-bit form is functionally fine at tiny scale (collision needs two specific users adding concurrently), but `hashtextextended` is a one-word change that makes the per-key guarantee real and the comment honest.
+The 32-bit form is functionally fine at tiny scale (collision needs two specific users adding concurrently), but `hashtextextended` is a one-word change that dramatically reduces collision risk (any fixed-size hash can still theoretically collide) and makes the comment honest.
 
 ## Example
 ```sql
