@@ -26,6 +26,21 @@ public static class QueueItemExtensions
     public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
         item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
 
+    // caught up if the user's newest-watched episode for this show is at or beyond the
+    // stored "latest" (lexicographic by season then episode). Robust to a stale stored
+    // S/E: watching a genuinely-newer episode (S,E2) counts as caught up even when the
+    // stored latest still lags at (S,E1) — which is exactly the daily-show case where
+    // TMDb's last_episode_to_air ingestion lags the live season data. Returns false when
+    // there's no stored latest or the user hasn't watched anything for the show, matching
+    // the prior exact-match behavior. pins #189.
+    public static bool IsLatestEpisodeWatched(
+        int? latestSeason, int? latestEpisode, (int Season, int Episode)? highWaterWatched)
+    {
+        if (latestSeason is not { } season || latestEpisode is not { } episode) return false;
+        if (highWaterWatched is not { } watched) return false;
+        return watched.CompareTo((season, episode)) >= 0;
+    }
+
     // streamable y/n for the Home watchlist filter — mirrors the API's IsWatchableOn
     // (QueueEndpoints) exactly: empty/unknown provider data is "don't hide" (#141), and a
     // match is plain service-id membership. NOT the same rule as the Queue page's

@@ -69,6 +69,38 @@ public class QueueItemExtensionsTests
         Assert.Null(item.DaysSinceLatestEpisode(TodayUtc));
     }
 
+    // pins #189 — the daily-show bug. Stored latest lags at (S,E1); the user watched the
+    // genuinely-newer (S,E2) via the live Details browser. High-water reconciliation must
+    // treat the show as caught up so it drops out of Available Now, even though the stored
+    // LatestEpisode* fields haven't refreshed to (S,E2) yet.
+    [Fact]
+    public void IsLatestEpisodeWatched_Caught_Up_When_Watched_Newer_Than_Stale_Stored_Latest() =>
+        Assert.True(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: 12, latestEpisode: 1, highWaterWatched: (12, 2)));
+
+    [Fact]
+    public void IsLatestEpisodeWatched_ExactMatch_ReturnsTrue() =>
+        Assert.True(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: 12, latestEpisode: 5, highWaterWatched: (12, 5)));
+
+    // user is behind the stored latest — still has an unwatched newest episode, so NOT caught up.
+    [Fact]
+    public void IsLatestEpisodeWatched_WatchedOlderThanStoredLatest_ReturnsFalse() =>
+        Assert.False(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: 12, latestEpisode: 5, highWaterWatched: (12, 1)));
+
+    // watched a later SEASON than the stored latest — our season data is stale-behind; caught up.
+    [Fact]
+    public void IsLatestEpisodeWatched_WatchedLaterSeason_ReturnsTrue() =>
+        Assert.True(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: 12, latestEpisode: 5, highWaterWatched: (13, 1)));
+
+    // no stored latest → no notion of "caught up"; preserves the prior exact-match behavior.
+    [Fact]
+    public void IsLatestEpisodeWatched_NullStoredLatest_ReturnsFalse() =>
+        Assert.False(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: null, latestEpisode: null, highWaterWatched: (12, 5)));
+
+    // user hasn't watched anything for this show → not caught up.
+    [Fact]
+    public void IsLatestEpisodeWatched_NoWatchedEpisodes_ReturnsFalse() =>
+        Assert.False(QueueItemExtensions.IsLatestEpisodeWatched(latestSeason: 12, latestEpisode: 5, highWaterWatched: null));
+
     [Fact]
     public void ParseAvailableOnProviderIds_ValidJsonList_ReturnsIds()
     {
