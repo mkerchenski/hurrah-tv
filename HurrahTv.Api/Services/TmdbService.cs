@@ -559,17 +559,25 @@ public class TmdbService
 
                 // override only when the season scan found something genuinely fresher than the
                 // show-endpoint values — never regress to older data on a thin/partial payload.
-                if (freshLatest is { } sld && sld.Date > lastAired.Value.Date)
+                // Compare (date, episode), not date alone: when last_episode_to_air lags by
+                // episode number on the SAME day (a show airing twice in a day, the exact
+                // ingestion-lag case this guards), the higher-numbered season episode still wins.
+                if (freshLatest is { } sld && freshLatestEp is { } sEp
+                    && (sld.Date, sEp).CompareTo((lastAired.Value.Date, lastEpisode ?? -1)) > 0)
                 {
                     lastAired = sld;
                     lastSeason = season;
-                    lastEpisode = freshLatestEp;
+                    lastEpisode = sEp;
                 }
-                if (freshNext is { } snd && (nextAir is null || snd.Date < nextAir.Value.Date))
+                // symmetric for next: a sooner date — or the same date with a lower episode
+                // number — is the more-correct "next" than next_episode_to_air.
+                if (freshNext is { } snd && freshNextEp is { } nEp
+                    && (nextAir is null
+                        || (snd.Date, nEp).CompareTo((nextAir.Value.Date, nextEpisode ?? int.MaxValue)) < 0))
                 {
                     nextAir = snd;
                     nextSeason = season;
-                    nextEpisode = freshNextEp;
+                    nextEpisode = nEp;
                 }
             }
         }
@@ -663,7 +671,11 @@ public class TmdbService
                     latestEp = ep.EpisodeNumber;
                 }
             }
-            else if (nextDate is null || epDate.Date < nextDate.Value.Date)
+            // earliest still-upcoming: sooner date wins, tie-break on LOWER episode number
+            // (mirror of the latest branch above) so a same-day multi-episode payload or an
+            // out-of-order season array can't pick the wrong "next".
+            else if (nextDate is null || epDate.Date < nextDate.Value.Date
+                || (epDate.Date == nextDate.Value.Date && ep.EpisodeNumber < (nextEp ?? int.MaxValue)))
             {
                 nextDate = epDate;
                 nextEp = ep.EpisodeNumber;

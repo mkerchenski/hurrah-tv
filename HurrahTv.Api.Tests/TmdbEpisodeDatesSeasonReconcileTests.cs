@@ -117,4 +117,39 @@ public class TmdbEpisodeDatesSeasonReconcileTests
         Assert.Equal(10, lastEpisode);
         Assert.Null(nextAir);
     }
+
+    // pins the same-air-date tie-break (xreview/Copilot): last_episode_to_air lags at E1 while
+    // a SECOND episode (E2) aired the SAME day. The date isn't strictly newer, so a date-only
+    // override gate would keep E1 — but the newest aired is really E2. Latest episode number
+    // must reconcile to E2 even though the dates match.
+    [Fact]
+    public async Task GetEpisodeDates_TwoEpisodesSameDay_RederivesHigherEpisodeNumber()
+    {
+        DateTime today = DateTime.UtcNow.Date;
+        string showJson = $$"""
+        {
+          "last_episode_to_air": { "air_date": "{{Iso(today)}}", "season_number": 13, "episode_number": 1 },
+          "next_episode_to_air": null
+        }
+        """;
+        string seasonJson = $$"""
+        {
+          "name": "Season 13",
+          "episodes": [
+            { "episode_number": 1, "air_date": "{{Iso(today)}}" },
+            { "episode_number": 2, "air_date": "{{Iso(today)}}" }
+          ]
+        }
+        """;
+
+        RoutingHandler handler = new(showJson, seasonJson);
+        TmdbService tmdb = BuildService(handler);
+
+        (DateTime? lastAired, int? lastSeason, int? lastEpisode, _, _, _)
+            = await tmdb.GetEpisodeDatesAsync(TmdbId);
+
+        Assert.Equal(today, lastAired!.Value.Date);
+        Assert.Equal(13, lastSeason);
+        Assert.Equal(2, lastEpisode);
+    }
 }

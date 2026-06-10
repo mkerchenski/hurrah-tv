@@ -438,8 +438,8 @@ else
     private void StampWatchedFlags()
     {
         // high-water mark per show: the newest (season, episode) the user has watched.
-        // Pre-computed once (not per-item) so the caught-up check below is O(1) per item.
-        // We compare against this rather than exact-matching the stored latest S/E, because
+        // pre-computed once (not per-item) so the caught-up check below is O(1) per item.
+        // we compare against this rather than exact-matching the stored latest S/E, because
         // for daily shows the stored latest lags the truly-newest aired episode — watching
         // the newer one must still count as caught up (#189).
         Dictionary<int, (int Season, int Episode)> highWater = _watchedSet
