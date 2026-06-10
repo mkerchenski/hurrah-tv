@@ -12,6 +12,11 @@ public class TmdbService
     private readonly HttpClient _http;
     private readonly IMemoryCache _cache;
     private readonly string _apiKey;
+
+    // a TV show whose latest episode aired within this window is treated as "actively airing":
+    // GetEpisodeDatesAsync re-derives latest/next from live season data to beat TMDb's
+    // last_episode_to_air ingestion lag (#189). Dormant back-catalog skips the extra fetch.
+    private static readonly TimeSpan SeasonScanActiveWindow = TimeSpan.FromDays(10);
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -506,8 +511,7 @@ public class TmdbService
             // todayUtc.Date — an Unspecified-Kind value could drift a calendar day near
             // midnight UTC. pins the date-only convention in tmdb-air-date-is-date-only.
             if (lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
-                && DateTime.TryParse(lastDate.GetString(), CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedLast))
+                && TryParseTmdbDate(lastDate.GetString(), out DateTime parsedLast))
             {
                 lastAired = parsedLast;
             }
@@ -526,8 +530,7 @@ public class TmdbService
             // same date-only → midnight UTC convention as last_episode_to_air above; the filter
             // also compares NextEpisodeDate.Date against todayUtc.Date (#170 override).
             if (nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
-                && DateTime.TryParse(nextDate.GetString(), CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTime parsedNext))
+                && TryParseTmdbDate(nextDate.GetString(), out DateTime parsedNext))
             {
                 nextAir = parsedNext;
             }
@@ -539,19 +542,51 @@ public class TmdbService
                 nextEpisode = nextEn.GetInt32();
         }
 
+        // TMDb's last_episode_to_air can lag the live season data the Details episode browser
+        // reads (GetSeasonAsync) — for a daily show that produced a stale "X days ago" on Home
+        // vs. a newer episode shown in Details (#189). For an actively-airing show, re-derive
+        // latest/next from the season's episodes so the stored values match Details. Gated on
+        // recency so we only pay the extra (6h-cached) season fetch for shows actually airing.
+        DateTime today = DateTime.UtcNow.Date;
+        if (lastAired is { } recentlyAired && lastSeason is { } season
+            && recentlyAired.Date >= today - SeasonScanActiveWindow)
+        {
+            SeasonDetail? seasonDetail = await GetSeasonAsync(tmdbId, season, cancellationToken);
+            if (seasonDetail is not null)
+            {
+                (DateTime? freshLatest, int? freshLatestEp, DateTime? freshNext, int? freshNextEp)
+                    = PickFreshestFromSeason(seasonDetail, today);
+
+                // override only when the season scan found something genuinely fresher than the
+                // show-endpoint values — never regress to older data on a thin/partial payload.
+                if (freshLatest is { } sld && sld.Date > lastAired.Value.Date)
+                {
+                    lastAired = sld;
+                    lastSeason = season;
+                    lastEpisode = freshLatestEp;
+                }
+                if (freshNext is { } snd && (nextAir is null || snd.Date < nextAir.Value.Date))
+                {
+                    nextAir = snd;
+                    nextSeason = season;
+                    nextEpisode = freshNextEp;
+                }
+            }
+        }
+
         (DateTime? lastAired, int? lastSeason, int? lastEpisode, DateTime? nextAir, int? nextSeason, int? nextEpisode) result = (lastAired, lastSeason, lastEpisode, nextAir, nextSeason, nextEpisode);
         _cache.Set(cacheKey, result, TimeSpan.FromHours(6));
         return result;
     }
 
-    public async Task<SeasonDetail?> GetSeasonAsync(int tmdbId, int seasonNumber)
+    public async Task<SeasonDetail?> GetSeasonAsync(int tmdbId, int seasonNumber, CancellationToken cancellationToken = default)
     {
         string cacheKey = $"season:{tmdbId}:{seasonNumber}";
         if (_cache.TryGetValue(cacheKey, out SeasonDetail? cached))
             return cached!.Clone(); // defensive copy — same rationale as ShowDetails.Clone (#109)
 
         string url = $"tv/{tmdbId}/season/{seasonNumber}?api_key={_apiKey}&language=en-US";
-        JsonElement? raw = await GetAsync<JsonElement?>(url);
+        JsonElement? raw = await GetAsync<JsonElement?>(url, cancellationToken);
         if (raw == null) return null;
 
         JsonElement json = raw.Value;
@@ -595,6 +630,48 @@ public class TmdbService
         GenreIds = r.GenreIds ?? [],
         OriginalLanguage = r.OriginalLanguage ?? "",
     };
+
+    // TMDb date-only fields (air_date / first_air_date) carry no hour-of-day. Parse with
+    // AssumeUniversal|AdjustToUniversal so the value stores + round-trips as Kind=Utc — an
+    // Unspecified-Kind value can drift a calendar day against todayUtc.Date in the Home
+    // filters. See Learnings/tmdb-air-date-is-date-only.md.
+    private static bool TryParseTmdbDate(string? raw, out DateTime parsed) =>
+        DateTime.TryParse(raw, CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsed);
+
+    // scans a season's episodes for the newest already-aired episode (later date wins, tie-break
+    // on higher episode number) and the earliest still-upcoming one. Pure given a SeasonDetail +
+    // today; the caller decides whether these beat the show-endpoint's last/next_episode_to_air.
+    private static (DateTime? Latest, int? LatestEp, DateTime? Next, int? NextEp) PickFreshestFromSeason(
+        SeasonDetail season, DateTime today)
+    {
+        DateTime? latestDate = null;
+        int? latestEp = null;
+        DateTime? nextDate = null;
+        int? nextEp = null;
+
+        foreach (EpisodeInfo ep in season.Episodes)
+        {
+            if (!TryParseTmdbDate(ep.AirDate, out DateTime epDate)) continue;
+
+            if (epDate.Date <= today)
+            {
+                if (latestDate is null || epDate.Date > latestDate.Value.Date
+                    || (epDate.Date == latestDate.Value.Date && ep.EpisodeNumber > (latestEp ?? 0)))
+                {
+                    latestDate = epDate;
+                    latestEp = ep.EpisodeNumber;
+                }
+            }
+            else if (nextDate is null || epDate.Date < nextDate.Value.Date)
+            {
+                nextDate = epDate;
+                nextEp = ep.EpisodeNumber;
+            }
+        }
+
+        return (latestDate, latestEp, nextDate, nextEp);
+    }
 
     private async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken = default)
     {

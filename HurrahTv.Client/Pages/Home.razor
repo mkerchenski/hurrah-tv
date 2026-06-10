@@ -437,10 +437,21 @@ else
 
     private void StampWatchedFlags()
     {
+        // high-water mark per show: the newest (season, episode) the user has watched.
+        // Pre-computed once (not per-item) so the caught-up check below is O(1) per item.
+        // We compare against this rather than exact-matching the stored latest S/E, because
+        // for daily shows the stored latest lags the truly-newest aired episode — watching
+        // the newer one must still count as caught up (#189).
+        Dictionary<int, (int Season, int Episode)> highWater = _watchedSet
+            .GroupBy(w => w.TmdbId)
+            .ToDictionary(g => g.Key, g => g.Max(w => (w.Season, w.Episode)));
+
         foreach (QueueItem item in _allItems)
         {
-            if (item.LatestEpisodeSeason.HasValue && item.LatestEpisodeNumber.HasValue)
-                item.IsLatestEpisodeWatched = _watchedSet.Contains((item.TmdbId, item.LatestEpisodeSeason.Value, item.LatestEpisodeNumber.Value));
+            item.IsLatestEpisodeWatched = QueueItemExtensions.IsLatestEpisodeWatched(
+                item.LatestEpisodeSeason,
+                item.LatestEpisodeNumber,
+                highWater.TryGetValue(item.TmdbId, out (int Season, int Episode) hw) ? hw : null);
         }
     }
 
