@@ -629,13 +629,13 @@ else
 
     private static bool IsRecent(string? dateStr)
     {
-        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return false;
+        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return false;
         return (DateTime.UtcNow - date).TotalDays <= 30;
     }
 
     private static string FormatAirDate(string? dateStr)
     {
-        if (string.IsNullOrEmpty(dateStr) || !DateTime.TryParse(dateStr, out DateTime date)) return "";
+        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return "";
 
         int daysAgo = (int)(DateTime.UtcNow - date).TotalDays;
         if (daysAgo < 0)
