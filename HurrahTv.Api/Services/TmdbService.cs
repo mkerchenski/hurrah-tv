@@ -511,7 +511,7 @@ public class TmdbService
             // todayUtc.Date — an Unspecified-Kind value could drift a calendar day near
             // midnight UTC. pins the date-only convention in tmdb-air-date-is-date-only.
             if (lastEp.TryGetProperty("air_date", out JsonElement lastDate) && lastDate.ValueKind == JsonValueKind.String
-                && TryParseTmdbDate(lastDate.GetString(), out DateTime parsedLast))
+                && TmdbDate.TryParse(lastDate.GetString(), out DateTime parsedLast))
             {
                 lastAired = parsedLast;
             }
@@ -530,7 +530,7 @@ public class TmdbService
             // same date-only → midnight UTC convention as last_episode_to_air above; the filter
             // also compares NextEpisodeDate.Date against todayUtc.Date (#170 override).
             if (nextEp.TryGetProperty("air_date", out JsonElement nextDate) && nextDate.ValueKind == JsonValueKind.String
-                && TryParseTmdbDate(nextDate.GetString(), out DateTime parsedNext))
+                && TmdbDate.TryParse(nextDate.GetString(), out DateTime parsedNext))
             {
                 nextAir = parsedNext;
             }
@@ -639,14 +639,6 @@ public class TmdbService
         OriginalLanguage = r.OriginalLanguage ?? "",
     };
 
-    // TMDb date-only fields (air_date / first_air_date) carry no hour-of-day. Parse with
-    // AssumeUniversal|AdjustToUniversal so the value stores + round-trips as Kind=Utc — an
-    // Unspecified-Kind value can drift a calendar day against todayUtc.Date in the Home
-    // filters. See Learnings/tmdb-air-date-is-date-only.md.
-    private static bool TryParseTmdbDate(string? raw, out DateTime parsed) =>
-        DateTime.TryParse(raw, CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsed);
-
     // scans a season's episodes for the newest already-aired episode (later date wins, tie-break
     // on higher episode number) and the earliest still-upcoming one. Pure given a SeasonDetail +
     // today; the caller decides whether these beat the show-endpoint's last/next_episode_to_air.
@@ -660,7 +652,7 @@ public class TmdbService
 
         foreach (EpisodeInfo ep in season.Episodes)
         {
-            if (!TryParseTmdbDate(ep.AirDate, out DateTime epDate)) continue;
+            if (!TmdbDate.TryParse(ep.AirDate, out DateTime epDate)) continue;
 
             if (epDate.Date <= today)
             {
