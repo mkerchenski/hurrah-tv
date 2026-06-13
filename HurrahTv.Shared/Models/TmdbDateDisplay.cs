@@ -10,13 +10,14 @@ namespace HurrahTv.Shared.Models;
 // with the Home page's server-side classification (#192). Callers pass DateTime.UtcNow.Date.
 public static class TmdbDateDisplay
 {
-    // aired within the last `withinDays`, and not in the future. The `dayDelta <= 0` arm is what
-    // keeps an unreleased (future) date from reading as "recent" — the signed-int bug #192/2a.
+    // aired within the last `withinDays`, and not in the future. Typed date-window comparison
+    // (not a signed day-diff int) per Learnings/date-predicates-prefer-typed-comparisons.md: the
+    // `<= todayUtc.Date` bound is what keeps an unreleased (future) date from reading as "recent"
+    // — the bug #192/2a — and reads as a window by construction.
     public static bool IsRecent(string? raw, DateTime todayUtc, int withinDays = 30)
     {
         if (!TmdbDate.TryParse(raw, out DateTime date)) return false;
-        int dayDelta = (date.Date - todayUtc.Date).Days;
-        return dayDelta <= 0 && dayDelta >= -withinDays;
+        return date.Date <= todayUtc.Date && date.Date >= todayUtc.Date.AddDays(-withinDays);
     }
 
     // relative phrasing ("today" / "tomorrow" / "in 3 days" / "yesterday" / "5 days ago" /
@@ -34,7 +35,7 @@ public static class TmdbDateDisplay
             > 1 and <= 7 => $"in {dayDelta} days",
             -1 => "yesterday",
             < -1 and >= -7 => $"{-dayDelta} days ago",
-            < -7 and >= -30 => $"{-dayDelta / 7} weeks ago",
+            < -7 and >= -30 => $"{-dayDelta / 7} week{(-dayDelta / 7 == 1 ? "" : "s")} ago",
             _ => date.ToString("MMM d, yyyy"),
         };
     }

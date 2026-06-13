@@ -58,6 +58,7 @@ public class TmdbDateDisplayTests
         Assert.Equal("in 3 days", TmdbDateDisplay.FormatRelative(Raw(3), Today));
         Assert.Equal("yesterday", TmdbDateDisplay.FormatRelative(Raw(-1), Today));
         Assert.Equal("5 days ago", TmdbDateDisplay.FormatRelative(Raw(-5), Today));
+        Assert.Equal("1 week ago", TmdbDateDisplay.FormatRelative(Raw(-8), Today));   // singular, not "1 weeks ago"
         Assert.Equal("2 weeks ago", TmdbDateDisplay.FormatRelative(Raw(-14), Today));
     }
 
