@@ -229,12 +229,12 @@ else
                             {
                                 <span>&ldquo;@_details.NextEpisodeName&rdquo;</span>
                             }
-                            &mdash; @FormatAirDate(_details.NextEpisodeAirDate)
+                            &mdash; @TmdbDateDisplay.FormatRelative(_details.NextEpisodeAirDate, DateTime.UtcNow.Date)
                         </span>
                     </div>
                 </div>
             }
-            else if (_details.LastEpisodeAirDate != null && IsRecent(_details.LastEpisodeAirDate))
+            else if (_details.LastEpisodeAirDate != null && TmdbDateDisplay.IsRecent(_details.LastEpisodeAirDate, DateTime.UtcNow.Date))
             {
                 <div class="flex items-center gap-2 bg-accent/20 border border-accent/40 rounded-lg px-3 py-2 mb-3 md:mb-4">
                     <span class="icon-[heroicons--sparkles] w-5 h-5 text-accent-light"></span>
@@ -246,7 +246,7 @@ else
                             {
                                 <span>&ldquo;@_details.LastEpisodeName&rdquo;</span>
                             }
-                            &mdash; aired @FormatAirDate(_details.LastEpisodeAirDate)
+                            &mdash; aired @TmdbDateDisplay.FormatRelative(_details.LastEpisodeAirDate, DateTime.UtcNow.Date)
                         </span>
                     </div>
                 </div>
@@ -279,9 +279,9 @@ else
             }
             @if (_details.MediaType == "tv" && _details.LastEpisodeAirDate != null)
             {
-                <span>Last aired @FormatAirDate(_details.LastEpisodeAirDate)</span>
+                <span>Last aired @TmdbDateDisplay.FormatRelative(_details.LastEpisodeAirDate, DateTime.UtcNow.Date)</span>
             }
-            @if (_details.MediaType == "movie" && !string.IsNullOrEmpty(_details.ReleaseDate) && IsRecent(_details.ReleaseDate))
+            @if (_details.MediaType == "movie" && !string.IsNullOrEmpty(_details.ReleaseDate) && TmdbDateDisplay.IsRecent(_details.ReleaseDate, DateTime.UtcNow.Date))
             {
                 <span class="text-accent-light font-medium">New release</span>
             }
@@ -627,29 +627,4 @@ else
     private bool Navigated(int startTmdbId, string startMediaType) =>
         _disposed || TmdbId != startTmdbId || MediaType != startMediaType;
 
-    private static bool IsRecent(string? dateStr)
-    {
-        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return false;
-        return (DateTime.UtcNow - date).TotalDays <= 30;
-    }
-
-    private static string FormatAirDate(string? dateStr)
-    {
-        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return "";
-
-        int daysAgo = (int)(DateTime.UtcNow - date).TotalDays;
-        if (daysAgo < 0)
-        {
-            int daysUntil = -daysAgo;
-            if (daysUntil == 0) return "today";
-            if (daysUntil == 1) return "tomorrow";
-            if (daysUntil <= 7) return $"in {daysUntil} days";
-            return date.ToString("MMM d, yyyy");
-        }
-        if (daysAgo == 0) return "today";
-        if (daysAgo == 1) return "yesterday";
-        if (daysAgo <= 7) return $"{daysAgo} days ago";
-        if (daysAgo <= 30) return $"{daysAgo / 7} weeks ago";
-        return date.ToString("MMM d, yyyy");
-    }
 }
