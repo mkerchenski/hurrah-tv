@@ -1,5 +1,6 @@
 # DateTime.Now vs DateTime.UtcNow in Blazor WASM
 
+> **Superseded for client TMDb *display* dates by [[tmdb-client-date-display-uses-utc]] (#192):** Hurrah.tv now uses a UTC "today" when displaying TMDb dates, to stay consistent with the Home page's server-side UTC classification. The local-`DateTime.Now` guidance below still holds in general — it's the cross-surface display case that changed.
 > **Area:** WASM
 > **Date:** 2026-03-30
 

@@ -69,12 +69,11 @@
                     {
                         <div class="border-t border-surface-200">
                             @{
-                                DateTime today = DateTime.Now.Date;
-                                List<EpisodeInfo> aired = [.. _seasonDetail.Episodes.Where(e => HasAired(e.AirDate, today))];
-                                EpisodeInfo? nextUp = _seasonDetail.Episodes
-                                    .Where(e => IsFuture(e.AirDate, today))
-                                    .OrderBy(e => e.EpisodeNumber)
-                                    .FirstOrDefault();
+                                // UTC "today" for cross-surface consistency with the Home page's
+                                // server-side classification (#192). SplitAiredUpcoming parses each
+                                // AirDate once.
+                                (IReadOnlyList<EpisodeInfo> aired, EpisodeInfo? nextUp) =
+                                    TmdbDateDisplay.SplitAiredUpcoming(_seasonDetail.Episodes, DateTime.UtcNow.Date);
                                 List<EpisodeInfo> visible = [.. aired];
                                 if (nextUp != null) visible.Add(nextUp);
                             }
@@ -97,7 +96,7 @@
                                         </div>
                                         @if (!string.IsNullOrEmpty(ep.AirDate))
                                         {
-                                            <div class="text-[10px] text-gray-600 ml-8">@FormatDate(ep.AirDate)</div>
+                                            <div class="text-[10px] text-gray-600 ml-8">@TmdbDateDisplay.FormatAbsolute(ep.AirDate)</div>
                                         }
                                     </div>
                                     @if (!upcoming)
@@ -198,26 +197,6 @@
             _seasonSentiments[seasonNumber] = new SeasonSentiment { TmdbId = TmdbId, SeasonNumber = seasonNumber, Sentiment = newSentiment.Value };
         else
             _seasonSentiments.Remove(seasonNumber);
-    }
-
-    private static bool HasAired(string? dateStr, DateTime today)
-    {
-        // null or unparseable = unknown = not aired (don't show sentiment buttons)
-        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return false;
-        return date.Date <= today;
-    }
-
-    private static bool IsFuture(string? dateStr, DateTime today)
-    {
-        if (string.IsNullOrEmpty(dateStr) || !TmdbDate.TryParse(dateStr, out DateTime date)) return false;
-        return date.Date > today;
-    }
-
-    private static string FormatDate(string? dateStr)
-    {
-        if (string.IsNullOrEmpty(dateStr) || dateStr == "0000-00-00") return "";
-        if (!TmdbDate.TryParse(dateStr, out DateTime date)) return "";
-        return date.ToString("MMM d, yyyy");
     }
 
     private async Task SetEpisodeSentiment(int seasonNumber, int episodeNumber, int sentiment)
