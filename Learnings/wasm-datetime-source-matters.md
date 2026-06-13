@@ -1,5 +1,6 @@
 # WASM Date Math: The Right Answer Depends on Where the DateTime Came From
 
+> **Superseded for client TMDb *display* dates by [[tmdb-client-date-display-uses-utc]] (#192):** for displaying TMDb date-only fields, Hurrah.tv now standardizes on a UTC "today" (not the local baseline the provenance table below prescribes) so the client agrees with the Home page's server-side UTC classification. The provenance reasoning below still applies to DB/`TIMESTAMPTZ` dates and to understanding the tradeoff.
 > **Area:** WASM | Data
 > **Date:** 2026-04-16
 
