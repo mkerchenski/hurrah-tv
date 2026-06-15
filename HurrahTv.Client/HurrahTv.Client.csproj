@@ -7,7 +7,10 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <!-- no i18n: ship the minimal ICU shard instead of the full globalization data (#3) -->
+    <!-- ship only the ICU shard matching the runtime culture (typically EFIGS), not the full
+         globalization data (#3). browser culture is still honored within the shard — this is NOT
+         InvariantGlobalization. intentionally unconditional (not Release-only) so dev runs the same
+         ICU behavior as prod and any culture bug surfaces early. -->
     <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
   </PropertyGroup>
 
@@ -17,13 +20,14 @@
        measurable boot win (539-576 ms vs 518-623 ms non-AOT — within noise) on a render-bound
        startup. NOT set: InvariantGlobalization / InvariantTimezone (would break culture-aware +
        episode air-date formatting), JsonSerializerIsReflectionEnabledByDefault (app uses
-       reflection-based System.Text.Json). -->
+       reflection-based System.Text.Json), and UseSystemResourceKeys — keeping readable BCL
+       exception messages is worth more than the few KB while this first trim pass is unproven
+       (a trim-stripped path otherwise throws an opaque numeric key). -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebuggerSupport>false</DebuggerSupport>
     <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
     <EventSourceSupport>false</EventSourceSupport>
     <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
-    <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
 
   <ItemGroup>
