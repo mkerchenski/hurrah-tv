@@ -99,12 +99,18 @@
                 StateHasChanged();
             });
         }
-        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            // superseded by a newer keystroke (the debounce token was cancelled) — ignore. An
+            // HttpClient TIMEOUT also surfaces as TaskCanceledException but with the token NOT
+            // cancelled, so it falls through to the failure catch below instead of hanging the
+            // spinner (see Learnings/oce-rethrow-needs-token-filter.md).
+        }
         catch
         {
-            // a non-cancellation failure (5xx/network) from the typed-search path. The shared
-            // AppErrorBoundary can't catch this — it's a detached event-handler task — so surface
-            // it inline instead of leaving the spinner stuck (#5).
+            // a non-cancellation failure (5xx/network/timeout) from the typed-search path. The
+            // shared AppErrorBoundary can't catch this — it's a detached event-handler task — so
+            // surface it inline instead of leaving the spinner stuck (#5).
             await InvokeAsync(() =>
             {
                 _loading = false;
