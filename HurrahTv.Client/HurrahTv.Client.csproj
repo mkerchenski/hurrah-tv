@@ -14,9 +14,10 @@
     <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
   </PropertyGroup>
 
-  <!-- #3 size pass (Release/publish only — keeps dev hot reload + debugging intact). These
-       feature switches let the IL trimmer + wasm-tools relinker strip native + managed code the
-       app doesn't use. AOT was measured and dropped: it added ~2.4 MB to the download for no
+  <!-- #3 size pass — Release configuration only, so dev (Debug) keeps hot reload + full
+       debugging. The switches take effect when publish trims/relinks; a plain `dotnet build -c
+       Release` leaves them inert. They let the IL trimmer + wasm-tools relinker strip native +
+       managed code the app doesn't use. AOT was measured and dropped: it added ~2.4 MB to the download for no
        measurable boot win (539-576 ms vs 518-623 ms non-AOT — within noise) on a render-bound
        startup. NOT set: InvariantGlobalization / InvariantTimezone (would break culture-aware +
        episode air-date formatting), JsonSerializerIsReflectionEnabledByDefault (app uses

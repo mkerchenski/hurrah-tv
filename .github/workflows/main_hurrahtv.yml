@@ -34,10 +34,16 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Set up .NET Core
-        id: dotnet
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.x'
+
+      # capture the resolved SDK version explicitly — actions/setup-dotnet doesn't reliably
+      # expose it as a step output, so a key referencing that output could render empty and
+      # never invalidate. `dotnet --version` is the source of truth.
+      - name: Resolve SDK version for cache key
+        id: sdk
+        run: echo "version=$(dotnet --version)" >> "$GITHUB_OUTPUT"
 
       # cache the wasm-tools workload (~500 MB) so it isn't re-downloaded every deploy.
       # workloads install under $DOTNET_ROOT; key on the resolved SDK version so a .NET
@@ -49,7 +55,7 @@ jobs:
             ${{ env.DOTNET_ROOT }}/sdk-manifests
             ${{ env.DOTNET_ROOT }}/packs
             ${{ env.DOTNET_ROOT }}/metadata
-          key: ${{ runner.os }}-wasmtools-${{ steps.dotnet.outputs.dotnet-version }}
+          key: ${{ runner.os }}-wasmtools-${{ steps.sdk.outputs.version }}
 
       # required for the Client WASM publish to relink dotnet.native.wasm (#3).
       # without it, dotnet publish falls back to "without optimizations" and the
