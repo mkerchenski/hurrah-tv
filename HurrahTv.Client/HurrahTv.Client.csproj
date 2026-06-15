@@ -7,6 +7,28 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- ship only the ICU shard matching the runtime culture (typically EFIGS), not the full
+         globalization data (#3). browser culture is still honored within the shard — this is NOT
+         InvariantGlobalization. intentionally unconditional (not Release-only) so dev runs the same
+         ICU behavior as prod and any culture bug surfaces early. -->
+    <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
+  </PropertyGroup>
+
+  <!-- #3 size pass — Release configuration only, so dev (Debug) keeps hot reload + full
+       debugging. The switches take effect when publish trims/relinks; a plain `dotnet build -c
+       Release` leaves them inert. They let the IL trimmer + wasm-tools relinker strip native +
+       managed code the app doesn't use. AOT was measured and dropped: it added ~2.4 MB to the download for no
+       measurable boot win (539-576 ms vs 518-623 ms non-AOT — within noise) on a render-bound
+       startup. NOT set: InvariantGlobalization / InvariantTimezone (would break culture-aware +
+       episode air-date formatting), JsonSerializerIsReflectionEnabledByDefault (app uses
+       reflection-based System.Text.Json), and UseSystemResourceKeys — keeping readable BCL
+       exception messages is worth more than the few KB while this first trim pass is unproven
+       (a trim-stripped path otherwise throws an opaque numeric key). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebuggerSupport>false</DebuggerSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
   </PropertyGroup>
 
   <ItemGroup>

@@ -38,6 +38,31 @@ jobs:
         with:
           dotnet-version: '10.x'
 
+      # capture the resolved SDK version explicitly — actions/setup-dotnet doesn't reliably
+      # expose it as a step output, so a key referencing that output could render empty and
+      # never invalidate. `dotnet --version` is the source of truth.
+      - name: Resolve SDK version for cache key
+        id: sdk
+        run: echo "version=$(dotnet --version)" >> "$GITHUB_OUTPUT"
+
+      # cache the wasm-tools workload (~500 MB) so it isn't re-downloaded every deploy.
+      # workloads install under $DOTNET_ROOT; key on the resolved SDK version so a .NET
+      # bump invalidates the cache. on a miss the install step below repopulates these dirs.
+      - name: Cache wasm-tools workload
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.DOTNET_ROOT }}/sdk-manifests
+            ${{ env.DOTNET_ROOT }}/packs
+            ${{ env.DOTNET_ROOT }}/metadata
+          key: ${{ runner.os }}-wasmtools-${{ steps.sdk.outputs.version }}
+
+      # required for the Client WASM publish to relink dotnet.native.wasm (#3).
+      # without it, dotnet publish falls back to "without optimizations" and the
+      # client ships ~15% larger. fast no-op on a warm workload cache.
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
