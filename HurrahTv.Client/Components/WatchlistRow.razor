@@ -211,6 +211,12 @@
         // already filters them out (defensive guard against stale TMDb stamps).
         if (RowMode == "later")
         {
+            // a latest episode dated today was routed into Upcoming because "available today" for
+            // a streaming release isn't watchable-now (see WatchlistFilters, #196). Surface it as
+            // "today" rather than counting down to the *next* episode, whose date may be null/far off.
+            if (item.DaysSinceLatestEpisode(todayUtc) == 0)
+                return "today";
+
             return item.DaysUntilNextEpisode(todayUtc) switch
             {
                 null or <= 0 => "",

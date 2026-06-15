@@ -453,10 +453,12 @@ else
             _details = details;
             _loading = false;
 
-            // check if this item is already in the queue
-            List<QueueItem> queue = await Api.GetQueueAsync(ct);
+            // check if this item is already in the queue — targeted single-row lookup (#8)
+            // instead of fetching the whole watchlist and FirstOrDefault-ing it. assign-on-success
+            // (mirrors the _details bind above) so a late response can't overwrite a newer title.
+            QueueItem? queueItem = await Api.GetQueueItemAsync(TmdbId, MediaType, ct);
             if (ct.IsCancellationRequested) return;
-            _queueItem = queue.FirstOrDefault(i => i.TmdbId == TmdbId && i.MediaType == MediaType);
+            _queueItem = queueItem;
         }
         catch (OperationCanceledException)
         {
@@ -533,8 +535,28 @@ else
             if (_queueItem != null)
             {
                 QueueItem existing = _queueItem;
+                // tapping the already-active status toggles it off — removes the item from the
+                // queue entirely (#195). Previously this was a no-op, leaving no way to take a
+                // show back out of every list from Details. Optimistically clear local state,
+                // then notify so Home/Queue splice the row out; restore on failure.
                 if (existing.Status == status)
+                {
+                    _queueItem = null;
+                    if (!_disposed) StateHasChanged();
+                    try
+                    {
+                        await Api.RemoveFromQueueAsync(existing.Id);
+                        if (Navigated(startTmdbId, startMediaType)) return;
+                        QuickActionSvc.NotifyItemRemoved(existing.Id);
+                    }
+                    catch
+                    {
+                        if (!Navigated(startTmdbId, startMediaType)) _queueItem = existing; // restore
+                        await Toast.ShowAsync("Couldn't update your list — try again");
+                    }
+                    if (!_disposed) StateHasChanged();
                     return;
+                }
                 QueueItem? updated = await Api.UpdateStatusAsync(existing.Id, status);
                 if (Navigated(startTmdbId, startMediaType)) return;
                 if (updated != null)

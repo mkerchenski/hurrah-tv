@@ -59,11 +59,22 @@ public class ApiClient(HttpClient http)
         return response ?? new QueueResponse([], []);
     }
 
-    // convenience for callers that only need items (Details page, Queue page)
+    // convenience for callers that only need items (Queue page)
     public async Task<List<QueueItem>> GetQueueAsync(CancellationToken cancellationToken = default)
     {
         QueueResponse response = await GetQueueResponseAsync(cancellationToken);
         return response.Items;
+    }
+
+    // targeted single-item lookup for the Details page (#8). Returns null when the item isn't
+    // queued (404) — the Details page reads that as "show the Add-to-queue UI". A cancelled token
+    // still throws (TaskCanceledException), which Details' load path catches as navigation abort.
+    public async Task<QueueItem?> GetQueueItemAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.GetAsync($"api/queue/{tmdbId}/{mediaType}", cancellationToken);
+        return response.IsSuccessStatusCode
+            ? await response.Content.ReadFromJsonAsync<QueueItem>(cancellationToken)
+            : null;
     }
 
     // watched episodes

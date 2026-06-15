@@ -65,6 +65,8 @@ public static class WatchlistFilters
             // chip filter gates AvailableNow (the active watchlist) but not AvailableLater —
             // a new-season premiere on a Finished show should still surface when the Finished
             // chip is off, since "later" is forward-looking and independent of watch state.
+            bool addedToLater = false;
+
             if (isWatching || isStreamable)
             {
                 // for Watching, resurface a caught-up show (latest episode marked watched) ONLY
@@ -84,13 +86,30 @@ public static class WatchlistFilters
                     && (!item.IsLatestEpisodeWatched || overrideLatestWatched)
                     && HasAiredOrIsActivelyWatching(item, today))
                 {
-                    availableNow.Add(item);
+                    // A latest episode dated *today* is "available today" — for a streaming release
+                    // that usually means it drops at some point during the day and isn't watchable
+                    // yet, so it belongs in the forward-looking Upcoming row (badged "today") rather
+                    // than Available Now (#196). We keep the full Available Now gate above (incl. the
+                    // Watching bypass) and only relocate WHICH row it renders in — so no item that
+                    // showed before disappears, it just moves from "now" to "later".
+                    if (item.LatestEpisodeDate is { } latest && latest.Date == today)
+                    {
+                        availableLater.Add(item);
+                        addedToLater = true;
+                    }
+                    else
+                    {
+                        availableNow.Add(item);
+                    }
                 }
             }
 
-            // Available Later still requires streamability — "available on a user service soon"
-            // is a stronger claim than Available Now's "you've committed to this".
-            if (isStreamable && item.NextEpisodeDate is { } next && next.Date > today && next.Date <= windowEnd)
+            // Available Later also surfaces a strictly-future next episode within the window. It
+            // requires streamability — "available on a user service soon" is a stronger claim than
+            // Available Now's "you've committed to this". The addedToLater guard prevents adding an
+            // item twice when it both drops today (routed above) and has a next episode in-window.
+            if (!addedToLater && isStreamable
+                && item.NextEpisodeDate is { } next && next.Date > today && next.Date <= windowEnd)
             {
                 availableLater.Add(item);
             }

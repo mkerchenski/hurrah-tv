@@ -259,6 +259,18 @@ public class DbService(IConfiguration config)
         return [.. items];
     }
 
+    // single-row lookup for the Details page (#8) — avoids fetching the whole watchlist just to
+    // find one item. Scoped by UserId like every other queue read. (UserId, TmdbId, MediaType) is
+    // the dedup key (UNIQUE constraint from #155), so QueryFirstOrDefault returns at most one row.
+    public async Task<QueueItem?> GetQueueItemAsync(string userId, int tmdbId, string mediaType, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new(
+            "SELECT * FROM QueueItems WHERE UserId = @UserId AND TmdbId = @TmdbId AND MediaType = @MediaType",
+            new { UserId = userId, TmdbId = tmdbId, MediaType = mediaType }, cancellationToken: cancellationToken);
+        return await db.QueryFirstOrDefaultAsync<QueueItem>(cmd);
+    }
+
     public async Task<QueueItem?> AddToQueueAsync(QueueItem item, string userId)
     {
         using NpgsqlConnection db = await OpenAsync();

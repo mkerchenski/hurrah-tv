@@ -152,6 +152,59 @@ public class WatchlistFiltersTests
         Assert.DoesNotContain(item, result.AvailableNow);
     }
 
+    // pins #196 — "available today" for a streaming release usually means it drops sometime today
+    // and isn't watchable yet, so a latest episode dated today belongs in Upcoming (badged "today"),
+    // not Available Now. Membership is preserved: the item still shows, it just moves rows.
+    [Fact]
+    public void AvailableNow_Excludes_TvItem_Dropping_Today_RoutesToLater()
+    {
+        QueueItem item = TvItem(latestEpisode: Today);
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableNow);
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // boundary partner to the drops-today test: yesterday definitely aired → stays in Available Now.
+    [Fact]
+    public void AvailableNow_Includes_TvItem_That_Aired_Yesterday()
+    {
+        QueueItem item = TvItem(latestEpisode: Today.AddDays(-1));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableNow);
+        Assert.DoesNotContain(item, result.AvailableLater);
+    }
+
+    // the Watching bypass that keeps no-provider shows (Kimmel-class) visible must survive the
+    // now→later relocation — a Watching show dropping today must not vanish from both rows.
+    [Fact]
+    public void AvailableLater_Includes_Watching_TodayDropper_With_No_ProviderData()
+    {
+        QueueItem item = TvItem(status: QueueStatus.Watching, latestEpisode: Today);
+        item.AvailableOnJson = "[]";
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableNow);
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // a today-dropper that ALSO has a next episode within the window must appear in Upcoming
+    // exactly once — the addedToLater guard prevents the double-add.
+    [Fact]
+    public void AvailableLater_TodayDropper_With_UpcomingEpisode_AppearsOnce()
+    {
+        QueueItem item = TvItem(latestEpisode: Today, nextEpisode: Today.AddDays(7));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.DoesNotContain(item, result.AvailableNow);
+        Assert.Single(result.AvailableLater);
+    }
+
     [Fact]
     public void AvailableLater_Includes_NextEpisode_Within_Window()
     {

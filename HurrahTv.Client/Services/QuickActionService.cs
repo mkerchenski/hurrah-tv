@@ -10,6 +10,9 @@ public class QuickActionService
     // targeted update — subscribers can splice the item into local state without a refetch
     public event Action<QueueItem>? OnItemUpdated;
 
+    // targeted removal — subscribers splice the item OUT of local state by Id without a refetch
+    public event Action<int>? OnItemRemoved;
+
     // episode-watched toggle. Tells subscribers to update their local watched-set in place.
     public event Action<int, int, int, bool>? OnEpisodeWatchedChanged;
 
@@ -20,6 +23,7 @@ public class QuickActionService
     public void ShowForSearchResult(SearchResult result) => OnShowForSearchResult?.Invoke(result);
     public void NotifyChanged() => OnChanged?.Invoke();
     public void NotifyItemUpdated(QueueItem item) => OnItemUpdated?.Invoke(item);
+    public void NotifyItemRemoved(int queueItemId) => OnItemRemoved?.Invoke(queueItemId);
     public void NotifyEpisodeWatchedChanged(int tmdbId, int season, int episode, bool watched) =>
         OnEpisodeWatchedChanged?.Invoke(tmdbId, season, episode, watched);
 }

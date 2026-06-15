@@ -258,7 +258,19 @@
 
     private void SetStatus(QueueStatus status)
     {
-        if (_queueId > 0 && status == _currentStatus) return;
+        // tapping the already-active status removes the item from the queue (#195) — mirrors the
+        // Details page so the toggle-off gesture is consistent everywhere. RunAction closes the
+        // sheet immediately; the broad failure-path NotifyChanged reloads if the delete fails.
+        if (_queueId > 0 && status == _currentStatus)
+        {
+            int removeId = _queueId;
+            RunAction($"status:{(int)status}", async () =>
+            {
+                await Api.RemoveFromQueueAsync(removeId);
+                QuickActionSvc.NotifyItemRemoved(removeId);
+            });
+            return;
+        }
 
         // queue surface: optimistic flip + single API call
         if (_queueId > 0)
