@@ -100,6 +100,19 @@
             });
         }
         catch (TaskCanceledException) { }
+        catch
+        {
+            // a non-cancellation failure (5xx/network) from the typed-search path. The shared
+            // AppErrorBoundary can't catch this — it's a detached event-handler task — so surface
+            // it inline instead of leaving the spinner stuck (#5).
+            await InvokeAsync(() =>
+            {
+                _loading = false;
+                _results = [];
+                _emptyMessage = "Search failed — check your connection and try again";
+                StateHasChanged();
+            });
+        }
     }
 
     private void OnMediaFilterChanged() => InvokeAsync(StateHasChanged);

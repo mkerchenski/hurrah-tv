@@ -1,0 +1,46 @@
+@inject NavigationManager Nav
+@implements IDisposable
+
+@* Shared error boundary (#5). Catches unhandled exceptions from its child's lifecycle/render —
+   in practice the GetFromJsonAsync-based ApiClient calls that THROW on 5xx/network, which every
+   page runs in OnInitializedAsync/OnParametersSetAsync. Wrapped around @Body in MainLayout, one
+   instance covers every page (and every future one) with a consistent "something went wrong +
+   retry" panel. Expected per-action failures still surface via ToastService, as before. *@
+<ErrorBoundary @ref="_boundary">
+    <ChildContent>
+        @ChildContent
+    </ChildContent>
+    <ErrorContent>
+        <div class="flex flex-col items-center justify-center text-center py-16 px-4">
+            <span class="icon-[heroicons--exclamation-triangle] w-12 h-12 text-accent mb-4"></span>
+            <h2 class="text-white text-lg font-semibold mb-1">Something went wrong</h2>
+            <p class="text-gray-400 text-sm mb-6 max-w-sm">
+                We couldn't load this page. Check your connection and try again.
+            </p>
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-6 py-2.5 rounded-lg transition-colors"
+                    @onclick="Retry">
+                Try again
+            </button>
+        </div>
+    </ErrorContent>
+</ErrorBoundary>
+
+@code {
+    [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
+
+    private ErrorBoundary? _boundary;
+
+    // reset the boundary on navigation — without this, once a page throws the error panel "sticks"
+    // and the next route renders behind it. LocationChanged fires only on real navigations (not on
+    // every re-render), so we never clear a just-caught error before the user can see it.
+    protected override void OnInitialized() => Nav.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _boundary?.Recover();
+
+    // manual retry — Recover() re-renders ChildContent, which re-runs the page's load lifecycle
+    // (re-fetch). If the API is still down it simply catches again.
+    private void Retry() => _boundary?.Recover();
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}
