@@ -92,7 +92,7 @@ public static class WatchlistFilters
                     // than Available Now (#196). We keep the full Available Now gate above (incl. the
                     // Watching bypass) and only relocate WHICH row it renders in — so no item that
                     // showed before disappears, it just moves from "now" to "later".
-                    if (item.LatestEpisodeDate is { } latest && latest.Date == today)
+                    if (item.IsDroppingToday(today))
                     {
                         availableLater.Add(item);
                         addedToLater = true;

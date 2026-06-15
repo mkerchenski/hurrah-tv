@@ -69,6 +69,39 @@ public class QueueItemExtensionsTests
         Assert.Null(item.DaysSinceLatestEpisode(TodayUtc));
     }
 
+    // canonical "drops today" predicate (#196) — the single rule the partition, the badge, and
+    // the Upcoming sort all read. True only on the exact air day; yesterday, future, and null
+    // are all "not dropping today".
+    [Fact]
+    public void IsDroppingToday_LatestEpisodeToday_ReturnsTrue()
+    {
+        QueueItem item = new() { LatestEpisodeDate = TodayUtc };
+        Assert.True(item.IsDroppingToday(TodayUtc));
+    }
+
+    [Fact]
+    public void IsDroppingToday_LatestEpisodeYesterday_ReturnsFalse()
+    {
+        QueueItem item = new() { LatestEpisodeDate = TodayUtc.AddDays(-1) };
+        Assert.False(item.IsDroppingToday(TodayUtc));
+    }
+
+    // a future-stamped LatestEpisodeDate (the #86 leak shape) is not "today" — typed comparison
+    // can't be fooled by a wrong-sign day-diff.
+    [Fact]
+    public void IsDroppingToday_LatestEpisodeFuture_ReturnsFalse()
+    {
+        QueueItem item = new() { LatestEpisodeDate = TodayUtc.AddDays(1) };
+        Assert.False(item.IsDroppingToday(TodayUtc));
+    }
+
+    [Fact]
+    public void IsDroppingToday_NullLatestEpisode_ReturnsFalse()
+    {
+        QueueItem item = new() { LatestEpisodeDate = null };
+        Assert.False(item.IsDroppingToday(TodayUtc));
+    }
+
     // pins #189 — the daily-show bug. Stored latest lags at (S,E1); the user watched the
     // genuinely-newer (S,E2) via the live Details browser. High-water reconciliation must
     // treat the show as caught up so it drops out of Available Now, even though the stored

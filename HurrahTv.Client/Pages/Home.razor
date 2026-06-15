@@ -651,7 +651,7 @@ else
         // WatchlistFilters, #196). Sort it ahead of strictly-future episodes by keying it on today
         // rather than its NextEpisodeDate, which may be null (→ MaxValue, sorts last) or far off.
         DateTime UpcomingKey(QueueItem i) =>
-            i.LatestEpisodeDate?.Date == today ? today : (i.NextEpisodeDate?.Date ?? DateTime.MaxValue);
+            i.IsDroppingToday(today) ? today : (i.NextEpisodeDate?.Date ?? DateTime.MaxValue);
 
         return _watchlistSort switch
         {
