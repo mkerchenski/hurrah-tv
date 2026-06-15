@@ -7,6 +7,23 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- no i18n: ship the minimal ICU shard instead of the full globalization data (#3) -->
+    <BlazorWebAssemblyLoadAllGlobalizationData>false</BlazorWebAssemblyLoadAllGlobalizationData>
+  </PropertyGroup>
+
+  <!-- #3 size pass (Release/publish only — keeps dev hot reload + debugging intact). These
+       feature switches let the IL trimmer + wasm-tools relinker strip native + managed code the
+       app doesn't use. AOT was measured and dropped: it added ~2.4 MB to the download for no
+       measurable boot win (539-576 ms vs 518-623 ms non-AOT — within noise) on a render-bound
+       startup. NOT set: InvariantGlobalization / InvariantTimezone (would break culture-aware +
+       episode air-date formatting), JsonSerializerIsReflectionEnabledByDefault (app uses
+       reflection-based System.Text.Json). -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebuggerSupport>false</DebuggerSupport>
+    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+    <EventSourceSupport>false</EventSourceSupport>
+    <HttpActivityPropagationSupport>false</HttpActivityPropagationSupport>
+    <UseSystemResourceKeys>true</UseSystemResourceKeys>
   </PropertyGroup>
 
   <ItemGroup>

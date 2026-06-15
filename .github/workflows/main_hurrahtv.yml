@@ -38,6 +38,12 @@ jobs:
         with:
           dotnet-version: '10.x'
 
+      # required for the Client WASM publish to relink dotnet.native.wasm (#3).
+      # without it, dotnet publish falls back to "without optimizations" and the
+      # client ships ~15% larger.
+      - name: Install wasm-tools workload
+        run: dotnet workload install wasm-tools
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
