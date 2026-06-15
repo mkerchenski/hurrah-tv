@@ -171,6 +171,12 @@
             }
             _response = await Api.GetAdminUsersAsync();
         }
+        catch
+        {
+            // a thrown transport failure (API unreachable) — surface it via the same _error banner
+            // the HTTP-error branch above uses, rather than letting the exception escape silently.
+            _error = $"Couldn't {verb} admin — check your connection and try again.";
+        }
         finally
         {
             _busyId = null;
@@ -232,6 +238,10 @@
             }
             _response = await Api.GetAdminUsersAsync();
         }
+        catch
+        {
+            _error = "Couldn't delete — check your connection and try again.";
+        }
         finally
         {
             _busyId = null;
@@ -253,6 +263,10 @@
             }
             _editingNameId = null;
             _response = await Api.GetAdminUsersAsync();
+        }
+        catch
+        {
+            _error = "Couldn't save name — check your connection and try again.";
         }
         finally
         {

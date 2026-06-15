@@ -7,6 +7,7 @@
 @inject QuickActionService QuickActionSvc
 @inject NavigationManager Nav
 @inject SortableService SortableSvc
+@inject ToastService Toast
 
 <PageTitle>My List - Hurrah.tv</PageTitle>
 
@@ -550,15 +551,20 @@ else
                 int idx = _items.IndexOf(item);
                 if (idx >= 0) _items[idx] = updated;
                 QuickActionSvc.NotifyItemUpdated(updated);
+                UpdateCounts();
+                RecomputeVisible();
             }
             else
             {
-                item.Status = status; // optimistic fallback
+                // server rejected it (non-2xx → null). Don't flip the row to the new status — that
+                // would show a change the server didn't make. Tell the user instead.
+                await Toast.ShowAsync("Couldn't update — try again");
             }
-            UpdateCounts();
-            RecomputeVisible();
         }
-        catch { }
+        catch
+        {
+            await Toast.ShowAsync("Couldn't update — try again");
+        }
     }
 
     private async Task Remove(QueueItem item)
@@ -570,7 +576,12 @@ else
             UpdateCounts();
             RecomputeVisible();
         }
-        catch { }
+        catch
+        {
+            // RemoveFromQueueAsync throws on non-2xx, so a failed delete lands here — surface it
+            // and leave the row in place rather than silently swallowing the failure.
+            await Toast.ShowAsync("Couldn't remove — try again");
+        }
     }
 
     // a removal raised from another surface (Details' toggle-off, or the QuickActions sheet) —

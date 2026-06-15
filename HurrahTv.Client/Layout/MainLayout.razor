@@ -93,7 +93,9 @@
     <!-- main content -->
     <main class="flex-1 px-4 pt-4 pb-20 md:px-6 md:py-6 md:pb-6 max-w-7xl mx-auto w-full">
         <InstallBanner />
-        @Body
+        <AppErrorBoundary>
+            @Body
+        </AppErrorBoundary>
     </main>
 
     <!-- footer (desktop only) -->
