@@ -15,8 +15,9 @@ appsettings.Development.json
 *.db
 .claude/settings.local.json
 
-# local-only directories
-Plans/
+# Plans/ is tracked (public, issue-linked design docs); private/ holds sensitive,
+# strategy, internal-process, and archived plans — local-only.
+Plans/private/
 
 # database backups
 *.bacpac

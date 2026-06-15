@@ -177,14 +177,20 @@ Surfaced by: /<skill> on YYYY-MM-DD
 
 ## Plans Directory
 
-Design documents and implementation plans stored in `Plans/` at repo root. Excluded from git (local only).
+Design documents and implementation plans live in `Plans/` at repo root, **tracked in git** so they sync across machines and sit alongside the code — mirroring the sibling Hurrah / Centralpoint repos. See `Plans/README.md` for the full convention.
+
+**This is a public repo, so the split is load-bearing:**
+- `Plans/*.md` — **public.** Only non-sensitive technical design that maps to an **open** issue (or a genuinely evergreen architecture record). Add `**Tracking issue:** #NN` to the plan and a `Related plan: Plans/<file>.md` line to the issue (bidirectional link).
+- `Plans/private/` — **gitignored.** Strategy, personal/onboarding docs, internal-process records, infra detail, and `private/archive/` (superseded plans for shipped work). If a plan names a secret, hostname, person, or competitive strategy, it goes here.
+
+`/xplan` writes plans here before substantial work; on ship, mark `Complete` (keep only if still useful as a design record) or move to `private/archive/`. Durable insight from the work goes to `Learnings/` via `/compound` — not here.
 
 ### Plan Format
 ```markdown
 # Feature Name - Implementation Plan
 
 > **Status:** Draft | Active | Complete | On Hold
-> **Phase:** 1 | 2 | 3
+> **Tracking issue:** #NN   (open issue this implements; required for public plans)
 
 [Numbered phases with checkable items]
 ```
