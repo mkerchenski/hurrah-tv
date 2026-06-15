@@ -323,6 +323,7 @@ else
     {
         QuickActionSvc.OnChanged += OnQuickActionChanged;
         QuickActionSvc.OnItemUpdated += OnItemUpdated;
+        QuickActionSvc.OnItemRemoved += OnItemRemoved;
         QuickActionSvc.OnEpisodeWatchedChanged += OnEpisodeWatchedChanged;
         MediaFilter.OnChanged += OnMediaFilterChanged;
         UserServicesCache.Changed += OnUserServicesChanged;
@@ -468,6 +469,19 @@ else
         {
             _allItems.Add(updated);
         }
+        StampWatchedFlags();
+        ReapplyDerivedState();
+        StateHasChanged();
+    });
+
+    // a queued item was removed from another surface (e.g. Details toggling its active status
+    // off). Splice it out of _allItems by Id, recompute derived rows, render — no /api/queue
+    // refetch needed. Mirrors OnItemUpdated. No-op if we never had the item locally.
+    private void OnItemRemoved(int queueItemId) => InvokeAsync(() =>
+    {
+        int idx = _allItems.FindIndex(i => i.Id == queueItemId);
+        if (idx < 0) return;
+        _allItems.RemoveAt(idx);
         StampWatchedFlags();
         ReapplyDerivedState();
         StateHasChanged();
@@ -630,12 +644,22 @@ else
         _           => [.. items.OrderByDescending(i => i.HasEpisodeThisMonth ? 1 : 0).ThenByDescending(i => i.LatestEpisodeDate ?? DateTime.MinValue).ThenBy(i => i.Position)]
     };
 
-    private List<QueueItem> SortUpcoming(IEnumerable<QueueItem> items) => _watchlistSort switch
+    private List<QueueItem> SortUpcoming(IEnumerable<QueueItem> items)
     {
-        "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-        "queue"     => [.. items.OrderBy(i => QueueStatusOrdering.SortPriority(i.Status)).ThenBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)],
-        _           => [.. items.OrderBy(i => i.NextEpisodeDate ?? DateTime.MaxValue)]
-    };
+        DateTime today = DateTime.UtcNow.Date;
+        // a latest episode dated today is routed into Upcoming as a "drops today" item (see
+        // WatchlistFilters, #196). Sort it ahead of strictly-future episodes by keying it on today
+        // rather than its NextEpisodeDate, which may be null (→ MaxValue, sorts last) or far off.
+        DateTime UpcomingKey(QueueItem i) =>
+            i.IsDroppingToday(today) ? today : (i.NextEpisodeDate?.Date ?? DateTime.MaxValue);
+
+        return _watchlistSort switch
+        {
+            "sentiment" => [.. items.OrderByDescending(i => SentimentSortKey(i.Sentiment)).ThenBy(UpcomingKey)],
+            "queue"     => [.. items.OrderBy(i => QueueStatusOrdering.SortPriority(i.Status)).ThenBy(UpcomingKey)],
+            _           => [.. items.OrderBy(UpcomingKey)]
+        };
+    }
 
     private List<QueueItem> SortMovies(IEnumerable<QueueItem> items) => _watchlistSort switch
     {
@@ -769,6 +793,7 @@ else
         _cts.Dispose();
         QuickActionSvc.OnChanged -= OnQuickActionChanged;
         QuickActionSvc.OnItemUpdated -= OnItemUpdated;
+        QuickActionSvc.OnItemRemoved -= OnItemRemoved;
         QuickActionSvc.OnEpisodeWatchedChanged -= OnEpisodeWatchedChanged;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
         UserServicesCache.Changed -= OnUserServicesChanged;

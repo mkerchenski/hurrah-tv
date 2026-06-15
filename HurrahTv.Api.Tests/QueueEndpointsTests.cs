@@ -310,6 +310,56 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         Assert.Equal("/backdrop.jpg", ensured.BackdropPath); // but backdrop backfilled
     }
 
+    // pins #8 — the targeted GET /api/queue/{tmdbId}/{mediaType} the Details page uses instead
+    // of fetching the whole watchlist. Returns the item when queued, 404 when not, and 400 for an
+    // invalid media type.
+    [Fact]
+    public async Task GetQueueItem_ReturnsItem_WhenQueued_404_WhenNot()
+    {
+        HttpClient client = TestAuth.CreateClient(fx, "user-getitem");
+
+        QueueItem added = (await PostAsync(client, NewQueueItem(tmdbId: 1399, title: "Game of Thrones")))!;
+
+        // queued → 200 with the row
+        HttpResponseMessage hit = await client.GetAsync($"/api/queue/1399/{MediaTypes.Tv}");
+        Assert.Equal(HttpStatusCode.OK, hit.StatusCode);
+        QueueItem? fetched = await hit.Content.ReadFromJsonAsync<QueueItem>();
+        Assert.Equal(added.Id, fetched!.Id);
+        Assert.Equal(1399, fetched.TmdbId);
+
+        // not queued (wrong id) → 404
+        HttpResponseMessage missId = await client.GetAsync($"/api/queue/2/{MediaTypes.Tv}");
+        Assert.Equal(HttpStatusCode.NotFound, missId.StatusCode);
+
+        // right id, wrong media type → 404 (the dedup key includes MediaType)
+        HttpResponseMessage missType = await client.GetAsync($"/api/queue/1399/{MediaTypes.Movie}");
+        Assert.Equal(HttpStatusCode.NotFound, missType.StatusCode);
+
+        // invalid media type → 400
+        HttpResponseMessage bad = await client.GetAsync("/api/queue/1399/banana");
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        // tmdbId <= 0 → 400 (the :int route matches 0/negatives; the handler rejects them like
+        // every other TmdbId endpoint)
+        HttpResponseMessage zeroId = await client.GetAsync($"/api/queue/0/{MediaTypes.Tv}");
+        Assert.Equal(HttpStatusCode.BadRequest, zeroId.StatusCode);
+    }
+
+    // the targeted lookup must be UserId-scoped like every other queue read — user A asking for a
+    // tmdbId only user B has queued gets a 404, never B's row.
+    [Fact]
+    public async Task GetQueueItem_IsUserScoped()
+    {
+        HttpClient userA = TestAuth.CreateClient(fx, "user-A");
+        HttpClient userB = TestAuth.CreateClient(fx, "user-B");
+
+        HttpResponseMessage bPost = await userB.PostAsJsonAsync("/api/queue", NewQueueItem(tmdbId: 1399, title: "B's show"));
+        Assert.Equal(HttpStatusCode.Created, bPost.StatusCode);
+
+        HttpResponseMessage aLookup = await userA.GetAsync($"/api/queue/1399/{MediaTypes.Tv}");
+        Assert.Equal(HttpStatusCode.NotFound, aLookup.StatusCode);
+    }
+
     private static async Task<QueueItem?> PostAsync(HttpClient client, QueueItem payload)
     {
         HttpResponseMessage resp = await client.PostAsJsonAsync("/api/queue", payload);

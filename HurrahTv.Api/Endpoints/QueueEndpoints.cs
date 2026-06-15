@@ -63,6 +63,24 @@ public static class QueueEndpoints
             }
         });
 
+        // targeted single-item lookup for the Details page (#8) — returns the queue item for this
+        // content or 404 when it isn't queued. The Details page used to GET the entire watchlist
+        // and FirstOrDefault() it; this is one row instead of all N.
+        group.MapGet("/{tmdbId:int}/{mediaType}", async (int tmdbId, string mediaType, ClaimsPrincipal user, DbService db, CancellationToken ct) =>
+        {
+            // reject structurally invalid input the same way every other TmdbId endpoint here does
+            // (POST "", /seen, /ensure) — the :int route constraint guarantees parseability, not
+            // positivity.
+            if (tmdbId <= 0)
+                return Results.BadRequest("Invalid tmdbId");
+            if (!MediaTypes.IsValid(mediaType))
+                return Results.BadRequest("Invalid media type");
+
+            string userId = user.GetUserId();
+            QueueItem? item = await db.GetQueueItemAsync(userId, tmdbId, mediaType, ct);
+            return item is not null ? Results.Ok(item) : Results.NotFound();
+        });
+
         group.MapPost("", async (QueueItem item, ClaimsPrincipal user, DbService db) =>
         {
             if (string.IsNullOrWhiteSpace(item.Title) || !MediaTypes.IsValid(item.MediaType) || item.TmdbId <= 0)

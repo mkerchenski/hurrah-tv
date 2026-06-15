@@ -21,7 +21,7 @@ Run through this top-to-bottom. Most steps link to deeper sections below. If any
 - [ ] Configure [signed commits](#signed-commits). Branch protection rejects unsigned commits — if you skip this, your first push will bounce.
 - [ ] Open `Hurrah.tv.code-workspace` in VS Code (File → Open Workspace from File). Install recommended extensions when prompted.
 - [ ] Run `Cmd/Ctrl+Shift+P → Tasks: Run Task → Watch All (API + Client)`. Open https://localhost:7267 in Chrome.
-- [ ] Sign in with your phone (OTP flow), add a show to your watchlist, confirm it renders. That proves the whole stack — client, API, Postgres, Twilio — is working.
+- [ ] Sign in with your phone (OTP flow), add a show to your watchlist, confirm it renders. That proves the stack — client, API, Postgres — is working. **In Development the OTP is logged to the API console, not SMS'd** — look for the `OTP (dev — not SMS'd)` log line and type that code in. No Twilio call happens locally, so you don't need working Twilio credentials to sign in (to actually exercise Twilio SMS you'd run against a non-Development environment).
 - [ ] Pick a [`good first issue`](https://github.com/mkerchenski/hurrah-tv/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22), comment "I'd like to take this", open a [PR](#pull-request-workflow).
 
 ---

@@ -26,6 +26,15 @@ public static class QueueItemExtensions
     public static int? DaysSinceLatestEpisode(this QueueItem item, DateTime todayUtc) =>
         item.LatestEpisodeDate is { } d ? (int)(todayUtc.Date - d.Date).TotalDays : null;
 
+    // "drops today": the latest episode is dated today. For a streaming release that means it
+    // lands at some point during the day and isn't watchable yet, so the watchlist treats it as
+    // forward-looking — Upcoming row, badged "today" — rather than already-available (#196).
+    // Canonical so the filter (WatchlistFilters), the badge (WatchlistRow), and the Upcoming sort
+    // (Home) all read the same rule. Typed date comparison, not a day-diff, per
+    // Learnings/date-predicates-prefer-typed-comparisons.md.
+    public static bool IsDroppingToday(this QueueItem item, DateTime todayUtc) =>
+        item.LatestEpisodeDate is { } latest && latest.Date == todayUtc.Date;
+
     // caught up if the user's newest-watched episode for this show is at or beyond the
     // stored "latest" (lexicographic by season then episode). Robust to a stale stored
     // S/E: watching a genuinely-newer episode (S,E2) counts as caught up even when the

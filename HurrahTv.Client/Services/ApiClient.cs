@@ -59,11 +59,27 @@ public class ApiClient(HttpClient http)
         return response ?? new QueueResponse([], []);
     }
 
-    // convenience for callers that only need items (Details page, Queue page)
+    // convenience for callers that only need items (Queue page)
     public async Task<List<QueueItem>> GetQueueAsync(CancellationToken cancellationToken = default)
     {
         QueueResponse response = await GetQueueResponseAsync(cancellationToken);
         return response.Items;
+    }
+
+    // targeted single-item lookup for the Details page (#8). Returns null when the item isn't
+    // queued (404) — the Details page reads that as "show the Add-to-queue UI". A cancelled token
+    // still throws (TaskCanceledException), which Details' load path catches as navigation abort.
+    public async Task<QueueItem?> GetQueueItemAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.GetAsync($"api/queue/{tmdbId}/{mediaType}", cancellationToken);
+        // 404 is the expected "not queued" answer → null (Details shows the Add-to-queue UI).
+        // Any OTHER non-2xx (500, 401) is a genuine failure — throw so it surfaces like the
+        // GetDetailsAsync call right before it, rather than masquerading as "not queued" and
+        // wrongly showing Add-to-queue for an item that IS in the user's list.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<QueueItem>(cancellationToken);
     }
 
     // watched episodes
@@ -84,8 +100,16 @@ public class ApiClient(HttpClient http)
         return null;
     }
 
-    public async Task RemoveFromQueueAsync(int id, CancellationToken cancellationToken = default) =>
-        await _http.DeleteAsync($"api/queue/{id}", cancellationToken);
+    // EnsureSuccessStatusCode so a non-2xx delete THROWS — HttpClient.DeleteAsync only throws on
+    // transport failure, not on a 401/500 status. Callers (Details, QuickActions RunAction,
+    // Queue.Remove) drive optimistic-remove UI from a try/catch that assumes failure surfaces as an
+    // exception; without this a failed delete would silently clear local state and skip the
+    // reload/restore path, leaving the UI out of sync with the server.
+    public async Task RemoveFromQueueAsync(int id, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.DeleteAsync($"api/queue/{id}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 
     public async Task<QueueItem?> UpdateStatusAsync(int id, QueueStatus status, CancellationToken cancellationToken = default)
     {
