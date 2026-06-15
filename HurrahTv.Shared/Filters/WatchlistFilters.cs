@@ -86,7 +86,7 @@ public static class WatchlistFilters
                     && (!item.IsLatestEpisodeWatched || overrideLatestWatched)
                     && HasAiredOrIsActivelyWatching(item, today))
                 {
-                    // A latest episode dated *today* is "available today" — for a streaming release
+                    // a latest episode dated *today* is "available today" — for a streaming release
                     // that usually means it drops at some point during the day and isn't watchable
                     // yet, so it belongs in the forward-looking Upcoming row (badged "today") rather
                     // than Available Now (#196). We keep the full Available Now gate above (incl. the

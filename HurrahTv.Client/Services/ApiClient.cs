@@ -72,9 +72,14 @@ public class ApiClient(HttpClient http)
     public async Task<QueueItem?> GetQueueItemAsync(int tmdbId, string mediaType, CancellationToken cancellationToken = default)
     {
         HttpResponseMessage response = await _http.GetAsync($"api/queue/{tmdbId}/{mediaType}", cancellationToken);
-        return response.IsSuccessStatusCode
-            ? await response.Content.ReadFromJsonAsync<QueueItem>(cancellationToken)
-            : null;
+        // 404 is the expected "not queued" answer → null (Details shows the Add-to-queue UI).
+        // Any OTHER non-2xx (500, 401) is a genuine failure — throw so it surfaces like the
+        // GetDetailsAsync call right before it, rather than masquerading as "not queued" and
+        // wrongly showing Add-to-queue for an item that IS in the user's list.
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<QueueItem>(cancellationToken);
     }
 
     // watched episodes
@@ -95,8 +100,16 @@ public class ApiClient(HttpClient http)
         return null;
     }
 
-    public async Task RemoveFromQueueAsync(int id, CancellationToken cancellationToken = default) =>
-        await _http.DeleteAsync($"api/queue/{id}", cancellationToken);
+    // EnsureSuccessStatusCode so a non-2xx delete THROWS — HttpClient.DeleteAsync only throws on
+    // transport failure, not on a 401/500 status. Callers (Details, QuickActions RunAction,
+    // Queue.Remove) drive optimistic-remove UI from a try/catch that assumes failure surfaces as an
+    // exception; without this a failed delete would silently clear local state and skip the
+    // reload/restore path, leaving the UI out of sync with the server.
+    public async Task RemoveFromQueueAsync(int id, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.DeleteAsync($"api/queue/{id}", cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
 
     public async Task<QueueItem?> UpdateStatusAsync(int id, QueueStatus status, CancellationToken cancellationToken = default)
     {

@@ -68,6 +68,11 @@ public static class QueueEndpoints
         // and FirstOrDefault() it; this is one row instead of all N.
         group.MapGet("/{tmdbId:int}/{mediaType}", async (int tmdbId, string mediaType, ClaimsPrincipal user, DbService db, CancellationToken ct) =>
         {
+            // reject structurally invalid input the same way every other TmdbId endpoint here does
+            // (POST "", /seen, /ensure) — the :int route constraint guarantees parseability, not
+            // positivity.
+            if (tmdbId <= 0)
+                return Results.BadRequest("Invalid tmdbId");
             if (!MediaTypes.IsValid(mediaType))
                 return Results.BadRequest("Invalid media type");
 

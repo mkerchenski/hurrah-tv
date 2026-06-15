@@ -309,6 +309,7 @@ else
     {
         MediaFilter.OnChanged += OnMediaFilterChanged;
         UserServicesCache.Changed += OnServicesChanged;
+        QuickActionSvc.OnItemRemoved += OnItemRemoved;
         _loading = true;
         Task<IReadOnlyList<int>> servicesTask = UserServicesCache.GetAsync();
         Task<List<QueueItem>> queueTask = Api.GetQueueAsync();
@@ -572,6 +573,20 @@ else
         catch { }
     }
 
+    // a removal raised from another surface (Details' toggle-off, or the QuickActions sheet) —
+    // splice it out by Id so the row disappears without a refetch, mirroring Home's handler and
+    // Queue's own Remove() above. Fires only on a confirmed server delete (#195). No-op if this
+    // page never held the item.
+    private void OnItemRemoved(int queueItemId) => InvokeAsync(() =>
+    {
+        int idx = _items.FindIndex(i => i.Id == queueItemId);
+        if (idx < 0) return;
+        _items.RemoveAt(idx);
+        UpdateCounts();
+        RecomputeVisible();
+        StateHasChanged();
+    });
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         bool wantSortable = _activeTab == WantToWatchTab && !_loading && _visibleItems.Count > 0;
@@ -750,6 +765,7 @@ else
         _disposed = true;
         MediaFilter.OnChanged -= OnMediaFilterChanged;
         UserServicesCache.Changed -= OnServicesChanged;
+        QuickActionSvc.OnItemRemoved -= OnItemRemoved;
         await DisposeSortableAsync();
         _dotNetRef?.Dispose();
         _dotNetRef = null;

@@ -338,6 +338,11 @@ public class QueueEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         // invalid media type → 400
         HttpResponseMessage bad = await client.GetAsync("/api/queue/1399/banana");
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+
+        // tmdbId <= 0 → 400 (the :int route matches 0/negatives; the handler rejects them like
+        // every other TmdbId endpoint)
+        HttpResponseMessage zeroId = await client.GetAsync($"/api/queue/0/{MediaTypes.Tv}");
+        Assert.Equal(HttpStatusCode.BadRequest, zeroId.StatusCode);
     }
 
     // the targeted lookup must be UserId-scoped like every other queue read — user A asking for a
