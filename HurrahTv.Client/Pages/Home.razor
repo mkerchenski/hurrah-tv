@@ -149,21 +149,39 @@ else
         }
         @if (!_queueLoaded)
         {
-            <!-- skeleton: reserves vertical space matching a typical watchlist row so the
-                 page doesn't shift when the queue arrives. matches WatchlistRow card size. -->
+            <!-- skeleton mirrors the real watchlist section's structure so the swap doesn't grow the
+                 page and shove the rows below it down (#175 CLS): title + chip/sort control row, then
+                 two WatchlistRow-shaped placeholders (header bar + poster strip + label). Two rows is
+                 the common case (Available Now + Available Later); a sparse account collapses by at
+                 most one row, far less shift than the prior single bare poster row. matches the real
+                 header (Home.razor) and WatchlistRow card structure. -->
             <div class="mb-8">
-                <div class="flex items-center gap-2 mb-4">
-                    <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
-                    <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
+                <div class="mb-4">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
+                        <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 gap-2">
+                        <div class="h-7 w-28 md:w-44 bg-surface-100 rounded-lg animate-pulse"></div>
+                        <div class="h-7 w-36 bg-surface-100 rounded-lg animate-pulse"></div>
+                    </div>
                 </div>
-                <div class="flex gap-3 overflow-hidden">
-                    @for (int i = 0; i < 6; i++)
-                    {
-                        <div class="flex-shrink-0 w-32 sm:w-32 md:w-36">
-                            <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+
+                @for (int row = 0; row < 2; row++)
+                {
+                    <section class="mb-6 md:mb-8">
+                        <div class="h-5 w-40 bg-surface-100 rounded animate-pulse mb-3"></div>
+                        <div class="flex gap-3 overflow-hidden">
+                            @for (int i = 0; i < 6; i++)
+                            {
+                                <div class="flex-shrink-0 w-32 sm:w-32 md:w-36">
+                                    <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+                                    <div class="h-3 w-20 bg-surface-100 rounded animate-pulse mt-1.5"></div>
+                                </div>
+                            }
                         </div>
-                    }
-                </div>
+                    </section>
+                }
             </div>
         }
         else if (hasWatchlistContent)
@@ -307,7 +325,10 @@ else
     // the background fetch returns. While _heroLoading we show a skeleton rather than a
     // watchlist fallback, so the hero never flashes an already-in-list item.
     private CuratedHero? _heroPick;
-    private bool _heroLoading;
+    // default true so the hero skeleton reserves its full aspect-ratio height from the very first
+    // render of the watchlist view — otherwise the hero area renders at zero height until
+    // OnInitializedAsync sets the flag, then pops to full height and shoves the watchlist down (CLS, #175).
+    private bool _heroLoading = true;
     private int _heroRequestSeq; // latest-wins guard so overlapping fetches don't both apply
     private bool _disposed;      // LoadHero is fire-and-forget + slow; don't render after disposal
     // page-scoped CTS, cancelled in Dispose(), so navigating away mid-fetch aborts the
@@ -350,10 +371,10 @@ else
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;
 
-        // set BEFORE ProcessQueueResponse: it computes _hero via SelectHero, which must see
-        // _heroLoading=true to suppress the watchlist fallback and render the skeleton instead.
-        // Otherwise the hero flashes an in-list item until the AI pick lands.
-        _heroLoading = true;
+        // ProcessQueueResponse computes _hero via SelectHero, which must see _heroLoading=true to
+        // suppress the watchlist fallback and render the skeleton (else the hero flashes an in-list
+        // item until the AI pick lands). The field defaults true and nothing has cleared it yet on
+        // this first-load path, so no assignment is needed here.
         ProcessQueueResponse(await queueTask);
 
         // AI is the slowest call (Claude API) and not needed for first paint — let it finish in
@@ -531,9 +552,12 @@ else
             case QueueStatus.Finished:    _settings.ShowFinished    = !current; break;
         }
 
+        // re-apply the filter from the in-memory queue for an instant response — the chip flags are
+        // read by ApplyWatchlistFilters inside ReapplyDerivedState, so no /api/queue refetch is needed
+        // (this used to call ReloadWatchlist, which round-tripped). Persist the setting afterward.
+        ReapplyDerivedState();
+        StateHasChanged();
         await Api.SetUserSettingsAsync(_settings);
-        // reload to re-apply filter (uses cached queue data from last load)
-        await ReloadWatchlist();
     }
 
     private void ApplyWatchlistFilters(List<QueueItem> allItems)
@@ -673,24 +697,27 @@ else
         catch { /* leave stale data in place on network failure */ }
     });
 
-    private void OnMediaFilterChanged() => _ = InvokeAsync(async () =>
+    private void OnMediaFilterChanged() => _ = InvokeAsync(() =>
     {
-        // re-fetch a media-appropriate AI hero for the new filter (#147). The single client-held
-        // pick may be the other media type; the server re-selects from the SAME cached reservoir
-        // (no paid regen). Recompute _hero with _heroLoading set BEFORE the async work so the slot
-        // reflects the new filter immediately — keeping the current pick only if it still matches,
-        // else showing the skeleton — instead of flashing the now-filtered-out pick during the
-        // in-flight refetch. The flag gates a derived value (_hero), so it must be set before that
-        // value is recomputed, not just before the async call (see #135 learning).
+        // MediaFilter is a global service whose InitializeAsync can fire OnChanged during startup,
+        // racing Home's own load. Skip until the queue is loaded — OnInitializedAsync owns first
+        // render and already reads the initialized media filter, so a pre-load run would only derive
+        // empty rows and kick a redundant LoadHero. Mirrors OnUserServicesChanged's _queueLoaded guard.
+        if (!_queueLoaded) return;
+
+        // re-fetch a media-appropriate AI hero for the new filter (#147). The single client-held pick
+        // may be the other media type; the server re-selects from the SAME cached reservoir (no paid
+        // regen). Set _heroLoading BEFORE re-deriving so SelectHero (inside ReapplyDerivedState) keeps
+        // the current pick only if it still matches the new filter, else renders the skeleton — the
+        // flag gates the derived _hero value, so it must be set before that value is recomputed (#135).
         _heroLoading = true;
-        _hero = SelectHero();
-        StateHasChanged();
-        // the hero fetch and the watchlist reload are independent (the server reads its own
-        // watchlist for the hero, not the client's), so kick the hero off concurrently rather
-        // than after the awaited reload — the new pick lands sooner.
+        // the hero fetch is independent (the server reads its own watchlist for the hero, not the
+        // client's), so kick it off — the new media-appropriate pick lands when it returns.
         _ = LoadHero();
-        try { await ReloadWatchlist(); }
-        catch { /* leave stale data in place on network failure */ }
+        // the media partition is a pure function of the in-memory queue + the new media filter
+        // (cf. OnUserServicesChanged), so re-derive locally instead of refetching /api/queue.
+        ReapplyDerivedState();
+        StateHasChanged();
     });
 
     // user changed services in Settings — refresh the cached list and re-run the partition

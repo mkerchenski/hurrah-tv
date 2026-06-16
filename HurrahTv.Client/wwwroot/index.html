@@ -7,6 +7,11 @@
     <title>Hurrah.tv</title>
     <base href="/" />
 
+    <!-- warm the TMDb image CDN connection early so poster/backdrop fetches skip DNS+TLS setup
+         once the WASM app discovers them post-boot (#175). crossorigin because the images are
+         fetched anonymously from a different origin. -->
+    <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
+
     <!-- site-wide meta + Open Graph + Twitter Card. Blazor WASM doesn't SSR, so iOS Safari
          / iMessage / Twitter link-preview bots only ever see what's in this static HTML.
          Per-show OG (using TMDb backdrop + title for /details/{type}/{id}) needs a
