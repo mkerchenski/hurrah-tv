@@ -371,10 +371,10 @@ else
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;
 
-        // set BEFORE ProcessQueueResponse: it computes _hero via SelectHero, which must see
-        // _heroLoading=true to suppress the watchlist fallback and render the skeleton instead.
-        // Otherwise the hero flashes an in-list item until the AI pick lands.
-        _heroLoading = true;
+        // ProcessQueueResponse computes _hero via SelectHero, which must see _heroLoading=true to
+        // suppress the watchlist fallback and render the skeleton (else the hero flashes an in-list
+        // item until the AI pick lands). The field defaults true and nothing has cleared it yet on
+        // this first-load path, so no assignment is needed here.
         ProcessQueueResponse(await queueTask);
 
         // AI is the slowest call (Claude API) and not needed for first paint — let it finish in

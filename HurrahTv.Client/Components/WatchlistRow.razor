@@ -35,6 +35,8 @@
                 @foreach (QueueItem item in Items)
                 {
                     List<StreamingService> visible = item.VisibleServicesFor(_userServices);
+                    @* card dims (w-32 sm:w-32 md:w-36, aspect-[2/3], mt-1.5 label) are mirrored by
+                       Home.razor's watchlist load skeleton — keep in sync or CLS regresses (#175) *@
                     <div @key="item.Id" @ref="_cardRefs[item.Id]"
                          class="flex-shrink-0 w-32 sm:w-32 md:w-36 snap-start cursor-pointer group"
                          @onclick="() => GoToDetails(item)">
