@@ -10,7 +10,9 @@
         <div class="aspect-[3/4] sm:aspect-[16/9] md:aspect-[21/9] relative bg-surface-100">
             @if (!string.IsNullOrEmpty(Item.BackdropUrl))
             {
-                <img src="@Item.BackdropUrl" alt="" draggable="false"
+                @* hero backdrop is the LCP element (#175); hint high priority so the browser fetches
+                   it ahead of lower-priority images the moment its URL is known after the AI pick lands. *@
+                <img src="@Item.BackdropUrl" alt="" draggable="false" fetchpriority="high"
                      class="absolute inset-0 w-full h-full object-cover no-callout" />
             }
 
