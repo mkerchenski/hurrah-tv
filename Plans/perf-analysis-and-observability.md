@@ -39,9 +39,10 @@ Foundation: the sink #201 reports into.
 
 The linchpin for splitting server-cost from client-cost.
 
-- Add a small `ResponseTimingMiddleware` mirroring `OgPreviewMiddleware` (`HurrahTv.Api/Middleware/`, registered at `Program.cs:89`): `Stopwatch` around `await next(ctx)`, write `Server-Timing: app;dur=<ms>` via `ctx.Response.OnStarting(...)` (headers must be set before the body flushes). Register early in the pipeline so it brackets the most work.
-- **CORS exposure**: `Server-Timing` is same-origin in prod (one instance serves client + API) so it's exposed automatically — but in dev the client (`:7267`) hits the API (`:7201`) cross-origin, so add `Server-Timing` to `Access-Control-Expose-Headers` (extend the CORS policy at `Program.cs:47–50`). Without this, `rum.js` reads `undefined` locally and looks broken when it isn't.
-- **Verify**: `curl -I` staging — confirm `Server-Timing` present on a navigation and on `/api/*`.
+- ✅ `ResponseTimingMiddleware` (`HurrahTv.Api/Middleware/`) — `Stopwatch.GetTimestamp()` at entry, writes `Server-Timing: app;dur=<ms>` via `Response.OnStarting` (captures time-to-first-byte, the slice the beacon subtracts from TTFB). Registered as the **outermost** middleware (right after the dev exception page) so it brackets the whole request.
+- ✅ **CORS exposure** — added `.WithExposedHeaders("Server-Timing")` to the default policy so `rum.js` can read it cross-origin in dev (`:7267`→`:7201`); same-origin in prod exposes it anyway.
+- ✅ **Verified locally** (`curl -ksi`): `/api/health` → `Server-Timing: app;dur=39.9` (cold first request), `/api/version` → `app;dur=2.7` (warm) — the cold/warm gap is exactly the signal the beacon will attribute.
+- No unit test: middleware is browser/integration-verified per CLAUDE.md; verified by curl above.
 
 ## Phase 3 — Client RUM beacon (#201, client half)
 

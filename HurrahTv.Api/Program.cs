@@ -72,12 +72,18 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod()));
+              .AllowAnyMethod()
+              // expose Server-Timing so the RUM beacon (#201) can read it cross-origin in dev
+              // (client :7267 → api :7201); in prod the same-origin instance exposes it anyway
+              .WithExposedHeaders("Server-Timing")));
 
 WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
+
+// outermost: time the whole request and emit Server-Timing for the RUM beacon (#201/#200)
+app.UseMiddleware<ResponseTimingMiddleware>();
 
 // redirect www.{hurrah.tv,staging.hurrah.tv} → apex. Destination hosts are hardcoded constants
 // (not derived from the request) to eliminate open-redirect via spoofed Host header.
