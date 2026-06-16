@@ -1,85 +1,88 @@
-# Perf Analysis & Observability — Implementation Plan
+# Performance Analysis & Observability for Go-Live — Implementation Plan
 
-> **Status:** Active
+> **Status:** Draft
+> **Phase:** capture-first (v1 Public Launch milestone)
 > **Tracking issue:** mkerchenski/hurrah-tv#200
-> **Related issues:** #24 (App Insights server), #201 (RUM beacon)
+> **Sub-issues:** #201 (client RUM beacon — created via /xplan 2026-06-15)
+> **Related:** #24 (App Insights/Sentry), #63 (Clarity), #16 (Azure settings umbrella), #175 (Home load), #3 (bundle)
 
 ## Context
 
-The site sometimes takes 10–15s to load, intermittently and not reliably reproducible (#200). The cheap config lever (App Service **Always On**) is already pulled, so the cause must be **captured in the wild** before it can be fixed. Suspected phases: server cold-start (the `await db.InitializeAsync()` DDL blocks startup at `Program.cs:120`), service-worker / bundle re-download after deploy, or cold dependency paths (Postgres/TMDb).
+The site sporadically takes **10–15 s to load**, other times it's fast (#200). It's intermittent and not reproducible on demand. Investigation this session established:
 
-This plan is the **instrument-first** track: stand up the observability so a real slow load gets attributed to a *specific phase*, then fix the dominant cause with proof. Decision already taken: **App Insights, not Sentry** — #201 is written against App Insights as its sink, it's already provisioned in Azure, and the #200 goal is phase-attribution (custom metrics/timing), which is App Insights' wheelhouse. Sentry's exception-DX edge is a broader want that should not block #200; defer it with a comment on #24.
+- **Hosting:** Windows Azure App Service (IIS), one instance serves both the WASM bundle and the API from the same origin; ARR affinity on. **`alwaysOn: true`** — so it is **not** routine idle spin-down.
+- **API is fast warm:** `/api/queue` ~35 ms; the dev "1.48 s Home" was mostly the untrimmed-BCL dev server (Release landing boots ~550 ms).
+- **SW/cache is already well-designed** (network-first SW keyed to `BuildVersion`, `MapFallbackToFile` set `no-cache` — see `Learnings/service-worker-coexists-with-version-update-flow.md`, `Learnings/mapfallbacktofile-bypasses-static-options.md`). The `dotnet.<hash>.js` 404 seen locally was almost certainly a `dotnet watch` fingerprint race (SW is skipped on localhost), not the prod SW.
+- **App Insights is not wired at all** — greenfield.
 
-**No DB schema changes** — telemetry goes to App Insights, not Postgres.
+**Conclusion:** the cheap config lever (Always On) is already pulled, so the cause is intermittent + event-triggered (post-deploy/recycle cold start, dependency cold paths, occasional SW revalidation). We can't guess — we must **capture real slow-load events with a phase breakdown**, then fix the dominant cause. Intended outcome: instrumentation that catches the sporadic loads in the wild, a data-attributed root cause, and a verified fix before go-live.
 
 ## Affected Projects
 
-| Project          | Touched | Notes                                                                                  |
-|------------------|---------|----------------------------------------------------------------------------------------|
-| HurrahTv.Api     | yes     | App Insights DI + PII scrubber, `Server-Timing` middleware, `POST /api/telemetry`, `appsettings.json` placeholder, `.csproj` package |
-| HurrahTv.Client  | yes     | `wwwroot/js/rum.js`, one early `<script>` in `index.html`                              |
-| HurrahTv.Shared  | no      | Telemetry payload is a JS→Api contract deserialized into an Api-local record; no ApiClient/Blazor involvement, so no Shared DTO ripple |
+| Project | Touched | Notes |
+|---|---|---|
+| HurrahTv.Api | yes | App Insights SDK, Server-Timing middleware, `/api/telemetry` beacon endpoint, `InitializeAsync` cold-start refactor, warm-up |
+| HurrahTv.Client | yes | RUM beacon JS in `wwwroot`, Clarity script in `index.html` (prod-gated) |
+| HurrahTv.Shared | maybe | a small RUM sample DTO if the beacon posts typed JSON |
+
+**DB schema changes:** none — App Insights is the telemetry sink (no new table). The `/api/telemetry` endpoint forwards to AI, it does not persist to Postgres.
+**API contract changes:** new `/api/telemetry` endpoint only (additive); optional Shared DTO.
 
 ---
 
-## Phase 1 — Server-side App Insights (#24, scoped to #200)
+## Phase 1 — App Insights (server) — the linchpin
 
-Foundation: the sink #201 reports into.
+Greenfield; highest value for the cold-start + dependency hypotheses. This is the Azure-native half of **#24**.
 
-> **⚠ SDK 3.x discovery (during implementation):** `Microsoft.ApplicationInsights.AspNetCore` resolved to **3.1.2**, a post-cutoff major that is now **OpenTelemetry-based**. The classic pipeline — `ITelemetryInitializer`, `ITelemetryProcessor`, `TelemetryConfiguration` — is **removed**. Customization is now a custom OpenTelemetry `BaseProcessor<Activity>` registered via `ConfigureOpenTelemetryTracerProvider`. `AddApplicationInsightsTelemetry()` and `TelemetryClient.TrackEvent` (Phase 3) still exist. Bullets below reflect the 3.x reality. (Migration guidance: github.com/microsoft/ApplicationInsights-dotnet/blob/main/MigrationGuidance.md)
+- Add `Microsoft.ApplicationInsights.AspNetCore` to `HurrahTv.Api`; wire in `Program.cs` via connection string in config (**production-only** — don't emit dev/staging noise, or use a separate AI resource for staging). Connection string is an App secret, not committed.
+- Enable request + dependency auto-collection (Npgsql/`HttpClient` to TMDb are auto-tracked) so **DB and TMDb latency** and **app-start/cold-start** are visible.
+- Stamp `BuildVersion` (already in `appsettings.json`) as the AI cloud role / version tag so telemetry is per-deploy attributable.
+- **Verify:** drive a few requests against staging; confirm requests, dependencies (Postgres + TMDb), and a cold-start (restart slot → first request) appear in the AI resource.
+- **Tests:** none (infra wiring); gate is "telemetry visible in AI."
 
-- ✅ Added `Microsoft.ApplicationInsights.AspNetCore` 3.1.2 to `HurrahTv.Api.csproj` (pulls OpenTelemetry transitively).
-- ✅ Register `builder.Services.AddApplicationInsightsTelemetry(o => o.ConnectionString = …)` near the other service registrations, **enabled only when a real connection string is present** (presence + non-`YOUR_` placeholder check), read the env-branch way, NOT `?? fallback` (`Learnings/aspnet-config-get-null-coalesce-trap.md`). Azure App Service supplies `APPLICATIONINSIGHTS_CONNECTION_STRING`; committed `appsettings.json` carries a `"YOUR_APPINSIGHTS_CONNECTION_STRING"` placeholder under a new top-level `ApplicationInsights` key. Dev/local sends nothing.
-- ✅ **PII scrubbing** — `PiiRedactionProcessor : BaseProcessor<Activity>` (`HurrahTv.Api/Telemetry/`) redacts the `url.query`/`url.path`/`url.full`/`http.url`/`http.target` span tags (the only PII vector: OTel records no bodies/headers). Redacts sensitive query-param values + collapses 10+ digit runs (phone-length; spares shorter TMDb ids). Registered via `ConfigureOpenTelemetryTracerProvider`.
-- ✅ **Release tagging** — `ConfigureResource(r => r.AddService("HurrahTv.Api", serviceVersion: buildVersion))` sets `service.version` to the CI build SHA (replaces `Context.Component.Version`).
-- ✅ **Tests** (`HurrahTv.Api.Tests/PiiRedactionProcessorTests.cs`): 6 tests driving the processor through a real `Activity` — phone/token redacted, TMDb id preserved, non-URL tags untouched. All green.
-- **Verify** (pending deploy): on staging, trigger a trace, confirm it appears in App Insights with the build SHA and no PII.
+## Phase 2 — Server-Timing header + `/api/telemetry` beacon + client RUM
 
-## Phase 2 — `Server-Timing` response header (#201, server half)
+Capture the **client-side** phase breakdown for slow loads and tie it to server cost.
 
-The linchpin for splitting server-cost from client-cost.
+- **API:** middleware that emits a `Server-Timing` response header attributing server-side cost (app warm/cold, DB, TMDb) so the client beacon can separate "server was slow" from "bundle/boot was slow". New `/api/telemetry` minimal endpoint (anonymous, **rate-limited + payload-capped**, honeypot-free since it's machine-posted) that forwards a RUM sample to App Insights as a custom event.
+- **Client:** ~30-line `wwwroot/js/rum.js` that, after load, reads Navigation Timing + Resource Timing (DNS/TLS/TTFB/bundle-download/boot/first-render) and **POSTs only when total load exceeds a threshold (e.g. > 3 s)** or on a small sample rate — so we capture the sporadic 10–15 s events without flooding. Registered in `index.html`, **prod-host-gated** (skip localhost/staging or tag env).
+- **Verify:** throttle the network in Chrome DevTools to force a slow load; confirm a sample lands in AI with a phase breakdown; confirm normal-fast loads are not beaconed.
+- **Tests:** if the threshold/sampling decision is pure logic, extract to `HurrahTv.Shared` and unit-test it; the JS/wiring is browser-verified.
 
-- ✅ `ResponseTimingMiddleware` (`HurrahTv.Api/Middleware/`) — `Stopwatch.GetTimestamp()` at entry, writes `Server-Timing: app;dur=<ms>` via `Response.OnStarting` (captures time-to-first-byte, the slice the beacon subtracts from TTFB). Registered as the **outermost** middleware (right after the dev exception page) so it brackets the whole request.
-- ✅ **CORS exposure** — added `.WithExposedHeaders("Server-Timing")` to the default policy so `rum.js` can read it cross-origin in dev (`:7267`→`:7201`); same-origin in prod exposes it anyway.
-- ✅ **Verified locally** (`curl -ksi`): `/api/health` → `Server-Timing: app;dur=39.9` (cold first request), `/api/version` → `app;dur=2.7` (warm) — the cold/warm gap is exactly the signal the beacon will attribute.
-- No unit test: middleware is browser/integration-verified per CLAUDE.md; verified by curl above.
+## Phase 3 — Microsoft Clarity (#63)
 
-## Phase 3 — Client RUM beacon (#201, client half)
+Qualitative: literally watch a slow load happen.
 
-- ✅ `HurrahTv.Client/wwwroot/js/rum.js` — on `load`, reads Navigation Timing + the slowest `_framework/*` resource (bundle proxy) + the `app` entry from `nav.serverTiming`. Beacons via `navigator.sendBeacon` only when total > **3 s** OR a **1%** random sample; normal-fast loads send nothing. **Prod-host-gated** (skip localhost/staging), wrapped so it can never throw into the page.
-- ✅ Loaded as a **classic `<script defer src="js/rum.js">`** in `index.html` `<head>` (not a Blazor ES module) so it fires even when a slow WASM boot is the problem.
-- ✅ `POST /api/telemetry` (`HurrahTv.Api/Endpoints/TelemetryEndpoints.cs`) — anonymous, binds the body manually off `HttpContext` so the **4 KB size cap** runs before the read (413), garbage JSON → 400, **per-IP fixed-window rate limit** (10/min, partitioned on `X-Forwarded-For`→`RemoteIpAddress`) via `AddRateLimiter`/`UseRateLimiter`/`RequireRateLimiting` scoped to this endpoint. Forwards to App Insights via `TelemetryClient.TrackEvent` **only when configured** (accept-and-drop otherwise). Page URL re-scrubbed through `PiiRedactionProcessor.Redact`.
-  - **3.x note:** `EventTelemetry` has no `Metrics` dict and `TrackEvent` lost its 3-arg overload — timing phases go in as string **custom dimensions** (`customDimensions.totalMs` etc.), which is what per-load diagnosis queries anyway.
-- SW interplay safe as predicted: `/api/*` network-only so the POST isn't cached; `js/rum.js` served `must-revalidate`; no integrity attribute added.
-- ✅ **Tests** (`HurrahTv.Api.Tests/TelemetryEndpointTests.cs`): valid → 202, oversized → 413, garbage → 400, 11th/min → 429 (each test on a distinct `X-Forwarded-For` partition). 4 green; full suite 128+46+39 green.
-- **Verify** (pending staging): Chrome DevTools throttled reload on the deployed host → a `RumLoad` event with the phase breakdown (incl. `serverMs` from `Server-Timing`) in App Insights; a fast load sends nothing.
+- Add the Clarity tag to `index.html`, **prod-host-gated**; mask phone/OTP inputs (`data-clarity-mask`); update footer/privacy text. Per #63's acceptance criteria.
+- **Verify:** a session shows up in the Clarity dashboard within an hour; OTP/phone masked.
+- **Tests:** none.
 
-## Phase 4 — Capture window + diagnosis (#200 AC#2)
+## Phase 4 — Fix the dominant cause (data-driven)
 
-No code. Let instrumentation run; watch App Insights for a real 10–15s load and attribute it to a phase (cold-start vs bundle re-download vs boot) using the `Server-Timing` split + Resource Timing. Record the finding on #200. **Gate Phase 5 on this data** — don't pre-commit a fix.
+Only after Phases 1–3 produce attributed samples. Candidates, ranked by current suspicion:
 
-- [ ] **Validate the PII redaction against real telemetry** (folded from /xsimplify): the scrubber's 10-digit threshold and hardcoded `url.*`/`http.*` tag list are heuristics. Spot-check live `customDimensions.url` values for (a) leaked phone numbers/tokens the rules missed, and (b) legitimate long numeric IDs wrongly redacted. If wrong, tune the threshold / tag list — consider making them config-driven only if the data shows it's needed.
-
-## Phase 5 — Fix the dominant cause (#200 AC#3/#4)
-
-Candidate fixes, picked by Phase 4 data (do not build blind):
-- Move `InitializeAsync` DDL off the cold-start hot path (lazy/background; it blocks at `Program.cs:120`).
-- Audit `_framework` cache headers + SW update strategy (the observed `dotnet.<hash>.js` 404→retry); note PR #202 already shrank the bundle 2.9→2.46 MB.
-- Post-deploy warm-up ping to the existing `/api/health` (`Program.cs:136`) from the `/deploy` skill / `swap.yml`, so the first real user doesn't eat cold-start.
-
-**Verify (AC#4)**: sporadic slow loads no longer reproduce over a monitoring window in App Insights.
+- **Cold start:** move `DbService.InitializeAsync` DDL off the request hot path — run-once guard / `IHostedService` startup task so the first user request doesn't wait on `CREATE TABLE IF NOT EXISTS` (mind `Learnings/shared-db-slot-swaps-need-backward-compatible-migrations.md` — keep migrations expand/contract for slot swaps).
+- **Post-deploy warm-up:** CI hits `/health` (or a warm-up path) after deploy/swap so the first real user isn't cold. Ties into #16.
+- **Cache headers:** audit `_framework/*` server cache headers (fingerprinted assets → `immutable`) so first-load + SW population is optimal; confirm the SW `no-cache`-before-`?v=`-immutable ordering still holds.
+- **Re-verify** each fix against AI/RUM over a monitoring window; #200's acceptance criteria is "sporadic slow loads no longer reproduce."
 
 ---
 
-## Hurrah.tv Considerations
+## API Considerations
+- `/api/telemetry` is anonymous + rate-limited + size-capped (abuse surface); forwards to AI, never writes Postgres.
+- Background/startup work uses `IServiceScopeFactory` / `IHostedService`, not request-thread init.
+- App Insights connection string is an Azure App secret (prod slot), mirroring how TMDb/JWT secrets are handled — never committed.
 
-- **API**: mutating endpoints aren't involved; `/api/telemetry` is fire-and-forget from the client's view. Background forwarding (if any) uses `IServiceScopeFactory.CreateAsyncScope()` for fresh transients — but `TrackEvent` is cheap/sync, so likely inline.
-- **Config trap**: enable App Insights via an env-branch / presence check, never `?? fallback` (`Learnings/aspnet-config-get-null-coalesce-trap.md`).
-- **Cache pipeline**: `MapFallbackToFile` has its own `StaticFileOptions` separate from `UseStaticFiles` (`Learnings/mapfallbacktofile-bypasses-static-options.md`) — relevant if Phase 5 touches `_framework`/index.html headers.
-- **Formatter gate before push**: `dotnet format --verify-no-changes --severity info --no-restore HurrahTv.slnx`.
+## Blazor WASM Considerations
+- RUM beacon is plain JS in `wwwroot` (not a Blazor component) — runs regardless of WASM boot success, so it still captures loads where boot itself was slow. Load it early in `index.html` like `js/version.js`.
+- Keep it tiny — bundle weight still matters for first paint even if download is SW-cached after.
 
-## Follow-on actions
+## External Integrations
+- App Insights: prod-only (or separate staging resource) to avoid noise/cost.
+- Clarity: free; prod-host-gated; mask sensitive fields.
+- No TMDb/Anthropic/Twilio changes.
 
-- Drop a comment on #24 recording "App Insights chosen for #200; Sentry deferred."
-- After landing instrumentation, invoke `/compound` to capture any non-obvious App Insights / `Server-Timing` / Blazor-boot-timing learnings.
-- Phases 1–3 are each independently committable and leave the system working.
+## Follow-on
+- Open a **new tracking issue for the client RUM beacon** (Phase 2) — none exists yet; link to #200.
+- After landing: `/compound` any non-obvious cold-start / AI-wiring learnings.
+- This plan is separate from the `#3`/`#175` bundle branch (don't mix).
