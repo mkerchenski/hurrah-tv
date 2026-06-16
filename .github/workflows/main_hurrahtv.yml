@@ -76,13 +76,17 @@ jobs:
           npm ci
           npm run build:css:min
 
-      - name: Cache-bust CSS references
+      - name: Cache-bust CSS + JS references
         working-directory: HurrahTv.Client
         run: |
           SHORT_SHA=${GITHUB_SHA::8}
           sed -i "s|href=\"css/app.css\"|href=\"css/app.css?v=$SHORT_SHA\"|" wwwroot/index.html
           sed -i "s|href=\"css/icons.css\"|href=\"css/icons.css?v=$SHORT_SHA\"|" wwwroot/index.html
+          # rum.js (#201) is a plain <script src>, not fingerprinted — bust it like the CSS so a
+          # deploy that changes beacon logic isn't served stale from the SW cacheFirst branch
+          sed -i "s|src=\"js/rum.js\"|src=\"js/rum.js?v=$SHORT_SHA\"|" wwwroot/index.html
           grep -q "v=$SHORT_SHA" wwwroot/index.html || { echo "Cache-bust injection failed"; exit 1; }
+          grep -q "js/rum.js?v=$SHORT_SHA" wwwroot/index.html || { echo "rum.js cache-bust injection failed"; exit 1; }
 
       - name: Cache NuGet packages
         uses: actions/cache@v5

@@ -5,6 +5,10 @@ using HurrahTv.Api.Authorization;
 using HurrahTv.Api.Endpoints;
 using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
+using HurrahTv.Api.Telemetry;
+using System.Threading.RateLimiting;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +25,28 @@ builder.Services.AddScoped<CurationService>();
 // the lookup path unified.
 builder.Services.AddSingleton<AIUsageDrainHostedService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AIUsageDrainHostedService>());
+
+// short build SHA stamped by CI (drives /api/version and the App Insights component version)
+string buildVersion = builder.Configuration["BuildVersion"] ?? "dev";
+
+// Application Insights (#24/#200) — only when a real connection string is present, so
+// dev/local and the committed "YOUR_…" placeholder send nothing. Azure App Service supplies
+// APPLICATIONINSIGHTS_CONNECTION_STRING; we read it (or the config section) explicitly rather
+// than relying on a ?? fallback, which the base appsettings.json would render dead code
+// (Learnings/aspnet-config-get-null-coalesce-trap.md).
+string? appInsightsConnection = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]
+    ?? builder.Configuration["ApplicationInsights:ConnectionString"];
+if (!string.IsNullOrWhiteSpace(appInsightsConnection) && !appInsightsConnection.StartsWith("YOUR_"))
+{
+    builder.Services.AddApplicationInsightsTelemetry(options => options.ConnectionString = appInsightsConnection);
+    // SDK 3.x is OpenTelemetry-based: scrub PII with a span processor and stamp the deploy SHA
+    // as the service version (both replace the removed 2.x ITelemetryInitializer)
+    builder.Services.ConfigureOpenTelemetryTracerProvider((_, tracing) =>
+    {
+        tracing.AddProcessor(new PiiRedactionProcessor());
+        tracing.ConfigureResource(resource => resource.AddService("HurrahTv.Api", serviceVersion: buildVersion));
+    });
+}
 
 // jwt auth
 string jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");
@@ -47,12 +73,34 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         policy.WithOrigins(corsOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod()));
+              .AllowAnyMethod()
+              // expose Server-Timing so the RUM beacon (#201) can read it cross-origin in dev
+              // (client :7267 → api :7201); in prod the same-origin instance exposes it anyway
+              .WithExposedHeaders("Server-Timing")));
+
+// per-IP rate limit for the anonymous RUM telemetry endpoint (#201) — partitioned on the
+// forwarded client IP (Azure App Service fronts the request) so one client can't flood it.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(TelemetryEndpoints.RateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: TelemetryEndpoints.ResolveClientIp(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
 
 WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
+
+// outermost: time the whole request and emit Server-Timing for the RUM beacon (#201/#200)
+app.UseMiddleware<ResponseTimingMiddleware>();
 
 // redirect www.{hurrah.tv,staging.hurrah.tv} → apex. Destination hosts are hardcoded constants
 // (not derived from the request) to eliminate open-redirect via spoofed Host header.
@@ -76,6 +124,7 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Order matters here: this middleware MUST stay after UseAuthentication/UseAuthorization
 // and before UseBlazorFrameworkFiles / MapFallbackToFile.
@@ -130,9 +179,9 @@ app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
 app.MapAdminEndpoints();
 app.MapProfileEndpoints();
+app.MapTelemetryEndpoints();
 
-// health check + version
-string buildVersion = builder.Configuration["BuildVersion"] ?? "dev";
+// health check + version (buildVersion computed above, near the App Insights registration)
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
 app.MapGet("/api/version", () => Results.Ok(new { version = buildVersion })).AllowAnonymous();
 

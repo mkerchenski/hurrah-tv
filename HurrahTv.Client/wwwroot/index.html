@@ -44,6 +44,9 @@
         });
         window.addEventListener('appinstalled', () => { window.__hurrahInstallPrompt = null; });
     </script>
+    <!-- RUM beacon (issue #201): classic early script so it still reports when a slow WASM
+         boot is the problem. Self-gates to prod + slow/sampled loads; never throws into the page. -->
+    <script defer src="js/rum.js"></script>
 </head>
 
 <body class="bg-surface text-gray-100 min-h-screen">
