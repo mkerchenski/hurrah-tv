@@ -6,6 +6,7 @@ using HurrahTv.Api.Endpoints;
 using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
 using HurrahTv.Api.Telemetry;
+using System.Threading.RateLimiting;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -77,6 +78,23 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
               // (client :7267 → api :7201); in prod the same-origin instance exposes it anyway
               .WithExposedHeaders("Server-Timing")));
 
+// per-IP rate limit for the anonymous RUM telemetry endpoint (#201) — partitioned on the
+// forwarded client IP (Azure App Service fronts the request) so one client can't flood it.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(TelemetryEndpoints.RateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+                ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
+
 WebApplication app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -107,6 +125,7 @@ app.Use(async (context, next) =>
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 // Order matters here: this middleware MUST stay after UseAuthentication/UseAuthorization
 // and before UseBlazorFrameworkFiles / MapFallbackToFile.
@@ -161,6 +180,7 @@ app.MapUserServiceEndpoints();
 app.MapCurationEndpoints();
 app.MapAdminEndpoints();
 app.MapProfileEndpoints();
+app.MapTelemetryEndpoints();
 
 // health check + version (buildVersion computed above, near the App Insights registration)
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
