@@ -35,6 +35,15 @@ public class PiiRedactionProcessorTests
     }
 
     [Fact]
+    public void Does_Not_Redact_Sensitive_Word_As_A_Substring_Of_Another_Param()
+    {
+        // "monkey" ends in "key" but is not a sensitive param — must survive intact
+        string? result = TagAfterProcessing("url.query", "monkey=banana&token=secret");
+        Assert.Contains("monkey=banana", result);
+        Assert.DoesNotContain("secret", result);
+    }
+
+    [Fact]
     public void Redacts_Phone_Length_Digit_Run_In_Path_Tag()
     {
         string? result = TagAfterProcessing("url.path", "/x/15551234567/y");

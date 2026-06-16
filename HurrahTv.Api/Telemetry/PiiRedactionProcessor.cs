@@ -40,7 +40,9 @@ public sealed partial class PiiRedactionProcessor : BaseProcessor<Activity>
         return LongDigitRun().Replace(result, "[redacted]");
     }
 
-    [GeneratedRegex(@"(phone|phonenumber|code|otp|token|jwt|key)=[^&]*", RegexOptions.IgnoreCase)]
+    // \b anchors the key to a param-name boundary so "monkey=" doesn't match the "key" alternative
+    // (a non-boundaried match would over-redact innocent params and waste the diagnostic value)
+    [GeneratedRegex(@"\b(phone|phonenumber|code|otp|token|jwt|key)=[^&]*", RegexOptions.IgnoreCase)]
     private static partial Regex SensitiveQueryParam();
 
     [GeneratedRegex(@"\d{10,}")]
