@@ -149,21 +149,39 @@ else
         }
         @if (!_queueLoaded)
         {
-            <!-- skeleton: reserves vertical space matching a typical watchlist row so the
-                 page doesn't shift when the queue arrives. matches WatchlistRow card size. -->
+            <!-- skeleton mirrors the real watchlist section's structure so the swap doesn't grow the
+                 page and shove the rows below it down (#175 CLS): title + chip/sort control row, then
+                 two WatchlistRow-shaped placeholders (header bar + poster strip + label). Two rows is
+                 the common case (Available Now + Available Later); a sparse account collapses by at
+                 most one row, far less shift than the prior single bare poster row. matches the real
+                 header (Home.razor) and WatchlistRow card structure. -->
             <div class="mb-8">
-                <div class="flex items-center gap-2 mb-4">
-                    <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
-                    <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
+                <div class="mb-4">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="icon-[heroicons--rectangle-stack] w-5 h-5 text-accent"></span>
+                        <h2 class="text-lg md:text-xl font-bold text-white">@WatchlistTitle</h2>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 gap-2">
+                        <div class="h-7 w-28 md:w-44 bg-surface-100 rounded-lg animate-pulse"></div>
+                        <div class="h-7 w-36 bg-surface-100 rounded-lg animate-pulse"></div>
+                    </div>
                 </div>
-                <div class="flex gap-3 overflow-hidden">
-                    @for (int i = 0; i < 6; i++)
-                    {
-                        <div class="flex-shrink-0 w-32 sm:w-32 md:w-36">
-                            <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+
+                @for (int row = 0; row < 2; row++)
+                {
+                    <section class="mb-6 md:mb-8">
+                        <div class="h-5 w-40 bg-surface-100 rounded animate-pulse mb-3"></div>
+                        <div class="flex gap-3 overflow-hidden">
+                            @for (int i = 0; i < 6; i++)
+                            {
+                                <div class="flex-shrink-0 w-32 sm:w-32 md:w-36">
+                                    <div class="aspect-[2/3] bg-surface-100 rounded-lg animate-pulse"></div>
+                                    <div class="h-3 w-20 bg-surface-100 rounded animate-pulse mt-1.5"></div>
+                                </div>
+                            }
                         </div>
-                    }
-                </div>
+                    </section>
+                }
             </div>
         }
         else if (hasWatchlistContent)
