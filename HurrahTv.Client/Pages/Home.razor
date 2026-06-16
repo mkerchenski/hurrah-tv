@@ -699,6 +699,12 @@ else
 
     private void OnMediaFilterChanged() => _ = InvokeAsync(() =>
     {
+        // MediaFilter is a global service whose InitializeAsync can fire OnChanged during startup,
+        // racing Home's own load. Skip until the queue is loaded — OnInitializedAsync owns first
+        // render and already reads the initialized media filter, so a pre-load run would only derive
+        // empty rows and kick a redundant LoadHero. Mirrors OnUserServicesChanged's _queueLoaded guard.
+        if (!_queueLoaded) return;
+
         // re-fetch a media-appropriate AI hero for the new filter (#147). The single client-held pick
         // may be the other media type; the server re-selects from the SAME cached reservoir (no paid
         // regen). Set _heroLoading BEFORE re-deriving so SelectHero (inside ReapplyDerivedState) keeps
