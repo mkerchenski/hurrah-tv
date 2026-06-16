@@ -58,6 +58,8 @@ The linchpin for splitting server-cost from client-cost.
 
 No code. Let instrumentation run; watch App Insights for a real 10–15s load and attribute it to a phase (cold-start vs bundle re-download vs boot) using the `Server-Timing` split + Resource Timing. Record the finding on #200. **Gate Phase 5 on this data** — don't pre-commit a fix.
 
+- [ ] **Validate the PII redaction against real telemetry** (folded from /xsimplify): the scrubber's 10-digit threshold and hardcoded `url.*`/`http.*` tag list are heuristics. Spot-check live `customDimensions.url` values for (a) leaked phone numbers/tokens the rules missed, and (b) legitimate long numeric IDs wrongly redacted. If wrong, tune the threshold / tag list — consider making them config-driven only if the data shows it's needed.
+
 ## Phase 5 — Fix the dominant cause (#200 AC#3/#4)
 
 Candidate fixes, picked by Phase 4 data (do not build blind):
