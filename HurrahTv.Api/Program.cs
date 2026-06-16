@@ -85,8 +85,7 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.AddPolicy(TelemetryEndpoints.RateLimitPolicy, httpContext =>
         RateLimitPartition.GetFixedWindowLimiter(
-            partitionKey: httpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-                ?? httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            partitionKey: TelemetryEndpoints.ResolveClientIp(httpContext),
             factory: _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 10,

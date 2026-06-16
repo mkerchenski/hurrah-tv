@@ -10,9 +10,12 @@
 (function () {
     'use strict';
 
-    var host = location.hostname;
-    var env = host === 'hurrah.tv' ? 'prod'
-        : (host.indexOf('staging') >= 0 ? 'staging' : 'local');
+    // mirror the service-worker guard's idiom (index.html): know what dev/staging are and treat
+    // everything else as prod — resilient to apex/www/CDN host aliases that a hardcoded
+    // hostname === 'hurrah.tv' check would silently drop.
+    var hostname = location.hostname;
+    var env = /^(localhost|127\.0\.0\.1)$/.test(hostname) ? 'local'
+        : (hostname.indexOf('staging') >= 0 ? 'staging' : 'prod');
     if (env !== 'prod') return;
 
     var THRESHOLD_MS = 3000;

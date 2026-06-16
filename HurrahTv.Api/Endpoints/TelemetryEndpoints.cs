@@ -57,6 +57,12 @@ public static class TelemetryEndpoints
         .RequireRateLimiting(RateLimitPolicy);
     }
 
+    // client IP for rate-limit partitioning — prefer the forwarded client over the proxy hop
+    // (Azure App Service fronts the request), falling back to the socket address.
+    public static string ResolveClientIp(HttpContext ctx) =>
+        ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
+            ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
     private static string Clamp(string? value, int maxLen)
     {
         if (string.IsNullOrEmpty(value))
