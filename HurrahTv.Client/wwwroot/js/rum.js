@@ -1,11 +1,11 @@
 // rum.js — Real User Monitoring beacon (#201, part of #200).
 //
-// After the page loads, reads Navigation + Resource Timing and POSTs a phase breakdown to
+// after the page loads, reads Navigation + Resource Timing and POSTs a phase breakdown to
 // /api/telemetry, but ONLY for slow loads (> threshold) or a small random sample — normal-fast
 // loads send nothing, keeping volume tiny. Loaded as a classic early script (not a Blazor ES
 // module) so it still fires when a slow WASM boot is itself the problem.
 //
-// Prod-host-gated: the beacon only sends on hurrah.tv. Every payload is env-tagged so staging
+// prod-host-gated: the beacon only sends on the prod host. Every payload is env-tagged so staging
 // could be opted in later by relaxing the guard. Wrapped so RUM can never throw into the page.
 (function () {
     'use strict';
@@ -63,6 +63,9 @@
                 serverMs: serverTimingMs(nav),
                 downloadMs: Math.round(nav.responseEnd - nav.responseStart),
                 domMs: Math.round(nav.domContentLoadedEventEnd - nav.responseEnd),
+                // the WASM boot + .NET runtime init + Blazor mount — runs after DOMContentLoaded
+                // until load, and is the dominant slice on a slow Blazor WASM start (#200)
+                bootMs: Math.round(nav.loadEventEnd - nav.domContentLoadedEventEnd),
                 bundleMs: bundleTransferMs()
             };
 

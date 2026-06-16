@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using HurrahTv.Api.Telemetry;
 using Microsoft.ApplicationInsights;
 
@@ -6,25 +7,39 @@ namespace HurrahTv.Api.Endpoints;
 
 // receives the client RUM beacon (#201) and forwards it to App Insights as a custom event so a
 // captured slow load (#200) carries its phase breakdown. Anonymous, per-IP rate-limited, and
-// payload-capped — the size check runs before the body is read by binding manually off HttpContext.
+// payload-capped at the stream level (a Content-Length check alone is bypassable — see below).
 public static class TelemetryEndpoints
 {
     public const string RateLimitPolicy = "telemetry";
     private const long MaxPayloadBytes = 4096;
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
 
     public static void MapTelemetryEndpoints(this WebApplication app)
     {
         app.MapPost("/api/telemetry", async (HttpContext ctx) =>
         {
-            if (ctx.Request.ContentLength is > MaxPayloadBytes)
+            // enforce the cap at the stream level: navigator.sendBeacon sends a chunked body with
+            // no Content-Length, so a header check alone (`ContentLength is > Max`) is bypassable —
+            // it's null on the real browser path and the comparison silently passes. Read at most
+            // MaxPayloadBytes + 1 bytes so an oversized body is rejected without ever buffering it whole.
+            byte[] buffer = new byte[MaxPayloadBytes + 1];
+            int total = 0;
+            while (total < buffer.Length)
+            {
+                int read = await ctx.Request.Body.ReadAsync(buffer.AsMemory(total));
+                if (read == 0)
+                    break;
+                total += read;
+            }
+            if (total > MaxPayloadBytes)
                 return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
             RumSample? sample;
             try
             {
-                sample = await ctx.Request.ReadFromJsonAsync<RumSample>();
+                sample = JsonSerializer.Deserialize<RumSample>(buffer.AsSpan(0, total), WebJson);
             }
-            catch (System.Text.Json.JsonException)
+            catch (JsonException)
             {
                 return Results.BadRequest();
             }
@@ -48,6 +63,7 @@ public static class TelemetryEndpoints
                 ["serverMs"] = Ms(sample.ServerMs),
                 ["downloadMs"] = Ms(sample.DownloadMs),
                 ["domMs"] = Ms(sample.DomMs),
+                ["bootMs"] = Ms(sample.BootMs),
                 ["bundleMs"] = Ms(sample.BundleMs)
             });
 
@@ -57,11 +73,18 @@ public static class TelemetryEndpoints
         .RequireRateLimiting(RateLimitPolicy);
     }
 
-    // client IP for rate-limit partitioning — prefer the forwarded client over the proxy hop
-    // (Azure App Service fronts the request), falling back to the socket address.
-    public static string ResolveClientIp(HttpContext ctx) =>
-        ctx.Request.Headers["X-Forwarded-For"].FirstOrDefault()?.Split(',')[0].Trim()
-            ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    // client IP for rate-limit partitioning. X-Forwarded-For is `client, proxy1, …` where the LAST
+    // entry is the one the trusted hop (Azure App Service — a single hop here) appended, i.e. the
+    // real client as Azure saw it. Taking the FIRST entry would trust whatever the client injected,
+    // letting it rotate spoofed IPs to evade the per-IP limit. Falls back to the socket address when
+    // the header is absent (dev/tests).
+    public static string ResolveClientIp(HttpContext ctx)
+    {
+        string? forwarded = ctx.Request.Headers["X-Forwarded-For"].LastOrDefault();
+        if (!string.IsNullOrEmpty(forwarded))
+            return forwarded.Split(',')[^1].Trim();
+        return ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    }
 
     private static string Clamp(string? value, int maxLen)
     {
@@ -85,4 +108,5 @@ public record RumSample(
     double ServerMs,
     double DownloadMs,
     double DomMs,
+    double BootMs,
     double BundleMs);

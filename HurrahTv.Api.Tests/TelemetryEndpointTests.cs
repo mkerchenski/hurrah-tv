@@ -42,6 +42,23 @@ public class TelemetryEndpointTests(PostgresFixture fx)
     }
 
     [Fact]
+    public async Task Oversized_Chunked_Body_Without_ContentLength_Returns_413()
+    {
+        // navigator.sendBeacon sends a chunked body with NO Content-Length — force that shape so we
+        // exercise the real browser path. A Content-Length-only guard would let this bypass the cap;
+        // the stream-level read must still reject it.
+        using HttpClient client = fx.Factory.CreateClient();
+        byte[] big = Encoding.UTF8.GetBytes("{\"url\":\"" + new string('x', 5000) + "\"}");
+        StreamContent content = new(new MemoryStream(big));
+        HttpRequestMessage req = new(HttpMethod.Post, "/api/telemetry") { Content = content };
+        req.Headers.TransferEncodingChunked = true;
+        req.Headers.Add("X-Forwarded-For", "10.0.0.5");
+
+        HttpResponseMessage res = await client.SendAsync(req);
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, res.StatusCode);
+    }
+
+    [Fact]
     public async Task Garbage_Body_Returns_400()
     {
         using HttpClient client = fx.Factory.CreateClient();
