@@ -117,6 +117,7 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | Watch providers | JustWatch (via TMDb) |
 | Auth | Phone OTP via Twilio |
 | Hosting | Azure App Service + Azure PostgreSQL |
+| Observability | Application Insights (server + RUM) · Sentry (exception monitoring) |
 
 ## AI Curation
 
