@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "sentry": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@sentry/mcp-server@latest",
+        "--access-token=${SENTRY_MCP_ACCESS_TOKEN}"
+      ]
+    },
+    "microsoft-clarity": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@microsoft/clarity-mcp-server",
+        "--clarity_api_token=${CLARITY_TOKEN_HURRAHTV}"
+      ]
+    }
+  }
+}

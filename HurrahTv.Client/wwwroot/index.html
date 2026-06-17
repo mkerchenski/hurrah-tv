@@ -52,6 +52,67 @@
     <!-- RUM beacon (issue #201): classic early script so it still reports when a slow WASM
          boot is the problem. Self-gates to prod + slow/sampled loads; never throws into the page. -->
     <script defer src="js/rum.js"></script>
+    <!-- Sentry browser error monitoring (#24). Lazy Loader Script: a ~1.5KB async stub that
+         installs error handlers immediately — so even a failed WASM boot is captured — and only
+         fetches the full SDK once an error actually fires. Errors-only (tracesSampleRate 0); App
+         Insights owns RUM/performance (#201), so Sentry adds no per-interaction overhead. The
+         script is inserted dynamically (never a parser-blocking <script src> in head) so it can't
+         sit on the #200 boot critical path. Gated to non-local hosts + a real key: localhost and
+         an unset/placeholder key no-op, while staging AND production both report (each env-tagged,
+         so we catch errors pre-prod). Unlike rum.js (prod-only, to keep RUM volume down), error
+         monitoring is worth running on staging too. Never throws into the page. CI replaces the
+         __SENTRY_LOADER_KEY__/__BUILD_VERSION__ placeholders. -->
+    <script>
+        (function () {
+            var key = '__SENTRY_LOADER_KEY__';
+            if (key.indexOf('__') === 0 || key === '') return;     // placeholder not replaced / no key
+            if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;     // never on local dev
+            // lowercase to match the API's normalized Sentry environment (one filter across surfaces)
+            var env = location.hostname.indexOf('staging') >= 0 ? 'staging' : 'production';
+            var release = '__BUILD_VERSION__';
+            if (release.indexOf('__') === 0) release = undefined;   // unstamped (dev) — let Sentry omit it
+            // strip the query string + fragment off a URL. Defense-in-depth mirroring the server's
+            // PiiRedactionProcessor: a value that ever lands in a client URL (search terms, an
+            // accidental token) must not reach Sentry. The server redacts selectively to keep
+            // diagnostics; the client can afford to drop the whole query — error reports key on the
+            // path + stack. Wholesale strip, so there's no redaction regex to keep in sync across C#/JS.
+            function stripQuery(u) {
+                if (typeof u !== 'string') return u;
+                var cut = u.search(/[?#]/);
+                return cut === -1 ? u : u.slice(0, cut);
+            }
+            // the loader invokes this before it initializes, letting us override project defaults
+            window.sentryOnLoad = function () {
+                window.Sentry.init({
+                    environment: env,
+                    release: release,
+                    tracesSampleRate: 0,      // errors only — no performance/transaction tracing
+                    sendDefaultPii: false,    // never send IP/headers/cookies (this is a phone-number app)
+                    beforeSend: function (event) {
+                        if (event.request) {
+                            if (event.request.url) event.request.url = stripQuery(event.request.url);
+                            if (event.request.query_string) delete event.request.query_string;
+                        }
+                        return event;
+                    },
+                    beforeBreadcrumb: function (crumb) {
+                        // navigation crumbs carry from/to URLs; fetch/xhr crumbs carry data.url
+                        if (crumb && crumb.data) {
+                            if (crumb.data.url) crumb.data.url = stripQuery(crumb.data.url);
+                            if (crumb.data.from) crumb.data.from = stripQuery(crumb.data.from);
+                            if (crumb.data.to) crumb.data.to = stripQuery(crumb.data.to);
+                        }
+                        return crumb;
+                    }
+                });
+            };
+            var s = document.createElement('script');
+            s.src = 'https://js.sentry-cdn.com/' + key + '.min.js';
+            s.crossOrigin = 'anonymous';
+            s.async = true;
+            (document.head || document.documentElement).appendChild(s);
+        })();
+    </script>
 </head>
 
 <body class="bg-surface text-gray-100 min-h-screen">

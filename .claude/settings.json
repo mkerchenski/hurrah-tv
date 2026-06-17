@@ -2,6 +2,10 @@
   "enabledPlugins": {
     "chrome-devtools-mcp@chrome-devtools-plugins": true
   },
+  "enabledMcpjsonServers": [
+    "sentry",
+    "microsoft-clarity"
+  ],
   "permissions": {
     "allow": [
       "Bash(dotnet --version)",
