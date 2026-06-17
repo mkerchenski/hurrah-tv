@@ -87,6 +87,13 @@ jobs:
           sed -i "s|src=\"js/rum.js\"|src=\"js/rum.js?v=$SHORT_SHA\"|" wwwroot/index.html
           grep -q "v=$SHORT_SHA" wwwroot/index.html || { echo "Cache-bust injection failed"; exit 1; }
           grep -q "js/rum.js?v=$SHORT_SHA" wwwroot/index.html || { echo "rum.js cache-bust injection failed"; exit 1; }
+          # Sentry loader (#24): inject the project's loader key + release SHA. An unset secret
+          # replaces with empty, so the client gate ('__' prefix / empty key) keeps Sentry a no-op
+          # until the key exists — merge-safe before the Sentry project is provisioned.
+          sed -i "s|__SENTRY_LOADER_KEY__|${SENTRY_LOADER_KEY}|" wwwroot/index.html
+          sed -i "s|__BUILD_VERSION__|$SHORT_SHA|" wwwroot/index.html
+        env:
+          SENTRY_LOADER_KEY: ${{ secrets.SENTRY_LOADER_KEY }}
 
       - name: Cache NuGet packages
         uses: actions/cache@v5

@@ -48,6 +48,42 @@ if (!string.IsNullOrWhiteSpace(appInsightsConnection) && !appInsightsConnection.
     });
 }
 
+// Sentry (#24) — exception monitoring + alerting, alongside App Insights. Gated the same way:
+// only when a real DSN is present, so dev/local and the committed "YOUR_…" placeholder send
+// nothing. Azure App Service supplies SENTRY_DSN per slot; read it (or the config section)
+// explicitly rather than via a ?? fallback the base appsettings.json would render dead
+// (Learnings/aspnet-config-get-null-coalesce-trap.md, same trap as the App Insights gate above).
+string? sentryDsn = builder.Configuration["SENTRY_DSN"]
+    ?? builder.Configuration["Sentry:Dsn"];
+if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.StartsWith("YOUR_"))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        // same short SHA stamped as the App Insights service.version and /api/version, so a
+        // Sentry issue links back to a specific deploy
+        options.Release = buildVersion;
+        // per-slot environment via app setting (staging slot vs prod); blank/absent lets Sentry
+        // fall back to ASPNETCORE_ENVIRONMENT rather than reporting a literal "" environment
+        string? sentryEnvironment = builder.Configuration["Sentry:Environment"];
+        if (!string.IsNullOrWhiteSpace(sentryEnvironment))
+            options.Environment = sentryEnvironment;
+        // never attach the user's IP, headers, or cookies — phone numbers live in this app
+        options.SendDefaultPii = false;
+        // run the request URL through the same redactor App Insights uses, so a phone/OTP/token
+        // that slipped into the query string never reaches Sentry either (PiiRedactionProcessor's
+        // documented threat model: the query string is the realistic PII vector)
+        options.SetBeforeSend(static (sentryEvent, _) =>
+        {
+            if (sentryEvent.Request?.Url is { Length: > 0 } url)
+                sentryEvent.Request.Url = PiiRedactionProcessor.Redact(url);
+            if (sentryEvent.Request?.QueryString is { Length: > 0 } queryString)
+                sentryEvent.Request.QueryString = PiiRedactionProcessor.Redact(queryString);
+            return sentryEvent;
+        });
+    });
+}
+
 // jwt auth
 string jwtKey = builder.Configuration["Jwt:Key"] ?? throw new InvalidOperationException("Jwt:Key is required");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
