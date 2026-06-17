@@ -22,30 +22,30 @@ RUM (#200/#201), Sentry for exception DX + alerting. This plan covers the Sentry
 
 ## Phase 1 — API (Sentry.AspNetCore) ✅ code
 
-- [ ] `Sentry.AspNetCore` package (6.6.0).
-- [ ] `builder.WebHost.UseSentry(...)` gated on `SENTRY_DSN` / `Sentry:Dsn` (non-placeholder).
-- [ ] `Release = buildVersion`, `SendDefaultPii = false`, `BeforeSend` scrubs `Request.Url` +
+- [x] `Sentry.AspNetCore` package (6.6.0).
+- [x] `builder.WebHost.UseSentry(...)` gated on `SENTRY_DSN` / `Sentry:Dsn` (non-placeholder).
+- [x] `Release = buildVersion`, `SendDefaultPii = false`, `BeforeSend` scrubs `Request.Url` +
       `QueryString` via `PiiRedactionProcessor.Redact`.
-- [ ] `Sentry` placeholder section in `appsettings.json` (`YOUR_SENTRY_DSN`).
+- [x] `Sentry` placeholder section in `appsettings.json` (`YOUR_SENTRY_DSN`).
 - **Tests:** none new — `BeforeSend` reuses `PiiRedactionProcessor.Redact`, already covered by
   `PiiRedactionProcessorTests`. Wiring is DI scaffolding (CLAUDE.md: verify in browser, no test).
 
 ## Phase 2 — Client (Sentry browser SDK) ✅ code
 
-- [ ] Self-gating loader in `index.html`: prod host + real `__SENTRY_LOADER_KEY__` only
+- [x] Self-gating loader in `index.html`: prod host + real `__SENTRY_LOADER_KEY__` only
       (placeholder / dev → no-op). Lazy **Loader Script** `https://js.sentry-cdn.com/<key>.min.js`
       — a ~1.5 KB async stub that installs error handlers immediately (catches failed-boot
       errors) and fetches the full SDK only when an error fires. No version pin (Sentry serves
       the SDK behind the key). Inserted dynamically so it never blocks the WASM boot path (#200).
-- [ ] `release` = the stamped `__BUILD_VERSION__`, `sendDefaultPii: false`, `tracesSampleRate: 0`
+- [x] `release` = the stamped `__BUILD_VERSION__`, `sendDefaultPii: false`, `tracesSampleRate: 0`
       (errors only — App Insights owns performance/RUM).
-- [ ] Client PII scrub: `beforeSend`/`beforeBreadcrumb` strip query strings + fragments off
+- [x] Client PII scrub: `beforeSend`/`beforeBreadcrumb` strip query strings + fragments off
       `event.request.url` and breadcrumb URLs (wholesale, mirroring the server redactor's intent
       without porting its regex). Note: staging reports too (env-tagged), not just prod.
 
 ## Phase 3 — CI
 
-- [ ] In the "Cache-bust" step, `sed` `__SENTRY_LOADER_KEY__` → `${{ secrets.SENTRY_LOADER_KEY }}`
+- [x] In the "Cache-bust" step, `sed` `__SENTRY_LOADER_KEY__` → `${{ secrets.SENTRY_LOADER_KEY }}`
       and `__BUILD_VERSION__` → `$SHORT_SHA` in `wwwroot/index.html`. Unset secret → empty → the
       client gate keeps Sentry a no-op.
 

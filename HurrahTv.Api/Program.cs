@@ -63,8 +63,10 @@ if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.StartsWith("YOUR_"))
         // same short SHA stamped as the App Insights service.version and /api/version, so a
         // Sentry issue links back to a specific deploy
         options.Release = buildVersion;
-        // environment is left to Sentry's default, which reads ASPNETCORE_ENVIRONMENT — the
-        // App Service slots already set it (Production / Staging), so no explicit override needed
+        // normalize to lowercase ("production"/"staging") so API and client events land under one
+        // Sentry environment filter. The client (index.html) tags lowercase; Sentry's .NET default
+        // would otherwise use ASPNETCORE_ENVIRONMENT's PascalCase and fragment the unified view.
+        options.Environment = builder.Environment.EnvironmentName.ToLowerInvariant();
         // errors only — App Insights owns performance/RUM (#201). Sentry .NET defaults tracing
         // off, but pin it so a future SDK default change can't silently start sampling transactions
         options.TracesSampleRate = 0;
