@@ -39,6 +39,9 @@ RUM (#200/#201), Sentry for exception DX + alerting. This plan covers the Sentry
       the SDK behind the key). Inserted dynamically so it never blocks the WASM boot path (#200).
 - [ ] `release` = the stamped `__BUILD_VERSION__`, `sendDefaultPii: false`, `tracesSampleRate: 0`
       (errors only — App Insights owns performance/RUM).
+- [ ] Client PII scrub: `beforeSend`/`beforeBreadcrumb` strip query strings + fragments off
+      `event.request.url` and breadcrumb URLs (wholesale, mirroring the server redactor's intent
+      without porting its regex). Note: staging reports too (env-tagged), not just prod.
 
 ## Phase 3 — CI
 
