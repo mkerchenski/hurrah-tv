@@ -63,11 +63,8 @@ if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.StartsWith("YOUR_"))
         // same short SHA stamped as the App Insights service.version and /api/version, so a
         // Sentry issue links back to a specific deploy
         options.Release = buildVersion;
-        // per-slot environment via app setting (staging slot vs prod); blank/absent lets Sentry
-        // fall back to ASPNETCORE_ENVIRONMENT rather than reporting a literal "" environment
-        string? sentryEnvironment = builder.Configuration["Sentry:Environment"];
-        if (!string.IsNullOrWhiteSpace(sentryEnvironment))
-            options.Environment = sentryEnvironment;
+        // environment is left to Sentry's default, which reads ASPNETCORE_ENVIRONMENT — the
+        // App Service slots already set it (Production / Staging), so no explicit override needed
         // never attach the user's IP, headers, or cookies — phone numbers live in this app
         options.SendDefaultPii = false;
         // run the request URL through the same redactor App Insights uses, so a phone/OTP/token

@@ -32,23 +32,28 @@ RUM (#200/#201), Sentry for exception DX + alerting. This plan covers the Sentry
 
 ## Phase 2 — Client (Sentry browser SDK) ✅ code
 
-- [ ] Self-gating loader in `index.html`: prod host + real `__SENTRY_DSN__` only (placeholder /
-      dev / staging → no-op). Pinned CDN bundle `browser.sentry-cdn.com/10.58.0/bundle.min.js`.
+- [ ] Self-gating loader in `index.html`: prod host + real `__SENTRY_LOADER_KEY__` only
+      (placeholder / dev → no-op). Lazy **Loader Script** `https://js.sentry-cdn.com/<key>.min.js`
+      — a ~1.5 KB async stub that installs error handlers immediately (catches failed-boot
+      errors) and fetches the full SDK only when an error fires. No version pin (Sentry serves
+      the SDK behind the key). Inserted dynamically so it never blocks the WASM boot path (#200).
 - [ ] `release` = the stamped `__BUILD_VERSION__`, `sendDefaultPii: false`, `tracesSampleRate: 0`
       (errors only — App Insights owns performance/RUM).
 
 ## Phase 3 — CI
 
-- [ ] In the "Cache-bust" step, `sed` `__SENTRY_DSN__` → `${{ secrets.SENTRY_DSN_CLIENT }}` and
-      `__BUILD_VERSION__` → `$SHORT_SHA` in `wwwroot/index.html`. Unset secret → empty → no-op.
+- [ ] In the "Cache-bust" step, `sed` `__SENTRY_LOADER_KEY__` → `${{ secrets.SENTRY_LOADER_KEY }}`
+      and `__BUILD_VERSION__` → `$SHORT_SHA` in `wwwroot/index.html`. Unset secret → empty → the
+      client gate keeps Sentry a no-op.
 
 ## Out of scope / owner = you (account + infra steps)
 
-- Create the Sentry project under the `hurrah-web` org; get the API DSN + the client DSN.
+- Create the Sentry project under the `hurrah-web` org; get the API **DSN** and the client
+  **Loader Script key** (the public-key fragment of the DSN — Sentry vends it as a loader, not a
+  separate client DSN).
 - Set `SENTRY_DSN` app-setting on the App Service (staging + prod slots); set the
-  `SENTRY_DSN_CLIENT` GitHub secret.
+  `SENTRY_LOADER_KEY` GitHub secret. **(Done — both provisioned during wiring.)**
 - Alert rules (Slack/email on unhandled prod exceptions) — Sentry UI.
 - Source maps: **N/A for our code** — we don't bundle/minify our own JS (`rum.js` etc. ship
-  as-is, readable), and the `_framework` JS is Microsoft's. Pin the CDN bundle version when the
-  DSN lands and confirm it resolves.
-- Verify: trigger a test exception in staging once the DSN is set; confirm it lands in Sentry.
+  as-is, readable), and the `_framework` JS is Microsoft's.
+- Verify: trigger a test exception in staging once deployed; confirm it lands in Sentry.
