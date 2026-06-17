@@ -57,14 +57,16 @@
          fetches the full SDK once an error actually fires. Errors-only (tracesSampleRate 0); App
          Insights owns RUM/performance (#201), so Sentry adds no per-interaction overhead. The
          script is inserted dynamically (never a parser-blocking <script src> in head) so it can't
-         sit on the #200 boot critical path. Self-gates to prod + a real key; CI replaces the
-         __SENTRY_LOADER_KEY__/__BUILD_VERSION__ placeholders, so dev/staging and an unset secret
-         no-op. Mirrors the rum.js prod-host gate and never throws into the page. -->
+         sit on the #200 boot critical path. Gated to non-local hosts + a real key: localhost and
+         an unset/placeholder key no-op, while staging AND prod both report (each env-tagged, so we
+         catch errors pre-prod). Unlike rum.js (prod-only, to keep RUM volume down), error
+         monitoring is worth running on staging too. Never throws into the page. CI replaces the
+         __SENTRY_LOADER_KEY__/__BUILD_VERSION__ placeholders. -->
     <script>
         (function () {
             var key = '__SENTRY_LOADER_KEY__';
             if (key.indexOf('__') === 0 || key === '') return;     // placeholder not replaced / no key
-            if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;     // never on dev
+            if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;     // never on local dev
             var env = location.hostname.indexOf('staging') >= 0 ? 'staging' : 'prod';
             var release = '__BUILD_VERSION__';
             if (release.indexOf('__') === 0) release = undefined;   // unstamped (dev) — let Sentry omit it

@@ -65,6 +65,9 @@ if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.StartsWith("YOUR_"))
         options.Release = buildVersion;
         // environment is left to Sentry's default, which reads ASPNETCORE_ENVIRONMENT — the
         // App Service slots already set it (Production / Staging), so no explicit override needed
+        // errors only — App Insights owns performance/RUM (#201). Sentry .NET defaults tracing
+        // off, but pin it so a future SDK default change can't silently start sampling transactions
+        options.TracesSampleRate = 0;
         // never attach the user's IP, headers, or cookies — phone numbers live in this app
         options.SendDefaultPii = false;
         // run the request URL through the same redactor App Insights uses, so a phone/OTP/token
