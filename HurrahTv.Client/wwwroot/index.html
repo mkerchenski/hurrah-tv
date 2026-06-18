@@ -49,6 +49,18 @@
         });
         window.addEventListener('appinstalled', () => { window.__hurrahInstallPrompt = null; });
     </script>
+    <!-- host/env detection, computed once for the pre-boot scripts that gate on it: Sentry +
+         Clarity below and the service-worker registration at the end of <body>. Defined here,
+         before any consumer in document order, so each reads one decision instead of re-inlining
+         the localhost regex / staging check. Plain object on window because these are classic
+         inline scripts that run before the WASM runtime boots. -->
+    <script>
+        window.__hurrahHostEnv = (function () {
+            var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+            var isStaging = location.hostname.indexOf('staging') >= 0;
+            return { isLocal: isLocal, isStaging: isStaging, isProd: !isLocal && !isStaging };
+        })();
+    </script>
     <!-- RUM beacon (issue #201): classic early script so it still reports when a slow WASM
          boot is the problem. Self-gates to prod + slow/sampled loads; never throws into the page. -->
     <script defer src="js/rum.js"></script>
@@ -66,9 +78,9 @@
         (function () {
             var key = '__SENTRY_LOADER_KEY__';
             if (key.indexOf('__') === 0 || key === '') return;     // placeholder not replaced / no key
-            if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;     // never on local dev
+            if (window.__hurrahHostEnv.isLocal) return;            // never on local dev
             // lowercase to match the API's normalized Sentry environment (one filter across surfaces)
-            var env = location.hostname.indexOf('staging') >= 0 ? 'staging' : 'production';
+            var env = window.__hurrahHostEnv.isStaging ? 'staging' : 'production';
             var release = '__BUILD_VERSION__';
             if (release.indexOf('__') === 0) release = undefined;   // unstamped (dev) — let Sentry omit it
             // strip the query string + fragment off a URL. Defense-in-depth mirroring the server's
@@ -113,6 +125,29 @@
             (document.head || document.documentElement).appendChild(s);
         })();
     </script>
+    <!-- Microsoft Clarity product analytics (#63): session recordings + heatmaps to inform UX.
+         Production-ONLY — unlike error monitoring (Sentry, staging+prod) this mirrors rum.js's
+         prod-only stance: staging sessions are just us testing and would pollute the recordings
+         and heatmaps. The project ID is injected at build time by CI from the GitHub `CLARITY_PROJECT_ID`
+         variable (same mechanism as the Sentry loader key above) — WASM is static + this script runs
+         pre-boot, so runtime appsettings can't reach it; build-time substitution is the client-config
+         mechanism. The ID is a PUBLIC tracking ID, not a secret. An unset variable resolves to empty
+         and the gate below no-ops, so this is merge-safe. Clarity masks all input-box text in every
+         mode; phone/OTP fields and the displayed phone number also carry explicit data-clarity-mask
+         (defense-in-depth, robust if the masking mode is ever relaxed). Loaded async via the standard
+         tag, gated behind the host check so it never sits on the #200 WASM-boot critical path. -->
+    <script>
+        (function () {
+            var id = '__CLARITY_PROJECT_ID__';
+            if (id.indexOf('__') === 0 || id === '') return;     // placeholder not replaced / unset
+            if (!window.__hurrahHostEnv.isProd) return;          // prod-only: skip localhost + staging (UX volume; mirror rum.js)
+            (function (c, l, a, r, i, t, y) {
+                c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments) };
+                t = l.createElement(r); t.async = 1; t.src = 'https://www.clarity.ms/tag/' + i;
+                y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
+            })(window, document, 'clarity', 'script', id);
+        })();
+    </script>
 </head>
 
 <body class="bg-surface text-gray-100 min-h-screen">
@@ -136,7 +171,7 @@
     <!-- PWA service worker (issue #15). Skipped on localhost so dotnet watch hot-reload
          isn't intercepted by a cache; test the SW against a published build via the Api. -->
     <script>
-        if ('serviceWorker' in navigator && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+        if ('serviceWorker' in navigator && !window.__hurrahHostEnv.isLocal) {
             navigator.serviceWorker.register('/service-worker.js').catch(() => { });
         }
     </script>
