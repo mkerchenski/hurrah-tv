@@ -5,7 +5,10 @@
 
 <PageTitle>Admin · Users - Hurrah.tv</PageTitle>
 
-<div class="max-w-6xl mx-auto">
+@* data-clarity-mask: this view lists every user's phone number — keep all PII out of Clarity
+   session recordings (#63). The attribute cascades to children, so new admin fields are masked
+   by default rather than relying on Clarity's remote masking mode. *@
+<div class="max-w-6xl mx-auto" data-clarity-mask="true">
     <div class="flex items-center gap-3 mb-4 md:mb-6">
         <a href="/admin" class="text-gray-400 hover:text-white transition-colors">
             <span class="icon-[heroicons--chevron-left] w-5 h-5 inline-block align-text-bottom"></span>
