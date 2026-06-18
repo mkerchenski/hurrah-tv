@@ -43,7 +43,9 @@
                 <p class="text-gray-500 text-sm mb-6">Enter your phone number to sign in or create an account.</p>
 
                 <div class="relative">
+                    @* data-clarity-mask: PII — never record the phone number in Clarity session replays (#63) *@
                     <input type="tel" @bind="_phoneNumber" @bind:event="oninput" @onkeydown="HandlePhoneKeyDown"
+                           data-clarity-mask="true"
                            placeholder="+1 (555) 123-4567"
                            class="w-full bg-surface-100 border border-surface-200 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent text-center text-lg tracking-wider" />
                 </div>
@@ -56,9 +58,12 @@
             else
             {
                 <h2 class="text-lg font-semibold mb-1">Enter your code</h2>
-                <p class="text-gray-500 text-sm mb-6">We sent a 6-digit code to <span class="text-white">@_phoneNumber</span></p>
+                @* mask the echoed phone number too: it's plain text, so a Relaxed masking mode would expose it (#63) *@
+                <p class="text-gray-500 text-sm mb-6">We sent a 6-digit code to <span class="text-white" data-clarity-mask="true">@_phoneNumber</span></p>
 
+                @* data-clarity-mask: the OTP is a short-lived auth secret — keep it out of replays (#63) *@
                 <input type="text" @bind="_code" @bind:event="oninput" @onkeydown="HandleCodeKeyDown"
+                       data-clarity-mask="true"
                        placeholder="000000" maxlength="6" inputmode="numeric"
                        class="w-full bg-surface-100 border border-surface-200 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent text-center text-2xl tracking-[0.5em] font-mono" />
 

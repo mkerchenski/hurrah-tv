@@ -5,7 +5,9 @@
 
 <PageTitle>Admin · User - Hurrah.tv</PageTitle>
 
-<div class="max-w-5xl mx-auto">
+@* data-clarity-mask: this view shows a user's phone + profile — keep PII out of Clarity session
+   recordings (#63). Cascades to children, so it stays masked regardless of the remote mask mode. *@
+<div class="max-w-5xl mx-auto" data-clarity-mask="true">
     <div class="flex items-center gap-2 mb-4 md:mb-6 flex-wrap">
         <a href="/admin" class="text-gray-400 hover:text-white">Admin</a>
         <span class="text-gray-600">/</span>

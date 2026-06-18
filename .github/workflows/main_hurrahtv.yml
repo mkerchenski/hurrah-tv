@@ -100,8 +100,16 @@ jobs:
           # case, and as the step's last command that would fail the build under `set -e`.
           if grep -q '__SENTRY_LOADER_KEY__' wwwroot/index.html; then echo "SENTRY_LOADER_KEY placeholder not substituted"; exit 1; fi
           if grep -q '__BUILD_VERSION__' wwwroot/index.html; then echo "BUILD_VERSION placeholder not substituted"; exit 1; fi
+          # Clarity (#63): inject the public project tracking ID. A repo VARIABLE (not a secret —
+          # it's a public ID, and a secret would be masked to *** and break the guard grep below).
+          # Unset resolves to empty, so the client gate ('__' prefix / empty id) keeps Clarity a
+          # no-op — merge-safe, same shape as the Sentry key above. Same placeholder-gone guard:
+          # assert the literal placeholder is replaced (by id OR empty), not still present.
+          sed -i "s|__CLARITY_PROJECT_ID__|${CLARITY_PROJECT_ID}|" wwwroot/index.html
+          if grep -q '__CLARITY_PROJECT_ID__' wwwroot/index.html; then echo "CLARITY_PROJECT_ID placeholder not substituted"; exit 1; fi
         env:
           SENTRY_LOADER_KEY: ${{ secrets.SENTRY_LOADER_KEY }}
+          CLARITY_PROJECT_ID: ${{ vars.CLARITY_PROJECT_ID }}
 
       - name: Cache NuGet packages
         uses: actions/cache@v5
