@@ -72,7 +72,7 @@ The timeout is in **opening a physical connection**, not running a query. The ev
 **`GET /api/queue`** — the call Home awaits on first paint (`Home.razor:378`) — so it presents as a slow page load.
 The ~15 s symptom == Npgsql's **default connection `Timeout` of 15 s**.
 
-**Mechanism:** `OpenAsync` (DbService.cs:1138-1143) does `new NpgsqlConnection(_connectionString)` per call (pools by
+**Mechanism:** `DbService.OpenAsync` did `new NpgsqlConnection(_connectionString)` per call (pools by
 connection string — all 46 call sites dispose via `using`, **no leak**). But the connection string sets **no pool
 params**, so **Minimum Pool Size = 0**: the pool drains to zero when idle, and the first post-idle request must build
 a fresh connection (TCP + SSL + auth to Azure Postgres). When establishing it is slow — **4-A found the DB is in a
@@ -102,7 +102,7 @@ Dapper `CommandTimeout` left at Npgsql's defaults of 15 s / 30 s — not set exp
 staging + prod slots share one Postgres (`max_connections=50`): two pools of 20 + Azure overhead stay under the cap.
 Verified local: build clean (0 warn), `dotnet format --verify-no-changes` exit 0, all 215 tests pass (48 Api.Tests
 exercise `DbService` through the new data source against real Postgres). Remaining: PR → deploy → monitoring window.
-1. **Register a single `NpgsqlDataSource` in DI** — `Program.cs` near `AddSingleton<DbService>()` (line 17), built
+1. **Register a single `NpgsqlDataSource` in DI** — `Program.cs` near `AddSingleton<DbService>()`, built
    from `ConnectionStrings:Default` via `NpgsqlDataSourceBuilder` (pool params in code; host/user/pass stay in the
    Azure app-setting connection string). Register as singleton.
 2. **Refactor `DbService`** — inject `NpgsqlDataSource` (replace the raw `_connectionString` field); change

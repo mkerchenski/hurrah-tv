@@ -35,6 +35,7 @@ builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
     pool.MaxPoolSize = 20;
     pool.KeepAlive = 30;
     pool.ConnectionIdleLifetime = 300;
+    // connection Timeout (15s) and Dapper CommandTimeout (30s) deliberately left at Npgsql's defaults.
     return dataSourceBuilder.Build();
 });
 builder.Services.AddSingleton<DbService>();
