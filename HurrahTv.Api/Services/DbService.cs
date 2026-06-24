@@ -4,10 +4,13 @@ using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Services;
 
-public class DbService(IConfiguration config)
+public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
 {
-    private readonly string _connectionString = config.GetConnectionString("Default")
-            ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
+    // rent from a single shared, pool-warmed NpgsqlDataSource (configured in Program.cs) rather
+    // than `new NpgsqlConnection(connString)` per call — a Min-Pool-Size=0 pool drained to zero
+    // when idle, so the first post-idle request paid a full cross-region cold connect and could
+    // exceed the 15s connection timeout, stalling Home's /api/queue (#200, Sentry HURRAH-TV-3).
+    private readonly NpgsqlDataSource _dataSource = dataSource;
 
     public async Task InitializeAsync()
     {
@@ -1136,11 +1139,7 @@ public class DbService(IConfiguration config)
     // OpenAsync runs to completion before the subsequent Dapper command throws OCE,
     // wasting a pooled connection on a request the caller has given up on. pins #127.
     private async Task<NpgsqlConnection> OpenAsync(CancellationToken cancellationToken = default)
-    {
-        NpgsqlConnection conn = new(_connectionString);
-        await conn.OpenAsync(cancellationToken);
-        return conn;
-    }
+        => await _dataSource.OpenConnectionAsync(cancellationToken);
 
     // single-row lookup by the natural key (UserId, TmdbId, MediaType). Shared by the add
     // and upsert paths and their ON CONFLICT re-reads so the query lives in one place.

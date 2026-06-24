@@ -7,6 +7,7 @@ using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
 using HurrahTv.Api.Telemetry;
 using System.Threading.RateLimiting;
+using Npgsql;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -14,6 +15,24 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<TmdbService>();
+
+// single pool-warmed NpgsqlDataSource shared by DbService (#200 — Sentry HURRAH-TV-3). Min Pool Size
+// keeps connections warm so the first post-idle request never pays a cold (cross-region) connect, and
+// KeepAlive stops Azure Postgres' gateway idle-timeout from silently dropping pooled connections.
+// Max Pool Size stays under the server's max_connections (50). Factory form so the DI container
+// disposes the data source on shutdown.
+string pgConnString = builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
+NpgsqlConnectionStringBuilder pgCsb = new(pgConnString)
+{
+    MinPoolSize = 3,
+    MaxPoolSize = 40,
+    KeepAlive = 30,
+    ConnectionIdleLifetime = 300,
+    Timeout = 15,
+    CommandTimeout = 30,
+};
+builder.Services.AddSingleton<NpgsqlDataSource>(_ => new NpgsqlDataSourceBuilder(pgCsb.ConnectionString).Build());
 builder.Services.AddSingleton<DbService>();
 builder.Services.AddSingleton<SmsService>();
 builder.Services.AddScoped<AuthService>();
