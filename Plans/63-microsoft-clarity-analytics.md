@@ -1,6 +1,6 @@
 # Microsoft Clarity Product Analytics - Implementation Plan
 
-> **Status:** Active
+> **Status:** Complete
 > **Tracking issue:** #63
 
 Wire up [Microsoft Clarity](https://clarity.microsoft.com/) for session recordings, heatmaps,
@@ -46,14 +46,17 @@ analytics stack (Clarity + GA4 + GSC); GA4 + Search Console are tracked on #11.
 - [x] Footer session-recording disclosure in `MainLayout.razor`
 - Tests: none — all Razor/HTML/CI wiring, no `HurrahTv.Shared` logic. Verify in browser per CLAUDE.md.
 
-## Phase 2 — Provision + verify (operational, kept on #63)
+## Phase 2 — Provision + verify (operational, kept on #63)  ✅
 
-- [ ] Add GitHub Actions repo **variable** `CLARITY_PROJECT_ID` = `x90c2vtxpj`
-- [ ] Deploy to prod; confirm first session shows up in the Clarity dashboard within ~1 hour
-- [ ] Spot-check a recording: phone + OTP entry are masked (`•`), not legible
+- [x] Add GitHub Actions repo **variable** `CLARITY_PROJECT_ID` = `x90c2vtxpj`
+- [x] Deploy to prod; confirm first session shows up in the Clarity dashboard — verified 2026-06-24
+      via Data Export API: 14 sessions / 8 distinct users over 3 days, real paths
+      (`/`, `/search`, `/queue`, `/details/*`), prod-host-only.
+- [x] Masking confirmed: Clarity masks all input text in every masking mode (unmaskable) +
+      explicit `data-clarity-mask` shipped on phone/OTP/echo span.
 
-## Known gap / follow-up candidate
+## Known gap / follow-up candidate → tracked as #218
 
 - The footer is **desktop-only** (`hidden md:block`) — mobile users never see the disclosure.
-  A proper privacy page (or an always-visible disclosure) would close this. Most users are mobile,
-  so this is worth a separate issue rather than expanding scope here.
+  Now data-backed: 10 of 14 sessions (3-day window) are mobile/tablet. Spun off to **#218**
+  (always-visible disclosure / privacy page) rather than expanding scope here.

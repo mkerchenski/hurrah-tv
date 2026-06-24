@@ -1,6 +1,6 @@
 # Sentry Error Monitoring - Implementation Plan
 
-> **Status:** Active
+> **Status:** Complete
 > **Tracking issue:** #24
 
 Add Sentry exception monitoring alongside the App Insights telemetry already shipped in
@@ -56,7 +56,10 @@ RUM (#200/#201), Sentry for exception DX + alerting. This plan covers the Sentry
   separate client DSN).
 - Set `SENTRY_DSN` app-setting on the App Service (staging + prod slots); set the
   `SENTRY_LOADER_KEY` GitHub secret. **(Done — both provisioned during wiring.)**
-- Alert rules (Slack/email on unhandled prod exceptions) — Sentry UI.
+- Alert rules (Slack/email on unhandled prod exceptions) — Sentry UI. **(Done — confirmed 2026-06-24.)**
 - Source maps: **N/A for our code** — we don't bundle/minify our own JS (`rum.js` etc. ship
   as-is, readable), and the `_framework` JS is Microsoft's.
-- Verify: trigger a test exception in staging once deployed; confirm it lands in Sentry.
+- Verify: **✅ confirmed 2026-06-24** — 6 real production issues captured across both sinks
+  (API: `Npgsql`/`Twilio`; Client: `TypeError`/WASM-boot). PII masking verified live
+  (phone rendered `+628519411XXXX` in HURRAH-TV-1). Better signal than a synthetic test.
+  Findings triaged: DB timeouts → evidence added to #200; Twilio region → #219.
