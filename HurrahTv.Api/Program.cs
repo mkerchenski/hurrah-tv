@@ -23,16 +23,16 @@ builder.Services.AddHttpClient<TmdbService>();
 // disposes the data source on shutdown.
 string pgConnString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
-NpgsqlConnectionStringBuilder pgCsb = new(pgConnString)
+builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
 {
-    MinPoolSize = 3,
-    MaxPoolSize = 40,
-    KeepAlive = 30,
-    ConnectionIdleLifetime = 300,
-    Timeout = 15,
-    CommandTimeout = 30,
-};
-builder.Services.AddSingleton<NpgsqlDataSource>(_ => new NpgsqlDataSourceBuilder(pgCsb.ConnectionString).Build());
+    NpgsqlDataSourceBuilder dataSourceBuilder = new(pgConnString);
+    NpgsqlConnectionStringBuilder pool = dataSourceBuilder.ConnectionStringBuilder;
+    pool.MinPoolSize = 3;
+    pool.MaxPoolSize = 40;          // under the server's max_connections (50)
+    pool.KeepAlive = 30;
+    pool.ConnectionIdleLifetime = 300;
+    return dataSourceBuilder.Build();
+});
 builder.Services.AddSingleton<DbService>();
 builder.Services.AddSingleton<SmsService>();
 builder.Services.AddScoped<AuthService>();
