@@ -7,6 +7,7 @@ using HurrahTv.Api.Middleware;
 using HurrahTv.Api.Services;
 using HurrahTv.Api.Telemetry;
 using System.Threading.RateLimiting;
+using Npgsql;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
@@ -14,6 +15,29 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<TmdbService>();
+
+// single pool-warmed NpgsqlDataSource shared by DbService (#200 — Sentry HURRAH-TV-3). Min Pool Size
+// keeps connections warm so the first post-idle request never pays a cold (cross-region) connect, and
+// KeepAlive stops Azure Postgres' gateway idle-timeout from silently dropping pooled connections.
+// Max Pool Size stays under the server's max_connections (50). Factory form so the DI container
+// disposes the data source on shutdown.
+string pgConnString = builder.Configuration.GetConnectionString("Default")
+    ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
+builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
+{
+    NpgsqlDataSourceBuilder dataSourceBuilder = new(pgConnString);
+    NpgsqlConnectionStringBuilder pool = dataSourceBuilder.ConnectionStringBuilder;
+    pool.MinPoolSize = 3;
+    // staging + prod slots SHARE one Postgres (max_connections=50), and staging runs
+    // continuously (auto-deploys on every main push) alongside prod — both are also briefly
+    // live during a swap. So the cap is shared across two pools: keep MaxPoolSize low enough
+    // that 2 slots plus Azure's own connections stay under 50 (20 + 20 + overhead < 50).
+    pool.MaxPoolSize = 20;
+    pool.KeepAlive = 30;
+    pool.ConnectionIdleLifetime = 300;
+    // connection Timeout (15s) and Dapper CommandTimeout (30s) deliberately left at Npgsql's defaults.
+    return dataSourceBuilder.Build();
+});
 builder.Services.AddSingleton<DbService>();
 builder.Services.AddSingleton<SmsService>();
 builder.Services.AddScoped<AuthService>();
