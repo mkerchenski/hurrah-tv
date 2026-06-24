@@ -97,7 +97,9 @@ Per `Learnings/verify-plan-premise-against-live-data.md`, locked the cause befor
 
 ### Phase 4-B — Fix: a warm, centrally-configured pool (main change) ✅ CODE DONE 2026-06-24
 **Shipped in code** (`Program.cs` data-source registration; `DbService.cs` ctor + `OpenAsync` rent from it).
-Pool params: `MinPoolSize=3, MaxPoolSize=40, KeepAlive=30, ConnectionIdleLifetime=300, Timeout=15, CommandTimeout=30`.
+Pool params: `MinPoolSize=3, MaxPoolSize=20, KeepAlive=30, ConnectionIdleLifetime=300` (connection `Timeout` and
+Dapper `CommandTimeout` left at Npgsql's defaults of 15 s / 30 s — not set explicitly). `MaxPoolSize=20` because
+staging + prod slots share one Postgres (`max_connections=50`): two pools of 20 + Azure overhead stay under the cap.
 Verified local: build clean (0 warn), `dotnet format --verify-no-changes` exit 0, all 215 tests pass (48 Api.Tests
 exercise `DbService` through the new data source against real Postgres). Remaining: PR → deploy → monitoring window.
 1. **Register a single `NpgsqlDataSource` in DI** — `Program.cs` near `AddSingleton<DbService>()` (line 17), built
@@ -108,7 +110,8 @@ exercise `DbService` through the new data source against real Postgres). Remaini
    unchanged; preserves the #127 cancellation behavior.
 3. **Pool-warmth + resilience params:** `Minimum Pool Size` = 2–5 (the direct fix — no cold connect after idle);
    `Keepalive` ~30 s + `Connection Idle Lifetime` ~300 s (survive Azure gateway idle timeout); deliberate connection
-   `Timeout` + Dapper `Command Timeout` (fail fast vs hang); `Maximum Pool Size` **< 50** (server `max_connections`).
+   `Timeout` + Dapper `Command Timeout` (fail fast vs hang); `Maximum Pool Size` sized so **both shared slots fit
+   under `max_connections=50`** — staging + prod each hold their own pool, so ~20/slot, not <50/slot.
 4. **Infra follow-ons surfaced by 4-A (decision = owner, ties to #16) — NOT a PG tier bump (compute is idle):**
    - **Co-locate App Service + Postgres in one region** — currently East US vs East US 2; cross-region connect tax
      on every cold connection. Bigger move (recreate PG in East US, or move the app to East US 2).

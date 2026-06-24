@@ -28,7 +28,11 @@ builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
     NpgsqlDataSourceBuilder dataSourceBuilder = new(pgConnString);
     NpgsqlConnectionStringBuilder pool = dataSourceBuilder.ConnectionStringBuilder;
     pool.MinPoolSize = 3;
-    pool.MaxPoolSize = 40;          // under the server's max_connections (50)
+    // staging + prod slots SHARE one Postgres (max_connections=50), and staging runs
+    // continuously (auto-deploys on every main push) alongside prod — both are also briefly
+    // live during a swap. So the cap is shared across two pools: keep MaxPoolSize low enough
+    // that 2 slots plus Azure's own connections stay under 50 (20 + 20 + overhead < 50).
+    pool.MaxPoolSize = 20;
     pool.KeepAlive = 30;
     pool.ConnectionIdleLifetime = 300;
     return dataSourceBuilder.Build();
