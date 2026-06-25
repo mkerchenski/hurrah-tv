@@ -14,4 +14,8 @@ public class UserSettings
 
     // global media type filter — tab in MainLayout, drives Home/Queue/Search
     public string MediaType { get; set; } = "all"; // "all" | "tv" | "movie"
+
+    // latest changelog version the user has dismissed/seen — drives the new-feature alert banner (#19).
+    // null = never seen (fresh user); the banner shows when this differs from the latest shipped version.
+    public string? LastSeenChangelogVersion { get; set; }
 }

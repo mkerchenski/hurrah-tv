@@ -172,6 +172,17 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
                 PRIMARY KEY (UserId, TmdbId, Season, Episode)
             );
 
+            -- in-app user feedback (#19) — read in the admin view
+            CREATE TABLE IF NOT EXISTS Feedback (
+                Id           INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                UserId       VARCHAR(50)  NOT NULL,
+                Category     VARCHAR(30)  NOT NULL,
+                Message      TEXT         NOT NULL,
+                ContactEmail VARCHAR(255) NULL,
+                CreatedAt    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS IX_Feedback_CreatedAt ON Feedback(CreatedAt DESC);
+
             -- specific episode numbers for latest aired and next upcoming
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeSeason INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LatestEpisodeNumber INT NULL;
@@ -187,6 +198,9 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS ShowFinished    BOOL NOT NULL DEFAULT TRUE;
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS WatchlistSort   VARCHAR(20) NOT NULL DEFAULT 'date';
             ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS MediaType       VARCHAR(10) NOT NULL DEFAULT 'all';
+
+            -- last changelog version the user has seen — drives the new-feature alert banner (#19)
+            ALTER TABLE UserSettings ADD COLUMN IF NOT EXISTS LastSeenChangelogVersion VARCHAR(50) NULL;
 
             -- admin role on users (managed in-app once seeded)
             ALTER TABLE Users ADD COLUMN IF NOT EXISTS IsAdmin BOOLEAN NOT NULL DEFAULT FALSE;
@@ -826,7 +840,7 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync(cancellationToken);
         CommandDefinition cmd = new(
-            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType FROM UserSettings WHERE UserId = @UserId",
+            "SELECT EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType, LastSeenChangelogVersion FROM UserSettings WHERE UserId = @UserId",
             new { UserId = userId }, cancellationToken: cancellationToken);
         UserSettings? settings = await db.QuerySingleOrDefaultAsync<UserSettings>(cmd);
         return settings ?? new UserSettings();
@@ -836,15 +850,16 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
     {
         using NpgsqlConnection db = await OpenAsync();
         await db.ExecuteAsync("""
-            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType)
-            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished, @WatchlistSort, @MediaType)
+            INSERT INTO UserSettings (UserId, EnglishOnly, ShowWatching, ShowWantToWatch, ShowFinished, WatchlistSort, MediaType, LastSeenChangelogVersion)
+            VALUES (@UserId, @EnglishOnly, @ShowWatching, @ShowWantToWatch, @ShowFinished, @WatchlistSort, @MediaType, @LastSeenChangelogVersion)
             ON CONFLICT (UserId) DO UPDATE SET
-                EnglishOnly     = @EnglishOnly,
-                ShowWatching    = @ShowWatching,
-                ShowWantToWatch = @ShowWantToWatch,
-                ShowFinished    = @ShowFinished,
-                WatchlistSort   = @WatchlistSort,
-                MediaType       = @MediaType
+                EnglishOnly              = @EnglishOnly,
+                ShowWatching             = @ShowWatching,
+                ShowWantToWatch          = @ShowWantToWatch,
+                ShowFinished             = @ShowFinished,
+                WatchlistSort            = @WatchlistSort,
+                MediaType                = @MediaType,
+                LastSeenChangelogVersion = @LastSeenChangelogVersion
             """, new
         {
             UserId = userId,
@@ -853,7 +868,8 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
             settings.ShowWantToWatch,
             settings.ShowFinished,
             settings.WatchlistSort,
-            settings.MediaType
+            settings.MediaType,
+            settings.LastSeenChangelogVersion
         });
     }
 
