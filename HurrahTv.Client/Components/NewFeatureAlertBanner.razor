@@ -1,0 +1,53 @@
+@inject ApiClient Api
+@inject Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider AuthProvider
+@using HurrahTv.Shared.Changelog
+
+@* Self-gating (#19): the banner decides its own visibility from the user's last-seen changelog
+   version vs the latest shipped one — no caller flag. Shows once until dismissed; dismissal
+   persists server-side in UserSettings so it follows the user across devices. *@
+@if (_show)
+{
+    <div class="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-[65] bg-surface-100 border border-surface-200 shadow-lg rounded-full pl-4 pr-2 py-2 flex items-center gap-2 text-sm fade-in safe-area-bottom">
+        <span class="icon-[heroicons--sparkles] w-4 h-4 text-accent"></span>
+        <span class="text-white">New features</span>
+        <a href="/changelog" @onclick="MarkSeen" class="text-accent font-medium hover:underline">See what's changed</a>
+        <button @onclick="MarkSeen" aria-label="Dismiss" class="text-gray-500 hover:text-white ml-1">
+            <span class="icon-[heroicons--x-mark] w-4 h-4"></span>
+        </button>
+    </div>
+}
+
+@code {
+    private bool _show;
+    private UserSettings? _settings;
+    private string? _latest;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            AuthenticationState state = await AuthProvider.GetAuthenticationStateAsync();
+            if (state.User.Identity?.IsAuthenticated != true) return; // only for signed-in users
+
+            List<ChangelogEntry> entries = await Api.GetChangelogAsync();
+            _latest = ChangelogParser.LatestShippedVersion(entries);
+            if (_latest is null) return; // nothing shipped yet → never show
+
+            _settings = await Api.GetUserSettingsAsync();
+            if (!string.Equals(_settings.LastSeenChangelogVersion, _latest, StringComparison.Ordinal))
+                _show = true;
+        }
+        catch
+        {
+            // best-effort chrome — never let a failed fetch break the layout
+        }
+    }
+
+    private async Task MarkSeen()
+    {
+        _show = false;
+        if (_settings is null || _latest is null) return;
+        _settings.LastSeenChangelogVersion = _latest;
+        try { await Api.SetUserSettingsAsync(_settings); } catch { }
+    }
+}

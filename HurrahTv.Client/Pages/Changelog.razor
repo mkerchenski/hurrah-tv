@@ -1,0 +1,52 @@
+@page "/changelog"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<PageTitle>What's Changed - Hurrah.tv</PageTitle>
+
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">What's Changed</h1>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else if (_entries.Count == 0)
+    {
+        <div class="bg-surface-50 rounded-xl p-6 text-gray-400 text-sm">Nothing here yet — check back soon.</div>
+    }
+    else
+    {
+        @foreach (ChangelogEntry entry in _entries)
+        {
+            <section class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4">
+                <h2 class="text-lg font-semibold mb-3">@DisplayVersion(entry.Version)</h2>
+                @foreach (ChangelogSection section in entry.Sections)
+                {
+                    <h3 class="text-xs uppercase tracking-wide text-gray-400 mt-3 mb-1">@section.Category</h3>
+                    <ul class="list-disc list-inside text-sm text-gray-200 space-y-1">
+                        @foreach (string item in section.Items)
+                        {
+                            <li>@item</li>
+                        }
+                    </ul>
+                }
+            </section>
+        }
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private List<ChangelogEntry> _entries = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _entries = await Api.GetChangelogAsync();
+        _loading = false;
+    }
+
+    // "[Unreleased]" is dev-facing; show users something friendlier. Dated versions render as-is.
+    private static string DisplayVersion(string version) =>
+        version.Equals("Unreleased", StringComparison.OrdinalIgnoreCase) ? "Coming soon" : version;
+}

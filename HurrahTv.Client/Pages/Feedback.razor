@@ -1,0 +1,99 @@
+@page "/feedback"
+@attribute [Authorize]
+@inject ApiClient Api
+
+<PageTitle>Send Feedback - Hurrah.tv</PageTitle>
+
+<div class="max-w-2xl mx-auto">
+    <h1 class="text-xl md:text-2xl font-bold mb-4 md:mb-6">Send Feedback</h1>
+
+    @if (_sent)
+    {
+        <div class="bg-surface-50 rounded-xl p-6 text-center fade-in">
+            <span class="icon-[heroicons--check-circle] w-10 h-10 text-accent mx-auto block mb-3"></span>
+            <h2 class="text-lg font-semibold mb-1">Thanks — we got it</h2>
+            <p class="text-gray-400 text-sm mb-4">Your feedback helps make Hurrah.tv better.</p>
+            <button class="text-accent hover:underline text-sm" @onclick="Reset">Send more</button>
+        </div>
+    }
+    else
+    {
+        <div class="bg-surface-50 rounded-xl p-4 md:p-6">
+            <p class="text-gray-400 text-sm mb-4">Found a bug, want a feature, or just have a thought? Tell us.</p>
+
+            <label class="block text-sm font-medium mb-1">Type</label>
+            <select @bind="_category"
+                    class="w-full bg-surface-100 border border-surface-200 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent mb-4">
+                <option value="general">General</option>
+                <option value="bug">Bug</option>
+                <option value="feature">Feature request</option>
+            </select>
+
+            <label class="block text-sm font-medium mb-1">Message</label>
+            <textarea @bind="_message" @bind:event="oninput" rows="5" maxlength="4000"
+                      placeholder="What's on your mind?"
+                      class="w-full bg-surface-100 border border-surface-200 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent mb-1"></textarea>
+            <p class="text-xs text-gray-500 mb-4">@(_message?.Length ?? 0)/4000</p>
+
+            <label class="block text-sm font-medium mb-1">Email <span class="text-gray-500 font-normal">(optional, if you want a reply)</span></label>
+            <input type="email" @bind="_email" maxlength="255" placeholder="you@example.com"
+                   class="w-full bg-surface-100 border border-surface-200 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent mb-4" />
+
+            @* honeypot: positioned off-screen and hidden from assistive tech, so real users never fill
+               it. A non-empty value means a bot — the server silently drops it (FeedbackEndpoints). *@
+            <input type="text" @bind="_website" tabindex="-1" autocomplete="off" aria-hidden="true"
+                   class="absolute left-[-9999px] w-px h-px opacity-0" />
+
+            @if (_error)
+            {
+                <div class="text-red-400 text-sm mb-3">Couldn't send — check your connection and try again.</div>
+            }
+
+            <button class="bg-accent hover:bg-accent-light text-white font-semibold px-5 py-2 rounded-lg transition-colors disabled:opacity-40"
+                    disabled="@(_sending || string.IsNullOrWhiteSpace(_message))" @onclick="Submit">
+                @(_sending ? "Sending…" : "Send feedback")
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private string _category = "general";
+    private string _message = "";
+    private string _email = "";
+    private string _website = ""; // honeypot — must stay empty
+    private bool _sending;
+    private bool _sent;
+    private bool _error;
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_message)) return;
+        _sending = true;
+        _error = false;
+        try
+        {
+            bool ok = await Api.SubmitFeedbackAsync(new FeedbackSubmission
+            {
+                Category = _category,
+                Message = _message,
+                ContactEmail = string.IsNullOrWhiteSpace(_email) ? null : _email,
+                Website = _website
+            });
+            if (ok) _sent = true;
+            else _error = true;
+        }
+        catch { _error = true; }
+        finally { _sending = false; }
+    }
+
+    private void Reset()
+    {
+        _category = "general";
+        _message = "";
+        _email = "";
+        _website = "";
+        _sent = false;
+        _error = false;
+    }
+}
