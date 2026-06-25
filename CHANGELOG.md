@@ -8,14 +8,14 @@ Types of changes: **Added**, **Changed**, **Fixed**, **Removed**, **Security**.
 
 ## [Unreleased]
 
+## [2026-06-25]
+
 ### Added
-- Contributor onboarding: `CONTRIBUTING.md`, `Hurrah.tv.code-workspace`, issue + PR templates, label taxonomy, `/review` skill now files unaddressed findings as issues
-- 24 GitHub issues migrated from the former Trello board (bugs, enhancements, future items)
 - **Send Feedback** — report bugs or request features in-app (Settings → Help us improve)
 - **What's Changed** page plus a new-feature banner that highlights updates you haven't seen yet
 
 ### Changed
-- Line endings normalized across contributors via `.gitattributes` (LF in repo, native on checkout)
+- **Available Later** now surfaces upcoming episodes for any show on any service — previously limited to your subscribed services and the next 14 days
 
 ---
 
