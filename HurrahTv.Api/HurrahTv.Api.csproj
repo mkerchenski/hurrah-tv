@@ -24,4 +24,10 @@
     <ProjectReference Include="..\HurrahTv.Shared\HurrahTv.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- embed the repo-root CHANGELOG.md so /api/changelog (#19) serves it with no content-root
+         path dependency that could break across deploy layouts. LogicalName pins the manifest name. -->
+    <EmbeddedResource Include="..\CHANGELOG.md" LogicalName="CHANGELOG.md" />
+  </ItemGroup>
+
 </Project>
