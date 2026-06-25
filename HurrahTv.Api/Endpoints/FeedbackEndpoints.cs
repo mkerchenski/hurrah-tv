@@ -11,9 +11,6 @@ public static class FeedbackEndpoints
 {
     public const string RateLimitPolicy = "feedback";
 
-    private static readonly HashSet<string> AllowedCategories =
-        new(StringComparer.OrdinalIgnoreCase) { "bug", "feature", "general" };
-
     private const int MaxMessageLength = 4000;
     private const int MaxEmailLength = 255;
 
@@ -32,10 +29,10 @@ public static class FeedbackEndpoints
             if (message.Length > MaxMessageLength)
                 message = message[..MaxMessageLength];
 
-            // unknown/empty category falls back to "general" rather than 400 — never reject real feedback over a label
-            string category = AllowedCategories.Contains(submission.Category ?? "")
+            // unknown/empty category falls back to General rather than 400 — never reject real feedback over a label
+            string category = FeedbackCategories.All.Contains(submission.Category ?? "", StringComparer.OrdinalIgnoreCase)
                 ? submission.Category!.ToLowerInvariant()
-                : "general";
+                : FeedbackCategories.General;
 
             string? email = string.IsNullOrWhiteSpace(submission.ContactEmail) ? null : submission.ContactEmail.Trim();
             if (email is { Length: > MaxEmailLength })
