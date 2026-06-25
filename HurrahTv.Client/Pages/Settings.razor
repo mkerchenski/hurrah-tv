@@ -181,9 +181,11 @@
 
     private void OnEnglishOnlyChanged()
     {
-        // only EnglishOnly is editable here, but the settings PUT upserts the whole row —
-        // carry the other fields (home filters, sort, media type) from the loaded settings so
-        // toggling this doesn't reset them to defaults server-side.
+        // only EnglishOnly is editable here, but the settings PUT upserts the WHOLE row — carry
+        // every other field (home filters, sort, media type, last-seen changelog version) from the
+        // loaded settings so toggling this doesn't reset them server-side. Omitting
+        // LastSeenChangelogVersion here would null it and re-pop the new-feature banner
+        // (Learnings/partial-dto-put-full-row-upsert.md).
         _settings.EnglishOnly = _englishOnly;
         UserSettings snapshot = new()
         {
@@ -193,6 +195,7 @@
             ShowFinished = _settings.ShowFinished,
             WatchlistSort = _settings.WatchlistSort,
             MediaType = _settings.MediaType,
+            LastSeenChangelogVersion = _settings.LastSeenChangelogVersion,
         };
         _settingsSaver.Schedule(async () =>
         {

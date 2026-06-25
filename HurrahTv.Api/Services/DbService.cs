@@ -966,6 +966,7 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
         await db.ExecuteAsync("DELETE FROM WatchedEpisodes   WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM AIUsage           WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM CurationCache     WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM Feedback          WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM OtpCodes          WHERE PhoneNumber = @Phone", new { Phone = phone }, tx);
         await db.ExecuteAsync("DELETE FROM Users             WHERE Id = @UserId", byUser, tx);
 

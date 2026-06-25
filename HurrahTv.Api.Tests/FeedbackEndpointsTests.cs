@@ -83,4 +83,18 @@ public class FeedbackEndpointsTests(PostgresFixture fx) : IAsyncLifetime
         HttpResponseMessage res = await client.GetAsync("/api/admin/feedback");
         Assert.Equal(HttpStatusCode.Forbidden, res.StatusCode);
     }
+
+    // #225 (xreview): deleting a user must also remove their feedback — the Feedback table was
+    // added in #19 but the DeleteUserAsync cascade didn't include it, orphaning rows in the admin view.
+    [Fact]
+    public async Task DeleteUser_AlsoRemovesTheirFeedback_PinsIssue225()
+    {
+        string userId = await Db.GetOrCreateUserAsync("+15555550199");
+        await Db.SubmitFeedbackAsync(userId, "bug", "should be deleted with the user", null);
+        Assert.Contains(await Db.GetFeedbackAsync(), f => f.UserId == userId);
+
+        Assert.True(await Db.DeleteUserAsync(userId));
+
+        Assert.DoesNotContain(await Db.GetFeedbackAsync(), f => f.UserId == userId);
+    }
 }

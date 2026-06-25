@@ -1,9 +1,9 @@
 namespace HurrahTv.Api.Endpoints;
 
-// robots.txt + sitemap.xml for #11. The single deployment is served from both the production
+// robots.txt + sitemap.xml for #11. the single deployment is served from both the production
 // custom domain (hurrah.tv) and the staging slot (staging.hurrah.tv / *.azurewebsites.net), so a
 // static file can't differ per environment — robots.txt is generated per-request from the Host.
-// Only hurrah.tv is indexable; staging and the raw slot hostnames must return Disallow so search
+// only hurrah.tv is indexable; staging and the raw slot hostnames must return Disallow so search
 // engines don't index staging (duplicate content + leaked unreleased features) — the gate is the
 // load-bearing correctness here.
 public static class SeoEndpoints
