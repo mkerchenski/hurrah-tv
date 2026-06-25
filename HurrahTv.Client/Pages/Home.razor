@@ -562,8 +562,9 @@ else
 
     private void ApplyWatchlistFilters(List<QueueItem> allItems)
     {
-        // Available Now (streamable today) and Available Later (streamable in next 14 days)
-        // are derived by a pure partition in HurrahTv.Shared — see WatchlistFilters.
+        // Available Now (streamable today) and Available Later (any upcoming episode in the
+        // window, any service — #214) are derived by a pure partition in HurrahTv.Shared — see
+        // WatchlistFilters.
         WatchlistFilters.Partition partition = WatchlistFilters.Apply(
             allItems,
             DateTime.UtcNow,

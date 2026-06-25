@@ -7,7 +7,8 @@ namespace HurrahTv.Shared.Filters;
 // would silently pass `is <= 7` and classify an unaired episode as already-available.
 public static class WatchlistFilters
 {
-    public const int AvailableLaterWindowDays = 14;
+    // forward window for Available Later — #214 widened 14 → 30. Single source of truth; tweak here only.
+    public const int AvailableLaterWindowDays = 30;
 
     public record Partition(
         List<QueueItem> AvailableNow,
@@ -54,7 +55,8 @@ public static class WatchlistFilters
 
             if (!isTv) continue;
 
-            // streamability parses AvailableOnJson — compute once and reuse for both rows below.
+            // streamability parses AvailableOnJson — used only by the Available Now gate below
+            // (Available Later no longer gates on it, #214).
             bool isStreamable = item.IsStreamableOn(userServices);
             bool isWatching = item.Status == QueueStatus.Watching;
 
@@ -104,11 +106,14 @@ public static class WatchlistFilters
                 }
             }
 
-            // Available Later also surfaces a strictly-future next episode within the window. It
-            // requires streamability — "available on a user service soon" is a stronger claim than
-            // Available Now's "you've committed to this". The addedToLater guard prevents adding an
-            // item twice when it both drops today (routed above) and has a next episode in-window.
-            if (!addedToLater && isStreamable
+            // Available Later also surfaces a strictly-future next episode within the window —
+            // regardless of streamability or status (#214). It's the user's "a new episode is coming
+            // on one of my shows" radar, so a premiere on a service the user doesn't subscribe to (or
+            // a user with zero services configured) must still appear. Contrast Available Now, which
+            // keeps the strict streamability gate — "later" is forward-looking, not "watchable now".
+            // The addedToLater guard prevents a double-add when an item both drops today (routed
+            // above) and has a next episode in-window.
+            if (!addedToLater
                 && item.NextEpisodeDate is { } next && next.Date > today && next.Date <= windowEnd)
             {
                 availableLater.Add(item);
