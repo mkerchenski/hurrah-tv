@@ -242,6 +242,7 @@ app.MapCurationEndpoints();
 app.MapAdminEndpoints();
 app.MapProfileEndpoints();
 app.MapTelemetryEndpoints();
+app.MapSeoEndpoints();
 
 // health check + version (buildVersion computed above, near the App Insights registration)
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();
