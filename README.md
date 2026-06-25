@@ -19,7 +19,8 @@ Hurrah.tv is an opinionated streaming platform that curates content across Netfl
 - **Balanced discovery** — Content is interleaved across your services so no single provider dominates your feed
 - **Language filter** — Option to show English originals only, hiding dubbed and subtitled content
 - **Installable PWA** — Add to your home screen on iOS or Android for a full-screen, app-like experience; a service worker caches the app shell so it still loads offline
-- **Admin views** — Owner-only `/admin` surface for users (with name + admin grant), AI usage and budget tracking, and onboarding funnel
+- **Feedback & changelog** — Send feedback (bug / feature request / general) from Settings; a What's Changed page renders the changelog and a dismissible banner highlights new features you haven't seen yet
+- **Admin views** — Owner-only `/admin` surface for users (with name + admin grant), submitted feedback, AI usage and budget tracking, and onboarding funnel
 
 **Live at:** [hurrah.tv](https://hurrah.tv)
 
@@ -58,10 +59,12 @@ The home page renders Netflix-style horizontal content rows, each powered by a d
 | `/api/curation` | AI-curated picks, per-show match scoring, usage tracking |
 | `/api/services` | Manage subscribed streaming services |
 | `/api/shows` | Season and episode sentiment CRUD |
-| `/api/settings` | User preferences (English-only filter, etc.) |
+| `/api/settings` | User preferences (English-only filter, last-seen changelog version, etc.) |
+| `/api/feedback` | Submit user feedback (auth'd, rate-limited); owner-only list at `/api/admin/feedback` |
+| `/api/changelog` | Parsed `CHANGELOG.md` for the in-app What's Changed page + new-feature banner |
 | `/api/auth` | Phone OTP login (SMS-based, no passwords) |
 | `/api/profile` | First-name capture for greetings + AI personalization |
-| `/api/admin` | Owner-only — users list, per-user detail, AI usage rollups, onboarding funnel, hard-delete |
+| `/api/admin` | Owner-only — users list, per-user detail, submitted feedback, AI usage rollups, onboarding funnel, hard-delete |
 
 ## Getting Started
 
