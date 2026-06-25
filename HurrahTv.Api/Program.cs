@@ -154,6 +154,20 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
+
+    // per-user limit on feedback submissions (#19) — the endpoint is authenticated, so partition on
+    // the user's sub claim (fall back to client IP for the brief pre-auth window so the factory can't
+    // throw on a missing claim, unlike GetUserId()).
+    options.AddPolicy(FeedbackEndpoints.RateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.User.FindFirst("sub")?.Value
+                ?? TelemetryEndpoints.ResolveClientIp(httpContext),
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(5),
+                QueueLimit = 0
+            }));
 });
 
 WebApplication app = builder.Build();
@@ -243,6 +257,7 @@ app.MapAdminEndpoints();
 app.MapProfileEndpoints();
 app.MapTelemetryEndpoints();
 app.MapSeoEndpoints();
+app.MapFeedbackEndpoints();
 
 // health check + version (buildVersion computed above, near the App Insights registration)
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok", time = DateTime.UtcNow })).AllowAnonymous();

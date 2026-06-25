@@ -873,6 +873,31 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
         });
     }
 
+    // feedback (#19)
+    public async Task SubmitFeedbackAsync(string userId, string category, string message, string? contactEmail)
+    {
+        using NpgsqlConnection db = await OpenAsync();
+        await db.ExecuteAsync("""
+            INSERT INTO Feedback (UserId, Category, Message, ContactEmail)
+            VALUES (@UserId, @Category, @Message, @ContactEmail)
+            """, new { UserId = userId, Category = category, Message = message, ContactEmail = contactEmail });
+    }
+
+    public async Task<List<FeedbackItem>> GetFeedbackAsync(CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        // LEFT JOIN so feedback still lists if the user row was since removed; Phone helps an admin
+        // see who submitted without surfacing it anywhere else.
+        CommandDefinition cmd = new("""
+            SELECT F.Id, F.UserId, U.PhoneNumber AS Phone, F.Category, F.Message, F.ContactEmail, F.CreatedAt
+            FROM Feedback F
+            LEFT JOIN Users U ON U.Id = F.UserId
+            ORDER BY F.CreatedAt DESC
+            """, cancellationToken: cancellationToken);
+        IEnumerable<FeedbackItem> rows = await db.QueryAsync<FeedbackItem>(cmd);
+        return [.. rows];
+    }
+
     // watched episodes
     public async Task MarkEpisodeWatchedAsync(string userId, int tmdbId, int season, int episode)
     {
