@@ -51,16 +51,31 @@ Single App Service serves both the Blazor WASM client (static files) and the .NE
 
 **`/deploy now`**
 1. Check staging health first. If unhealthy, warn and stop.
-2. Use AskUserQuestion to confirm: "This will swap staging to production at hurrah.tv. Proceed?"
-3. If confirmed, trigger the swap:
+2. **Stamp the changelog (mirrors Hurrah's `/version release`).** A prod swap is the moment changes
+   become user-visible — and #19 surfaces the changelog to users (the `/changelog` page + the
+   new-feature alert banner), so cut a dated release here.
+   - Read `CHANGELOG.md`. If the `## [Unreleased]` section has real entries (any `### Category` with
+     `- ` items), show the user the draft and confirm.
+   - On confirm: replace the `## [Unreleased]` header with `## [<today>]` (use `date +%Y-%m-%d`) and
+     insert a fresh empty `## [Unreleased]` above it. Commit to `main` (concise message, e.g.
+     `Changelog: cut [Unreleased] → [<today>]`, with the standard `Co-Authored-By` trailer) and push.
+   - **Timing matters — the changelog is an embedded resource in the API build** (`/api/changelog`
+     reads it from the assembly). The stamp must reach the build *before* it's promoted, so this push
+     triggers a fresh staging deploy: **wait for `main_hurrahtv.yml` to finish**
+     (`gh run list --workflow main_hurrahtv.yml -R mkerchenski/hurrah-tv --limit 1`, poll to
+     completion) so the swapped build carries the dated changelog and the banner fires for users.
+   - If `[Unreleased]` is empty (a deploy with no user-visible changes), note that and skip straight to
+     the swap — don't stamp an empty release.
+3. Use AskUserQuestion to confirm: "This will swap staging to production at hurrah.tv. Proceed?"
+4. If confirmed, trigger the swap:
    ```bash
    gh workflow run swap.yml -R mkerchenski/hurrah-tv
    ```
-4. Monitor the run:
+5. Monitor the run:
    ```bash
    gh run list --workflow swap.yml -R mkerchenski/hurrah-tv --limit 1
    ```
-5. Report result.
+6. Report result (including the stamped changelog version, if one was cut).
 
 ## Error Handling
 - If staging health check fails, show the error and suggest checking the GitHub Actions logs
