@@ -1,0 +1,72 @@
+@page "/admin/feedback"
+@attribute [Authorize(Policy = "Admin")]
+@inject ApiClient Api
+
+<PageTitle>Admin · Feedback - Hurrah.tv</PageTitle>
+
+@* data-clarity-mask: feedback rows carry phone numbers + contact emails — keep all PII out of
+   Clarity session recordings (#63), mirroring AdminUsers. *@
+<div class="max-w-5xl mx-auto" data-clarity-mask="true">
+    <div class="flex items-center gap-3 mb-4 md:mb-6">
+        <a href="/admin" class="text-gray-400 hover:text-white transition-colors">
+            <span class="icon-[heroicons--chevron-left] w-5 h-5 inline-block align-text-bottom"></span>
+            Admin
+        </a>
+        <span class="text-gray-600">/</span>
+        <h1 class="text-xl md:text-2xl font-bold">Feedback</h1>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin"></div>
+    }
+    else if (_items is null)
+    {
+        <div class="text-red-400">Could not load feedback.</div>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="bg-surface-50 rounded-xl p-6 text-gray-400 text-sm">No feedback yet.</div>
+    }
+    else
+    {
+        <div class="space-y-3">
+            @foreach (FeedbackItem f in _items)
+            {
+                <div class="bg-surface-50 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-2 text-xs">
+                        <span class="@CategoryClass(f.Category) px-2 py-0.5 rounded uppercase font-medium">@f.Category</span>
+                        <span class="text-gray-500">@f.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                        @if (!string.IsNullOrWhiteSpace(f.Phone))
+                        {
+                            <span class="text-gray-400">@PhoneHelpers.Format(f.Phone)</span>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(f.ContactEmail))
+                        {
+                            <a href="@($"mailto:{f.ContactEmail}")" class="text-accent hover:underline">@f.ContactEmail</a>
+                        }
+                    </div>
+                    <p class="text-sm text-white whitespace-pre-wrap break-words">@f.Message</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private List<FeedbackItem>? _items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _items = await Api.GetAdminFeedbackAsync();
+        _loading = false;
+    }
+
+    private static string CategoryClass(string category) => category.ToLowerInvariant() switch
+    {
+        "bug" => "bg-red-500/20 text-red-300",
+        "feature" => "bg-accent/20 text-accent",
+        _ => "bg-surface-200 text-gray-300"
+    };
+}

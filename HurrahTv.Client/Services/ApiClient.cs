@@ -245,6 +245,30 @@ public class ApiClient(HttpClient http)
     public async Task<HttpResponseMessage> SetUserFirstNameAsync(string userId, string? firstName, CancellationToken cancellationToken = default) =>
         await _http.PutAsJsonAsync($"api/admin/users/{userId}/firstname", new AdminSetFirstNameRequest(firstName), cancellationToken);
 
+    // feedback (#19)
+    public async Task<bool> SubmitFeedbackAsync(FeedbackSubmission submission, CancellationToken cancellationToken = default)
+    {
+        HttpResponseMessage response = await _http.PostAsJsonAsync("api/feedback", submission, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
+
+    // returns null on failure (transient/non-2xx) — callers render their "couldn't load" state
+    // instead of GetFromJsonAsync throwing out of OnInitializedAsync (which leaves the page spinning).
+    public async Task<List<FeedbackItem>?> GetAdminFeedbackAsync(CancellationToken cancellationToken = default)
+    {
+        try { return await _http.GetFromJsonAsync<List<FeedbackItem>>("api/admin/feedback", cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { return null; }
+    }
+
+    // changelog (#19) — returns [] on failure for the same reason as GetAdminFeedbackAsync
+    public async Task<List<ChangelogEntry>> GetChangelogAsync(CancellationToken cancellationToken = default)
+    {
+        try { return await _http.GetFromJsonAsync<List<ChangelogEntry>>("api/changelog", cancellationToken) ?? []; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch { return []; }
+    }
+
     public async Task<HttpResponseMessage> DeleteUserAsync(string userId, CancellationToken cancellationToken = default) =>
         await _http.DeleteAsync($"api/admin/users/{userId}", cancellationToken);
 

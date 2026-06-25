@@ -242,7 +242,8 @@ public class WatchlistFiltersTests
     [Fact]
     public void AvailableLater_Excludes_NextEpisode_Beyond_Window()
     {
-        QueueItem item = TvItem(nextEpisode: Today.AddDays(15));
+        // beyond the 30-day window (#214 widened from 14) → excluded.
+        QueueItem item = TvItem(nextEpisode: Today.AddDays(31));
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
 
@@ -264,14 +265,17 @@ public class WatchlistFiltersTests
         Assert.DoesNotContain(item, result.AvailableNow);
     }
 
+    // #214: Available Later dropped the streamability gate — an upcoming episode on a service the
+    // user does NOT subscribe to (Hulu; user has only Netflix) must now surface. This test asserted
+    // the inverse before #214.
     [Fact]
-    public void AvailableLater_Excludes_NotStreamable()
+    public void AvailableLater_Includes_NonStreamable_UpcomingEpisode_PinsIssue214()
     {
         QueueItem item = TvItem(nextEpisode: Today.AddDays(3), providerId: Hulu);
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
 
-        Assert.DoesNotContain(item, result.AvailableLater);
+        Assert.Contains(item, result.AvailableLater);
     }
 
     [Fact]
@@ -432,16 +436,61 @@ public class WatchlistFiltersTests
         Assert.Contains(item, result.AvailableNow);
     }
 
-    // Available Later is a stronger claim — "available on a user service soon" — so it
-    // retains the strict streamability gate even for Watching items. Mirrors the plan's
-    // decision #4: the override is Available-Now-scoped, not blanket.
+    // #214 reverses the earlier "Later keeps the streamability gate" decision (was Available-Now-
+    // scoped only): Available Later is now the forward-looking radar for ANY show, so a Watching item
+    // with an upcoming episode on a non-subscribed service (Hulu; user has only Netflix) surfaces too.
     [Fact]
-    public void AvailableLater_Excludes_Watching_Item_With_NonStreamable_UpcomingEpisode()
+    public void AvailableLater_Includes_Watching_NonStreamable_UpcomingEpisode_PinsIssue214()
     {
         QueueItem item = TvItem(
             status: QueueStatus.Watching,
             nextEpisode: Today.AddDays(3),
             providerId: Hulu); // user only has Netflix
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // #214: a user with ZERO configured services still sees Available Later populated. The old gate
+    // made IsStreamableOn return false for everything, emptying the row for service-less users.
+    [Fact]
+    public void AvailableLater_Includes_Upcoming_When_UserServices_Are_Empty_PinsIssue214()
+    {
+        QueueItem item = TvItem(nextEpisode: Today.AddDays(3));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, userServices: []);
+
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // #214 widened the window to 30 days — an episode on day 30 (inclusive upper bound) appears...
+    [Fact]
+    public void AvailableLater_Includes_NextEpisode_At_30Day_Boundary_PinsIssue214()
+    {
+        QueueItem item = TvItem(nextEpisode: Today.AddDays(30));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // ...and an episode 20 days out — beyond the OLD 14-day window — now surfaces where it didn't.
+    [Fact]
+    public void AvailableLater_Includes_NextEpisode_Beyond_Old_14Day_Window_PinsIssue214()
+    {
+        QueueItem item = TvItem(nextEpisode: Today.AddDays(20));
+        WatchlistFilters.Partition result = WatchlistFilters.Apply(
+            [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
+
+        Assert.Contains(item, result.AvailableLater);
+    }
+
+    // #214: dropping the streamability gate must NOT leak dismissed (NotForMe) shows into Later.
+    [Fact]
+    public void AvailableLater_Excludes_NotForMe_With_UpcomingEpisode_PinsIssue214()
+    {
+        QueueItem item = TvItem(status: QueueStatus.NotForMe, nextEpisode: Today.AddDays(3));
         WatchlistFilters.Partition result = WatchlistFilters.Apply(
             [item], Today, MediaTypes.All, AllStatusesActive, UserHasNetflix);
 

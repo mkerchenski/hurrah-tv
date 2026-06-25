@@ -19,7 +19,7 @@ public sealed class OgPreviewMiddleware(RequestDelegate next)
     // canonical production origin — used in og:url even when the request hit
     // staging.hurrah.tv, so a shared link from a staging session still resolves
     // to the prod card on the next crawl
-    private const string PublicBaseUrl = "https://hurrah.tv";
+    private const string PublicBaseUrl = PublicSite.Origin;
 
     private static readonly string[] BotUaMarkers =
     [

@@ -90,6 +90,23 @@
         </button>
     </div>
 
+    <div class="bg-surface-50 rounded-xl p-4 md:p-6 mb-4 md:mb-6">
+        <h2 class="text-lg font-semibold mb-2">Help us improve</h2>
+        <p class="text-gray-400 text-sm mb-4">Tell us what's working and what's not — or see what's new.</p>
+        <div class="flex flex-wrap gap-3">
+            <a href="/feedback"
+               class="bg-accent hover:bg-accent-light text-white font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+                <span class="icon-[heroicons--chat-bubble-left-right] w-4 h-4"></span>
+                Send feedback
+            </a>
+            <a href="/changelog"
+               class="border border-surface-200 text-gray-300 hover:text-white font-semibold px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+                <span class="icon-[heroicons--sparkles] w-4 h-4"></span>
+                What's changed
+            </a>
+        </div>
+    </div>
+
     <div class="bg-surface-50 rounded-xl p-4 md:p-6">
         <h2 class="text-lg font-semibold mb-2">About Hurrah.tv</h2>
         <p class="text-gray-400 text-sm">
@@ -164,9 +181,11 @@
 
     private void OnEnglishOnlyChanged()
     {
-        // only EnglishOnly is editable here, but the settings PUT upserts the whole row —
-        // carry the other fields (home filters, sort, media type) from the loaded settings so
-        // toggling this doesn't reset them to defaults server-side.
+        // only EnglishOnly is editable here, but the settings PUT upserts the WHOLE row — carry
+        // every other field (home filters, sort, media type, last-seen changelog version) from the
+        // loaded settings so toggling this doesn't reset them server-side. Omitting
+        // LastSeenChangelogVersion here would null it and re-pop the new-feature banner
+        // (Learnings/partial-dto-put-full-row-upsert.md).
         _settings.EnglishOnly = _englishOnly;
         UserSettings snapshot = new()
         {
@@ -176,6 +195,7 @@
             ShowFinished = _settings.ShowFinished,
             WatchlistSort = _settings.WatchlistSort,
             MediaType = _settings.MediaType,
+            LastSeenChangelogVersion = _settings.LastSeenChangelogVersion,
         };
         _settingsSaver.Schedule(async () =>
         {

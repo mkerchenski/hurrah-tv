@@ -167,6 +167,7 @@ If no issues score 50+:
 Reviewed N files. All 4 hurrah-tv agents + system review passed.
 dotnet format: [clean / fixed N files]
 README check: [up to date / flagged for update]
+Changelog: [entry present / added [Unreleased] line / n/a — internal-only change]
 ```
 
 If issues exist, sort by score descending:
@@ -191,6 +192,12 @@ Verify `README.md` accurately reflects the current state:
 - Architecture diagram/table matches current project layout
 
 If out of date, flag as an issue (count toward the score-50+ list) and offer to update.
+
+#### 7b. Changelog entry check (#19)
+
+Hurrah.tv surfaces `CHANGELOG.md` to users (the `/changelog` page + the new-feature alert banner), so a **user-visible** change should land a `[Unreleased]` entry *as it ships*. This is the **authoring** half of the changelog flow; the dated-release **stamp** happens later in `/deploy` (mirrors Hurrah: PR authors write entries, `/version release` stamps them).
+
+After the README check, judge whether the reviewed diff is **user-visible** — a new or changed feature, page, or behavior a user would notice. Skip refactors, tests, infra, docs-only, and dependency bumps (`CHANGELOG.md`'s own "Skip entries for:" list is the rule). If it **is** user-visible AND the diff did **not** touch `CHANGELOG.md` (no new `- ` line under `## [Unreleased]`), flag it as a score-50+ finding ("user-visible change missing a `CHANGELOG.md` [Unreleased] entry") and **offer to add one** — a `- ` bullet under the right `### Category` (Added / Changed / Fixed / Removed / Security), phrased from the user's perspective per `CHANGELOG.md`'s guidance. If the diff is internal-only, say so and skip — never manufacture an entry.
 
 #### 7a. Linked-issue comment (optional, opt-in only)
 
