@@ -29,11 +29,15 @@
             AuthenticationState state = await AuthProvider.GetAuthenticationStateAsync();
             if (state.User.Identity?.IsAuthenticated != true) return; // only for signed-in users
 
-            List<ChangelogEntry> entries = await Api.GetChangelogAsync();
-            _latest = ChangelogParser.LatestShippedVersion(entries);
+            // independent calls — run concurrently (this runs once, on MainLayout init)
+            Task<List<ChangelogEntry>> changelogTask = Api.GetChangelogAsync();
+            Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
+            await Task.WhenAll(changelogTask, settingsTask);
+
+            _latest = ChangelogParser.LatestShippedVersion(changelogTask.Result);
             if (_latest is null) return; // nothing shipped yet → never show
 
-            _settings = await Api.GetUserSettingsAsync();
+            _settings = settingsTask.Result;
             if (!string.Equals(_settings.LastSeenChangelogVersion, _latest, StringComparison.Ordinal))
                 _show = true;
         }

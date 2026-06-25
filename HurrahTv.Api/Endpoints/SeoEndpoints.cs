@@ -8,9 +8,6 @@ namespace HurrahTv.Api.Endpoints;
 // load-bearing correctness here.
 public static class SeoEndpoints
 {
-    private const string ProductionHost = "hurrah.tv";
-    private const string CanonicalBaseUrl = "https://hurrah.tv";
-
     public static void MapSeoEndpoints(this WebApplication app)
     {
         app.MapGet("/robots.txt", (HttpContext ctx) =>
@@ -20,15 +17,11 @@ public static class SeoEndpoints
             Results.Text(BuildSitemapXml(), "application/xml")).AllowAnonymous();
     }
 
-    // only the canonical custom domain is indexable — NOT www, the staging subdomain, the raw
-    // *.azurewebsites.net slot hostnames, or localhost. (We don't bind www, but guard it anyway.)
-    public static bool IsProductionHost(string host) =>
-        string.Equals(host, ProductionHost, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(host, "www." + ProductionHost, StringComparison.OrdinalIgnoreCase);
-
+    // only the canonical custom domain (PublicSite.IsProductionHost) is indexable — staging, the raw
+    // *.azurewebsites.net slot hostnames, and localhost get Disallow.
     public static string BuildRobotsTxt(string host) =>
-        IsProductionHost(host)
-            ? $"User-agent: *\nAllow: /\nSitemap: {CanonicalBaseUrl}/sitemap.xml\n"
+        PublicSite.IsProductionHost(host)
+            ? $"User-agent: *\nAllow: /\nSitemap: {PublicSite.Origin}/sitemap.xml\n"
             : "User-agent: *\nDisallow: /\n";
 
     // the app is auth-gated (Home and every watchlist route are [Authorize]), so the only publicly
@@ -38,7 +31,7 @@ public static class SeoEndpoints
         $"""
         <?xml version="1.0" encoding="UTF-8"?>
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-          <url><loc>{CanonicalBaseUrl}/</loc></url>
+          <url><loc>{PublicSite.Origin}/</loc></url>
         </urlset>
 
         """;
