@@ -121,6 +121,20 @@ Concerns:
 Ignore: version numbers, csproj metadata, cosmetic changes.
 Report ONLY issues with real impact.`,
   },
+  aspnetcore: {
+    label: 'aspnet-core',
+    prompt: `Review for ASP.NET Core hosting and request-pipeline issues in HurrahTv.Api (the server host). Focus on pipeline MECHANICS only — authentication, CORS, client-exposed keys, input validation, and background DI scope are owned by the api-data reviewer; do NOT repeat them.
+
+Concerns:
+- Middleware ordering: UseRouting / UseAuthentication / UseAuthorization / UseCors / rate limiting in an intentional order; a new middleware inserted at the right position, not appended blindly to the tail
+- Config wired to a control (high value): a service configured but the activating middleware never added — AddHttpsRedirection without UseHttpsRedirection, HSTS without UseHsts, AddRateLimiter without UseRateLimiter, AddResponseCaching / AddOutputCache without the Use*, AddHealthChecks without MapHealthChecks. The Add* reads as protection that does nothing.
+- Request limits / DoS surface: MaxRequestBodySize = null or MultipartBodyLengthLimit = long.MaxValue applied globally rather than scoped to the specific upload endpoint
+- Transport security in production: HTTPS enforced (UseHttpsRedirection / UseHsts) or explicitly delegated to the host
+- Async correctness in the pipeline: no async void in middleware InvokeAsync or IHostedService; no sync-over-async (.Result / .Wait() / .GetAwaiter().GetResult()) on the request path
+- IHttpClientFactory (AddHttpClient) used, never new HttpClient(), in request-handling code
+
+Report ONLY confirmed or highly-likely issues introduced by the diff. No theoretical concerns. If nothing in the diff touches the server pipeline, return an empty findings array.`,
+  },
 }
 
 const unknown = dimensions.filter(d => !DIMENSIONS[d])

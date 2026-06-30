@@ -6,9 +6,9 @@ argument-hint: [--staged|--unpushed]
 
 # xreview — Hurrah.tv Augmented Multi-Agent Review
 
-Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 4 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
+Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 5 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan, ASP.NET Core pipeline), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
 
-The fan-out-and-score core (the 4 specialized reviewers + per-finding scoring) runs as a deterministic **workflow** — `.claude/workflows/xreview.js`, invoked with `Workflow({name: "xreview", args: {...}})`. The workflow pipelines each dimension straight into scoring, so a finding starts scoring the moment its reviewer finishes. The system `review` skill runs concurrently in the main loop as a separate parallel voice; its findings are merged in afterward. The interactive parts — mode selection, dotnet format, inline fixes, README check, issue filing — stay in the main loop where they belong.
+The fan-out-and-score core (the 5 specialized reviewers + per-finding scoring) runs as a deterministic **workflow** — `.claude/workflows/xreview.js`, invoked with `Workflow({name: "xreview", args: {...}})`. The workflow pipelines each dimension straight into scoring, so a finding starts scoring the moment its reviewer finishes. The system `review` skill runs concurrently in the main loop as a separate parallel voice; its findings are merged in afterward. The interactive parts — mode selection, dotnet format, inline fixes, README check, issue filing — stay in the main loop where they belong.
 
 ## Output rules (apply to every step below)
 
@@ -25,7 +25,7 @@ Ask:
 > **Which review mode?**
 >
 > - **quick** — fast subset: CLAUDE.md compliance + Bug scan only. No dotnet format auto-fix. Inline fixes still default-on. For tight-loop checks during work-in-progress.
-> - **review** — full local pipeline: system `review` + all 4 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + always-on follow-up issue surfacing.
+> - **review** — full local pipeline: system `review` + all 5 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + always-on follow-up issue surfacing.
 >
 > **When to pick `review`:** typical pre-commit / pre-push review.
 > **When to pick `quick`:** sanity check during active work.
@@ -135,16 +135,16 @@ git diff --name-only [range] > "$TMPDIR/hurrahtv-review-files.txt"
 
 #### 4. Run the review workflow + system review concurrently
 
-The 4 specialized reviewers and their per-finding scoring run as the **`xreview` workflow** (`.claude/workflows/xreview.js`). The four dimension prompts and the 0–100 scoring rubric live there canonically — don't duplicate them here. In a **single message**, do both of these so they run concurrently:
+The 5 specialized reviewers and their per-finding scoring run as the **`xreview` workflow** (`.claude/workflows/xreview.js`). The five dimension prompts and the 0–100 scoring rubric live there canonically — don't duplicate them here. In a **single message**, do both of these so they run concurrently:
 
-1. **Launch the workflow** with all four dimensions:
+1. **Launch the workflow** with all five dimensions:
    ```
    Workflow({ name: "xreview", args: {
      diffPath:       "<abs path to hurrahtv-review-diff.txt>",
      filesPath:      "<abs path to hurrahtv-review-files.txt>",
      claudeMdPath:   "<abs path to CLAUDE.md>",
      learningsIndex: "<the grep index string from section 1>",
-     dimensions:     ["claudemd", "blazor", "apidata", "bugs"],
+     dimensions:     ["claudemd", "blazor", "apidata", "bugs", "aspnetcore"],
      issueContext:   "<linked-issue acceptance criteria from section 1, or omit>"
    }})
    ```
@@ -164,7 +164,7 @@ If no issues score 50+:
 ```
 ### Code Review: No Issues Found
 
-Reviewed N files. All 4 hurrah-tv agents + system review passed.
+Reviewed N files. All 5 hurrah-tv agents + system review passed.
 dotnet format: [clean / fixed N files]
 README check: [up to date / flagged for update]
 Changelog: [entry present / added [Unreleased] line / n/a — internal-only change]
