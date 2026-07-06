@@ -124,6 +124,23 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
                 END IF;
             END $$;
 
+            -- precomputed, hydrated daily hero per user + media filter (#229). the daily pick is
+            -- deterministic and stable within a UTC day (HeroSelector), so we persist the hydrated
+            -- result and serve /api/curation/hero as a keyed read — no per-load TMDb hydration.
+            -- WatchlistHash mirrors CurationCache so validity tracks the reservoir + watchlist;
+            -- a row is stale when ForDate != today (UTC) or the hash changed. absence = compute
+            -- on demand, so no backfill. expand-only migration, safe for slot swaps.
+            CREATE TABLE IF NOT EXISTS CurationDailyHero (
+                UserId        VARCHAR(50) NOT NULL,
+                MediaType     VARCHAR(10) NOT NULL,
+                ForDate       DATE        NOT NULL,
+                WatchlistHash VARCHAR(64) NOT NULL,
+                HeroJson      TEXT        NOT NULL,
+                TmdbId        INT         NOT NULL,
+                GeneratedAt   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (UserId, MediaType)
+            );
+
             -- watchlist evolution: add new columns to QueueItems
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastSeasonWatched INT NULL;
             ALTER TABLE QueueItems ADD COLUMN IF NOT EXISTS LastEpisodeWatched INT NULL;
@@ -835,6 +852,37 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
         await db.ExecuteAsync(cmd);
     }
 
+    // precomputed daily hero (#229): serve /hero as a keyed read of the hydrated pick.
+    // one row per (UserId, MediaType); the caller decides freshness via DailyHeroFreshness
+    // (ForDate == today UTC && stored hash == current hash).
+    public async Task<(string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)?> GetDailyHeroAsync(string userId, string mediaType, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        // ForDate is a DATE column; cast to timestamp so Npgsql hands Dapper a DateTime (it maps
+        // bare `date` to DateOnly, which Dapper can't convert), then wrap as DateOnly for the caller.
+        CommandDefinition cmd = new(
+            "SELECT HeroJson, ForDate::timestamp AS ForDate, WatchlistHash, TmdbId FROM CurationDailyHero WHERE UserId = @UserId AND MediaType = @MediaType",
+            new { UserId = userId, MediaType = mediaType }, cancellationToken: cancellationToken);
+        (string HeroJson, DateTime ForDate, string WatchlistHash, int TmdbId)? row =
+            await db.QuerySingleOrDefaultAsync<(string HeroJson, DateTime ForDate, string WatchlistHash, int TmdbId)?>(cmd);
+        return row is null ? null : (row.Value.HeroJson, DateOnly.FromDateTime(row.Value.ForDate), row.Value.WatchlistHash, row.Value.TmdbId);
+    }
+
+    public async Task SetDailyHeroAsync(string userId, string mediaType, DateOnly forDate, string watchlistHash, string heroJson, int tmdbId, CancellationToken cancellationToken = default)
+    {
+        using NpgsqlConnection db = await OpenAsync(cancellationToken);
+        CommandDefinition cmd = new("""
+            INSERT INTO CurationDailyHero (UserId, MediaType, ForDate, WatchlistHash, HeroJson, TmdbId, GeneratedAt)
+            VALUES (@UserId, @MediaType, @ForDate, @Hash, @HeroJson, @TmdbId, NOW())
+            ON CONFLICT (UserId, MediaType) DO UPDATE SET
+                ForDate = @ForDate, WatchlistHash = @Hash, HeroJson = @HeroJson, TmdbId = @TmdbId, GeneratedAt = NOW()
+            """,
+            // Dapper's param generator doesn't handle DateOnly here; pass a midnight DateTime,
+            // which writes cleanly into the DATE column.
+            new { UserId = userId, MediaType = mediaType, ForDate = forDate.ToDateTime(TimeOnly.MinValue), Hash = watchlistHash, HeroJson = heroJson, TmdbId = tmdbId }, cancellationToken: cancellationToken);
+        await db.ExecuteAsync(cmd);
+    }
+
     // user settings
     public async Task<UserSettings> GetUserSettingsAsync(string userId, CancellationToken cancellationToken = default)
     {
@@ -965,7 +1013,9 @@ public class DbService(NpgsqlDataSource dataSource, IConfiguration config)
         await db.ExecuteAsync("DELETE FROM EpisodeSentiments WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM WatchedEpisodes   WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM AIUsage           WHERE UserId = @UserId", byUser, tx);
-        await db.ExecuteAsync("DELETE FROM CurationCache     WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM CurationCache          WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM CurationHeroImpressions WHERE UserId = @UserId", byUser, tx);
+        await db.ExecuteAsync("DELETE FROM CurationDailyHero       WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM Feedback          WHERE UserId = @UserId", byUser, tx);
         await db.ExecuteAsync("DELETE FROM OtpCodes          WHERE PhoneNumber = @Phone", new { Phone = phone }, tx);
         await db.ExecuteAsync("DELETE FROM Users             WHERE Id = @UserId", byUser, tx);
