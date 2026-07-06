@@ -369,25 +369,29 @@ else
         Task<UserSettings> settingsTask = Api.GetUserSettingsAsync();
         Task<QueueResponse> queueTask = Api.GetQueueResponseAsync();
 
-        // seed the hero from the last-known localStorage cache so the backdrop — already being
-        // preloaded pre-boot by index.html's inline script — paints on first render instead of
-        // waiting for the /hero round-trip. LoadHero below swaps in the fresh pick (#229). Clearing
-        // _heroLoading renders the cached hero now rather than the skeleton; SelectHero still
-        // filter-gates it, so a media-filter mismatch falls back cleanly.
-        CuratedHero? cachedHero = await HeroCache.GetAsync();
-        if (cachedHero is not null)
-        {
-            _heroPick = cachedHero;
-            _heroLoading = false;
-        }
-
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;
 
-        // ProcessQueueResponse computes _hero via SelectHero. On a cold cache _heroLoading is still
-        // true, so the hero slot shows its skeleton (never flashing an in-list item); on a warm
-        // cache the seed above already cleared it, so the cached AI pick renders immediately.
+        // ProcessQueueResponse computes _hero via SelectHero; _heroLoading stays true so the hero
+        // slot shows its skeleton (never flashing an in-list fallback) until the cache seed below
+        // or the /hero fetch resolves.
         ProcessQueueResponse(await queueTask);
+
+        // seed the hero from the last-known localStorage cache so the backdrop — already being
+        // preloaded pre-boot by index.html's inline script — paints on first render instead of
+        // waiting for the /hero round-trip; LoadHero below swaps in the fresh pick (#229). Gate the
+        // seed exactly like SelectHero's AI branch AND the server's daily-hero safety-net: only when
+        // it has a backdrop, matches the active media filter, and isn't already on the watchlist —
+        // otherwise leave the skeleton up rather than flash a wrong-filter or already-queued hero.
+        CuratedHero? cachedHero = await HeroCache.GetAsync();
+        if (cachedHero is { Result: { } seed } && !string.IsNullOrEmpty(seed.BackdropPath)
+            && (MediaFilter.MediaType == "all" || seed.MediaType == MediaFilter.MediaType)
+            && !_allItems.Any(i => i.TmdbId == seed.TmdbId && i.MediaType == seed.MediaType))
+        {
+            _heroPick = cachedHero;
+            _heroLoading = false;
+            _hero = SelectHero();
+        }
 
         // AI is the slowest call (Claude API) and not needed for first paint — let it finish in
         // the background and swap the hero to the AI pick when it returns

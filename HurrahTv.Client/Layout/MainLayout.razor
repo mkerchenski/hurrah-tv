@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @implements IDisposable
 @inject TokenService TokenService
+@inject HeroCache HeroCache
 @inject HurrahAuthStateProvider AuthState
 @inject AuthenticationStateProvider AuthProvider
 @inject TitleService TitleSvc
@@ -185,6 +186,9 @@
     private async Task SignOut()
     {
         await TokenService.ClearTokenAsync();
+        // clear the cached hero too — it's a personalized pick under a non-user-scoped key, so
+        // leaving it would seed the next account's first paint on a shared device (#229 review).
+        await HeroCache.ClearAsync();
         AuthState.NotifyAuthChanged();
     }
 

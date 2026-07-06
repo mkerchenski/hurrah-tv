@@ -111,7 +111,9 @@ public partial class CurationService
         {
             try
             {
-                using IServiceScope scope = _scopeFactory.CreateScope();
+                // CreateAsyncScope so any IAsyncDisposable scoped services dispose correctly in this
+                // async delegate (mirrors QueueEndpoints' background refresh).
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
                 CurationService scoped = scope.ServiceProvider.GetRequiredService<CurationService>();
                 await scoped.GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, forceRefresh: false, allowRegen: true, cancellationToken: ct);
             }

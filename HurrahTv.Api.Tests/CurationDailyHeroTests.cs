@@ -7,7 +7,7 @@ namespace HurrahTv.Api.Tests;
 // pins #229 — the precomputed daily hero is persisted so /api/curation/hero is a keyed read.
 // These tests cover the DbService round-trip (write → read-back → overwrite) and the
 // per-(user, media type) keying. The freshness *decision* (ForDate == today && hash matches)
-// lives in HurrahTv.Shared.DailyHeroFreshness and is unit-tested there.
+// lives in HurrahTv.Shared.Curation.DailyHeroFreshness and is unit-tested there.
 [Collection("postgres")]
 public class CurationDailyHeroTests(PostgresFixture fx) : IAsyncLifetime
 {

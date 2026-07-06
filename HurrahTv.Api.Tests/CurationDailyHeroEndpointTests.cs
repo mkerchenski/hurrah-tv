@@ -82,4 +82,39 @@ public class CurationDailyHeroEndpointTests(PostgresFixture fx) : IAsyncLifetime
         Assert.NotNull(resp);
         Assert.Null(resp!.Hero);
     }
+
+    [Fact]
+    public async Task Hero_SafetyNet_SkipsFreshRow_WhenPickIsAlreadyOnWatchlist()
+    {
+        DbService db = fx.Factory.Services.GetRequiredService<DbService>();
+        string userId = "hero-user";
+
+        // the user already has the would-be hero on their list
+        await db.AddToQueueAsync(new QueueItem
+        {
+            TmdbId = 1396,
+            MediaType = MediaTypes.Tv,
+            Title = "Breaking Bad",
+            PosterPath = "/poster.jpg",
+            BackdropPath = "",
+            Status = QueueStatus.WantToWatch,
+            AvailableOnJson = "[]"
+        }, userId);
+
+        // hash the actual stored queue so the persisted row reads as fresh
+        List<QueueItem> watchlist = await db.GetQueueAsync(userId);
+        string hash = CurationService.ComputeWatchlistHash(watchlist);
+        DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+        // fresh (today + matching hash) row for that same title — freshness passes, but the
+        // safety-net must skip it because it's now on the watchlist, falling through to recompute
+        await db.SetDailyHeroAsync(userId, MediaTypes.All, today, hash, HeroJson(1396, MediaTypes.Tv, "Breaking Bad"), tmdbId: 1396);
+
+        HttpClient client = TestAuth.CreateClient(fx, userId);
+        CuratedHeroResponse? resp = await client.GetFromJsonAsync<CuratedHeroResponse>("/api/curation/hero");
+
+        // recompute path (AI off) → no pick, rather than serving a title the user already has
+        Assert.NotNull(resp);
+        Assert.Null(resp!.Hero);
+    }
 }

@@ -65,12 +65,17 @@ public static class CurationEndpoints
                     (string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)? daily = await dailyTask;
                     if (daily is { } d && DailyHeroFreshness.IsFresh(d.forDate, d.watchlistHash, currentHash, today))
                     {
-                        CuratedHero? cachedHero = JsonSerializer.Deserialize<CuratedHero>(d.heroJson);
+                        // a corrupt or schema-drifted row (e.g. a CuratedHero shape change deployed then
+                        // rolled back during a slot swap) must degrade to a recompute, not fail the whole
+                        // request — treat a parse failure or a missing Result like a cache miss and fall through.
+                        CuratedHero? cachedHero = null;
+                        try { cachedHero = JsonSerializer.Deserialize<CuratedHero>(d.heroJson); }
+                        catch (JsonException) { /* fall through to the compute path below */ }
+
                         // safety-net: if the user added this title to their list since it was persisted,
                         // fall through to recompute rather than recommending something they already have.
-                        bool onList = cachedHero is not null
-                            && watchlist.Any(i => i.TmdbId == cachedHero.Result.TmdbId && i.MediaType == cachedHero.Result.MediaType);
-                        if (cachedHero is not null && !onList)
+                        if (cachedHero?.Result is { } cached
+                            && !watchlist.Any(i => i.TmdbId == cached.TmdbId && i.MediaType == cached.MediaType))
                         {
                             double hitMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
                             http.Response.Headers.Append("Server-Timing", $"hero-daily-hit;dur={hitMs:F1}");
