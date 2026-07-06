@@ -66,7 +66,7 @@ public partial class CurationService
     // detached AIUsage write — fire-and-forget on the thread pool so the request
     // pipeline can return before the cost row lands. DbService is singleton today,
     // so the fresh scope adds no protection; future-proofing for if DbService
-    // becomes scoped. The try covers _scopeFactory.CreateScope() too so an
+    // becomes scoped. The try covers _scopeFactory.CreateAsyncScope() too so an
     // ObjectDisposed during host shutdown surfaces in the log rather than as an
     // unobserved Task fault. pins #121.
     //
@@ -81,7 +81,7 @@ public partial class CurationService
         {
             try
             {
-                using IServiceScope scope = _scopeFactory.CreateScope();
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
                 DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
                 await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType, ct);
             }
