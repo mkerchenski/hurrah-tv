@@ -81,6 +81,16 @@ Get the LCP image downloading in parallel with boot.
 
 ## Phase 5 — Verify, constants, compound
 
+**Browser verification DONE (2026-07-06, local dev build, signed-in session).** Warm Home reload:
+- Pre-boot `<link rel="preload" as="image" fetchpriority="high" href=".../w1280/…">` present in `<head>` (injected by the inline script before boot).
+- LCP hero backdrop **requested at 31 ms** from nav start, **served from cache (transferSize 0)** — vs 4a baseline where it wasn't queued until 941 ms. Load-delay effectively eliminated (AC#2). FCP 188 ms, domInteractive 171 ms.
+- Cached hero paints immediately (screenshot: "Life, Larry…" billboard with backdrop + reason + CTAs).
+- `HeroCache` populates `hurrah_hero_v1` after the fresh `/hero` fetch.
+- Server-Timing `hero-daily-hit` verified by code + 3 endpoint tests (live cross-origin read blocked by CORS in dev; same-origin in prod → App Insights/#201).
+- Dev build (untrimmed BCL) → prod boot is faster, so this is a floor. Remaining: capture a prod LCP number post-deploy off App Insights/#201.
+
+
+
 - Promote any new magic values (daily-hero validity, preload size `w1280`) to named constants near the existing `ReservoirMaxAgeDays`/`DefaultCooldownDays`.
 - Re-run the Phase 2 LCP trace on the shipped build; confirm hero load-delay collapses and warm LCP is materially better (~<1 s) — the after-number for AC#2. Confirm rotation/cooldown unregressed (AC#3): same hero within a UTC day, advances next day, 14-day no-repeat, shuffle advances.
 - `/compound` the non-obvious learning: *persisting a deterministic within-day pick turns a per-load hydration into a keyed read, and a pre-boot public-CDN image preload is the only lever that beats "URL undiscoverable until boot."*
