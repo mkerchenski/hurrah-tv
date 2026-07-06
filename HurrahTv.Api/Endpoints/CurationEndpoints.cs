@@ -84,10 +84,26 @@ public static class CurationEndpoints
 
                 // miss (new day / watchlist change / no row) or shuffle: select + hydrate, then
                 // persist the hydrated pick as today's hero so subsequent loads are keyed reads.
+                // First paint (not a shuffle) never blocks on the paid Claude regen (allowRegen:
+                // false) — it serves a stale reservoir and we kick off a background regen below;
+                // a user-initiated shuffle may regenerate synchronously.
                 long tCuration = Stopwatch.GetTimestamp();
                 HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlist, providerIds, prefs.GenreIds,
-                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter, cancellationToken: ct);
+                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter,
+                    allowRegen: doRefresh, cancellationToken: ct);
                 double curationMs = Stopwatch.GetElapsedTime(tCuration).TotalMilliseconds;
+
+                // stale/missing reservoir on the first-paint path → regenerate off the request
+                // thread so the next load has fresh material, without blocking this response.
+                // Deduped via a short IMemoryCache marker so repeated stale loads don't pile on
+                // paid regens (the AiCurationGate + budget check bound it further).
+                bool regenDispatched = false;
+                if (!doRefresh && result.ReservoirStale && !cache.TryGetValue($"hero-regen:{userId}", out _))
+                {
+                    cache.Set($"hero-regen:{userId}", true, TimeSpan.FromMinutes(2));
+                    curation.RegenerateReservoirInBackground(userId, watchlist, providerIds, prefs.GenreIds, prefs.EnglishOnly);
+                    regenDispatched = true;
+                }
 
                 long tTmdb = Stopwatch.GetTimestamp();
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
@@ -105,8 +121,9 @@ public static class CurationEndpoints
                 }
 
                 string curationDesc = regenerate ? ";desc=\"regen\"" : "";
+                string bgRegen = regenDispatched ? ", hero-bg-regen;desc=\"dispatched\"" : "";
                 http.Response.Headers.Append("Server-Timing",
-                    $"hero-db;dur={dbMs:F1}, hero-curation;dur={curationMs:F1}{curationDesc}, hero-tmdb;dur={tmdbMs:F1}");
+                    $"hero-db;dur={dbMs:F1}, hero-curation;dur={curationMs:F1}{curationDesc}, hero-tmdb;dur={tmdbMs:F1}{bgRegen}");
 
                 return Results.Ok(new CuratedHeroResponse
                 {
