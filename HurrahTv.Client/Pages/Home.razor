@@ -5,6 +5,7 @@
 @inject QuickActionService QuickActionSvc
 @inject MediaFilterService MediaFilter
 @inject UserServicesCache UserServicesCache
+@inject HeroCache HeroCache
 @inject TokenService TokenService
 @inject HurrahAuthStateProvider AuthState
 @using HurrahTv.Shared.Filters
@@ -371,11 +372,26 @@ else
         _settings = await settingsTask;
         _watchlistSort = _settings.WatchlistSort;
 
-        // ProcessQueueResponse computes _hero via SelectHero, which must see _heroLoading=true to
-        // suppress the watchlist fallback and render the skeleton (else the hero flashes an in-list
-        // item until the AI pick lands). The field defaults true and nothing has cleared it yet on
-        // this first-load path, so no assignment is needed here.
+        // ProcessQueueResponse computes _hero via SelectHero; _heroLoading stays true so the hero
+        // slot shows its skeleton (never flashing an in-list fallback) until the cache seed below
+        // or the /hero fetch resolves.
         ProcessQueueResponse(await queueTask);
+
+        // seed the hero from the last-known localStorage cache so the backdrop — already being
+        // preloaded pre-boot by index.html's inline script — paints on first render instead of
+        // waiting for the /hero round-trip; LoadHero below swaps in the fresh pick (#229). Gate the
+        // seed exactly like SelectHero's AI branch AND the server's daily-hero safety-net: only when
+        // it has a backdrop, matches the active media filter, and isn't already on the watchlist —
+        // otherwise leave the skeleton up rather than flash a wrong-filter or already-queued hero.
+        CuratedHero? cachedHero = await HeroCache.GetAsync();
+        if (cachedHero is { Result: { } seed } && !string.IsNullOrEmpty(seed.BackdropPath)
+            && (MediaFilter.MediaType == "all" || seed.MediaType == MediaFilter.MediaType)
+            && !_allItems.Any(i => i.TmdbId == seed.TmdbId && i.MediaType == seed.MediaType))
+        {
+            _heroPick = cachedHero;
+            _heroLoading = false;
+            _hero = SelectHero();
+        }
 
         // AI is the slowest call (Claude API) and not needed for first paint — let it finish in
         // the background and swap the hero to the AI pick when it returns
@@ -592,7 +608,12 @@ else
         {
             CuratedHeroResponse? response = await Api.GetCuratedHeroAsync(refresh, MediaFilter.MediaType, _cts.Token);
             if (seq == _heroRequestSeq && response?.Hero is not null)
+            {
                 _heroPick = response.Hero;
+                // persist for the next load's pre-boot preload + seed. Fire-and-forget: caching is
+                // best-effort and must not delay the hero swap or throw into the render path.
+                _ = HeroCache.SetAsync(response.Hero);
+            }
         }
         catch
         {

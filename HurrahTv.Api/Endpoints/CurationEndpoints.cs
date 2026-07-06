@@ -1,6 +1,9 @@
+using System.Diagnostics;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.Extensions.Caching.Memory;
 using HurrahTv.Api.Services;
+using HurrahTv.Shared.Curation;
 using HurrahTv.Shared.Models;
 
 namespace HurrahTv.Api.Endpoints;
@@ -16,7 +19,7 @@ public static class CurationEndpoints
         // single rotating AI hero pick for the home page (replaces the curated-rows section).
         // ?refresh=true regenerates the reservoir and advances past today's pick (rate-limited).
         group.MapGet("/hero", async (ClaimsPrincipal user, DbService db, CurationService curation,
-            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, bool? refresh, string? mediaType, CancellationToken ct) =>
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, HttpContext http, bool? refresh, string? mediaType, CancellationToken ct) =>
         {
             try
             {
@@ -36,24 +39,97 @@ public static class CurationEndpoints
                     regenerate = true;
                 }
 
-                // batch services + genres + settings in one parallel fetch (GetUserPreferencesAsync)
-                // alongside the queue, so the genre fetch isn't serialized in front of the TMDb fan-out.
+                // attribute the hero's server cost by phase into Server-Timing so the #201 RUM
+                // beacon / DevTools can split db vs curation (selection + paid regen) vs TMDb
+                // hydration on the LCP path (#229 AC#1). Timings are appended below per phase.
+                long tDb = Stopwatch.GetTimestamp();
+
+                // the queue is always needed (watchlist hash + safety-net); the persisted daily hero
+                // read depends only on (userId, filter), so run it in PARALLEL with the queue rather
+                // than behind it — on a warm load these two reads are the entire DB cost. Prefs
+                // (services/genres/settings) are only needed on a miss/shuffle, so they're deferred
+                // into that branch below and skipped entirely on the warm keyed-read path (#229).
                 Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
-                Task<DbService.UserPreferences> prefsTask = db.GetUserPreferencesAsync(userId, ct);
-                await Task.WhenAll(watchlistTask, prefsTask);
+                Task<(string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)?>? dailyTask =
+                    doRefresh ? null : db.GetDailyHeroAsync(userId, filter, ct);
 
-                DbService.UserPreferences prefs = prefsTask.Result;
+                // the daily pick is deterministic and stable within a UTC day, keyed by the same
+                // watchlist hash the reservoir caches by — so a warm load is a single keyed read of
+                // the already-hydrated hero, skipping selection, TMDb hydration, and the prefs fetch.
+                List<QueueItem> watchlist = await watchlistTask;
+                string currentHash = CurationService.ComputeWatchlistHash(watchlist);
+                DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
+
+                if (dailyTask is not null)
+                {
+                    (string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)? daily = await dailyTask;
+                    if (daily is { } d && DailyHeroFreshness.IsFresh(d.forDate, d.watchlistHash, currentHash, today))
+                    {
+                        // a corrupt or schema-drifted row (e.g. a CuratedHero shape change deployed then
+                        // rolled back during a slot swap) must degrade to a recompute, not fail the whole
+                        // request — treat a parse failure or a missing Result like a cache miss and fall through.
+                        CuratedHero? cachedHero = null;
+                        try { cachedHero = JsonSerializer.Deserialize<CuratedHero>(d.heroJson); }
+                        catch (JsonException) { /* fall through to the compute path below */ }
+
+                        // safety-net: if the user added this title to their list since it was persisted,
+                        // fall through to recompute rather than recommending something they already have.
+                        if (cachedHero?.Result is { } cached
+                            && !watchlist.Any(i => i.TmdbId == cached.TmdbId && i.MediaType == cached.MediaType))
+                        {
+                            double hitMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
+                            http.Response.Headers.Append("Server-Timing", $"hero-daily-hit;dur={hitMs:F1}");
+                            return Results.Ok(new CuratedHeroResponse { Hero = cachedHero, AiEnabled = curation.IsEnabled });
+                        }
+                    }
+                }
+
+                // miss (new day / watchlist change / no row) or shuffle: fetch prefs (deferred off
+                // the warm path), then select + hydrate and persist the hydrated pick as today's
+                // hero so subsequent loads are keyed reads. First paint (not a shuffle) never blocks
+                // on the paid Claude regen (allowRegen: false) — it serves a stale reservoir and we
+                // kick off a background regen below; a user-initiated shuffle may regen synchronously.
+                DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId, ct);
                 List<int> providerIds = prefs.ProviderIds;
-                HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds, prefs.GenreIds,
-                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter, cancellationToken: ct);
+                double dbMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
 
+                long tCuration = Stopwatch.GetTimestamp();
+                HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlist, providerIds, prefs.GenreIds,
+                    prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter,
+                    allowRegen: doRefresh, cancellationToken: ct);
+                double curationMs = Stopwatch.GetElapsedTime(tCuration).TotalMilliseconds;
+
+                // stale/missing reservoir on the first-paint path → regenerate off the request
+                // thread so the next load has fresh material, without blocking this response.
+                // Deduped via a short IMemoryCache marker so repeated stale loads don't pile on
+                // paid regens (the AiCurationGate + budget check bound it further).
+                bool regenDispatched = false;
+                if (!doRefresh && result.ReservoirStale && !cache.TryGetValue($"hero-regen:{userId}", out _))
+                {
+                    cache.Set($"hero-regen:{userId}", true, TimeSpan.FromMinutes(2));
+                    curation.RegenerateReservoirInBackground(userId, watchlist, providerIds, prefs.GenreIds, prefs.EnglishOnly);
+                    regenDispatched = true;
+                }
+
+                long tTmdb = Stopwatch.GetTimestamp();
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
+                double tmdbMs = Stopwatch.GetElapsedTime(tTmdb).TotalMilliseconds;
 
-                // record the impression only after the pick hydrated, so a TMDb miss can't burn a
-                // strong pick's 14-day cooldown without ever showing it. ShouldRecordImpression is
-                // false when it's already today's pick, avoiding a redundant write per page load.
-                if (hero is not null && result.ShouldRecordImpression)
-                    await db.RecordHeroImpressionAsync(userId, result.TmdbId!.Value, result.MediaType, ct);
+                if (hero is not null)
+                {
+                    await db.SetDailyHeroAsync(userId, filter, today, currentHash, JsonSerializer.Serialize(hero), result.TmdbId!.Value, ct);
+
+                    // record the impression only after the pick hydrated, so a TMDb miss can't burn a
+                    // strong pick's 14-day cooldown without ever showing it. ShouldRecordImpression is
+                    // false when it's already today's pick, avoiding a redundant write per page load.
+                    if (result.ShouldRecordImpression)
+                        await db.RecordHeroImpressionAsync(userId, result.TmdbId!.Value, result.MediaType, ct);
+                }
+
+                string curationDesc = regenerate ? ";desc=\"regen\"" : "";
+                string bgRegen = regenDispatched ? ", hero-bg-regen;desc=\"dispatched\"" : "";
+                http.Response.Headers.Append("Server-Timing",
+                    $"hero-db;dur={dbMs:F1}, hero-curation;dur={curationMs:F1}{curationDesc}, hero-tmdb;dur={tmdbMs:F1}{bgRegen}");
 
                 return Results.Ok(new CuratedHeroResponse
                 {

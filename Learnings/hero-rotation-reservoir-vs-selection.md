@@ -40,7 +40,18 @@ Reservoir 15→30 picks is a few hundred extra Haiku output tokens (negligible).
 
 The selection rule is pure and lives in `HurrahTv.Shared/Curation/HeroSelector.cs` with `DateTime todayUtc` injected — so cooldown fences (exactly-N-days-ago is still excluded; N+1 is eligible), within-day stability, daily advance, and the thin-reservoir fallback (everything in cooldown → least-recently-shown) are all unit-testable at exact day boundaries. Stale cache rows from before scores existed deserialize with score 0 and self-heal at the next 7-day regen.
 
+## Follow-on: the selection is deterministic, so persist it as a keyed read (#229)
+The selection layer is pure and stable within a UTC day — which means you can take it one step
+further and **persist the hydrated pick** (`CurationDailyHero`, keyed by `UserId + MediaType`,
+stamped with the reservoir's watchlist hash). The warm read path then becomes a single keyed DB
+lookup — no reselect, no TMDb hydration, no AI — and the value is stable enough to preload its
+image before WASM boot (see `preboot-preload-post-boot-lcp-image.md`). General shape: once a
+derived value is deterministic + stable over a window, cache the *hydrated result*, not just the
+inputs, to move the whole computation off the request's hot path. Freshness = same day AND same
+watchlist hash (`HurrahTv.Shared/Curation/DailyHeroFreshness.cs`); a stale reservoir is served
+as-is while a background regen refreshes it, so first paint never blocks on the paid call.
+
 ## File pointers
 - `HurrahTv.Shared/Curation/HeroSelector.cs` — pure selection + cooldown
-- `HurrahTv.Api/Services/CurationService.cs` — `GetCuratedHeroAsync`, `ReservoirMaxAgeDays`, the 7-day freshness clause in `GetCuratedRowsAsync`
-- `HurrahTv.Api/Services/DbService.cs` — `CurationHeroImpressions` table, `GetHeroImpressionsAsync` / `RecordHeroImpressionAsync`
+- `HurrahTv.Api/Services/CurationService.cs` — `GetCuratedHeroAsync`, `ReservoirMaxAgeDays`, the 7-day freshness clause in `GetCuratedRowsAsync`, `allowRegen` / `RegenerateReservoirInBackground` (#229)
+- `HurrahTv.Api/Services/DbService.cs` — `CurationHeroImpressions` table, `GetHeroImpressionsAsync` / `RecordHeroImpressionAsync`; `CurationDailyHero` table + `GetDailyHeroAsync` / `SetDailyHeroAsync` (#229)

@@ -66,7 +66,7 @@ public partial class CurationService
     // detached AIUsage write — fire-and-forget on the thread pool so the request
     // pipeline can return before the cost row lands. DbService is singleton today,
     // so the fresh scope adds no protection; future-proofing for if DbService
-    // becomes scoped. The try covers _scopeFactory.CreateScope() too so an
+    // becomes scoped. The try covers _scopeFactory.CreateAsyncScope() too so an
     // ObjectDisposed during host shutdown surfaces in the log rather than as an
     // unobserved Task fault. pins #121.
     //
@@ -81,7 +81,7 @@ public partial class CurationService
         {
             try
             {
-                using IServiceScope scope = _scopeFactory.CreateScope();
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
                 DbService scopedDb = scope.ServiceProvider.GetRequiredService<DbService>();
                 await scopedDb.TrackAIUsageAsync(userId, inputTokens, outputTokens, cost, requestType, ct);
             }
@@ -99,7 +99,36 @@ public partial class CurationService
         });
     }
 
-    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds, bool englishOnly = false, bool forceRefresh = false, CancellationToken cancellationToken = default)
+    // regenerate the reservoir off the request thread so the /hero first-paint path never blocks
+    // on the paid Claude call (#229). Dispatched through the drain (like the AIUsage write) so an
+    // in-flight regen is awaited on host shutdown and bounded by its timeout. A fresh scope gives
+    // a non-request-scoped DbService. forceRefresh:false makes it idempotent — if a concurrent
+    // regen already refreshed the reservoir, GetCuratedRowsAsync serves the fresh cache and skips
+    // the paid call; the AiCurationGate + monthly budget check still apply inside.
+    public void RegenerateReservoirInBackground(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds, bool englishOnly)
+    {
+        _ = _drain.Run(async ct =>
+        {
+            try
+            {
+                // CreateAsyncScope so any IAsyncDisposable scoped services dispose correctly in this
+                // async delegate (mirrors QueueEndpoints' background refresh).
+                await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+                CurationService scoped = scope.ServiceProvider.GetRequiredService<CurationService>();
+                await scoped.GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, forceRefresh: false, allowRegen: true, cancellationToken: ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                _logger.LogWarning("Background reservoir regen cancelled for {UserId} — drain budget exceeded", userId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Background reservoir regen failed for {UserId}", userId);
+            }
+        });
+    }
+
+    public async Task<CurationResult> GetCuratedRowsAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds, bool englishOnly = false, bool forceRefresh = false, bool allowRegen = true, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)
             return new CurationResult { Error = "AI not enabled" };
@@ -125,6 +154,23 @@ public partial class CurationService
         }
 
         bool watchlistChanged = cached != null && cached.Value.watchlistHash != currentHash;
+
+        // no-sync-regen path (#229): the strict-fresh check above failed, so a paid Claude regen
+        // would normally run below. When the caller can't wait for that (the /hero first-paint
+        // path passes allowRegen: false), serve whatever reservoir exists — even aged or
+        // hash-changed — and flag it stale so the caller can regenerate in the background. Only
+        // when there's nothing usable do we return a bare stale result (no rows) for the caller to
+        // decide (dispatch a regen + show a fallback hero rather than blocking on Claude).
+        if (!allowRegen)
+        {
+            if (cached is { } c && c.rowsJson is { } staleJson && staleJson != "[]")
+            {
+                List<AICuratedRow> staleRows = JsonSerializer.Deserialize<List<AICuratedRow>>(staleJson) ?? [];
+                if (staleRows.Count > 0 && staleRows.All(r => r.Picks.Count > 0))
+                    return new CurationResult { Rows = staleRows, FromCache = true, WatchlistChanged = watchlistChanged, ReservoirStale = true };
+            }
+            return new CurationResult { ReservoirStale = true };
+        }
 
         // budget check
         decimal monthlyCost = await _db.GetMonthlyAICostAsync(cancellationToken);
@@ -167,13 +213,16 @@ public partial class CurationService
     //   - advancePick (free): treat today's already-shown picks as ineligible so we move to
     //     the next-best — every shuffle changes the pick, even when regen is rate-limited.
     //   - regenerateReservoir (paid AI, rate-limited): pull genuinely new candidate material.
+    //   - allowRegen (default true): when false, never make the paid Claude call on this path —
+    //     serve a stale reservoir and let the caller regenerate in the background (#229 first paint).
     public async Task<HeroResult> GetCuratedHeroAsync(string userId, List<QueueItem> watchlist, List<int> providerIds, List<int> genreIds,
-        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, string mediaType = MediaTypes.All, CancellationToken cancellationToken = default)
+        bool englishOnly = false, bool regenerateReservoir = false, bool advancePick = false, string mediaType = MediaTypes.All, bool allowRegen = true, CancellationToken cancellationToken = default)
     {
-        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly, regenerateReservoir, cancellationToken);
+        CurationResult reservoir = await GetCuratedRowsAsync(userId, watchlist, providerIds, genreIds, englishOnly,
+            forceRefresh: regenerateReservoir, allowRegen: allowRegen, cancellationToken: cancellationToken);
         AICuratedRow? row = reservoir.Rows.FirstOrDefault();
         if (row is null || row.Picks.Count == 0)
-            return new HeroResult { Error = reservoir.Error };
+            return new HeroResult { Error = reservoir.Error, ReservoirStale = reservoir.ReservoirStale };
 
         // drop anything already on the watchlist, so a title the user has (or just added) can't
         // come back as a recommendation. Keyed on (TmdbId, MediaType) because TMDb ids are
@@ -189,7 +238,7 @@ public partial class CurationService
         Dictionary<(int TmdbId, string MediaType), DateTime> lastShown = await _db.GetHeroImpressionsAsync(userId, cancellationToken);
         HeroCandidate? pick = HeroSelector.Select(candidates, lastShown, DateTime.UtcNow, keepTodaysPickEligible: !advancePick);
         if (pick is null)
-            return new HeroResult { Error = reservoir.Error };
+            return new HeroResult { Error = reservoir.Error, ReservoirStale = reservoir.ReservoirStale };
 
         // the impression is recorded by the caller AFTER it confirms the pick hydrated (so a TMDb
         // failure can't burn a strong pick's cooldown without ever showing it), and only when it
@@ -204,7 +253,8 @@ public partial class CurationService
             MediaType = pick.MediaType,
             Reason = reason,
             Score = pick.Score,
-            ShouldRecordImpression = !alreadyShownToday
+            ShouldRecordImpression = !alreadyShownToday,
+            ReservoirStale = reservoir.ReservoirStale
         };
     }
 
@@ -579,7 +629,9 @@ public partial class CurationService
         _ => "unknown"
     };
 
-    private static string ComputeWatchlistHash(List<QueueItem> items)
+    // public so the /hero endpoint can compute the current hash to check a persisted daily hero's
+    // freshness (#229) against the same reservoir key this service caches by.
+    public static string ComputeWatchlistHash(List<QueueItem> items)
     {
         string input = string.Join("|", items
             .OrderBy(i => i.TmdbId)
@@ -620,6 +672,10 @@ public class CurationResult
     public bool WatchlistChanged { get; set; }
     public string? Error { get; set; }
     public int CandidateCount { get; set; }
+    // true when the reservoir served is stale (aged past the max age, or the watchlist hash
+    // changed) or missing — set only on the no-sync-regen path so the caller can trigger a
+    // background regen without blocking first paint (#229).
+    public bool ReservoirStale { get; set; }
 }
 
 // the chosen hero before TMDb hydration — the endpoint resolves TmdbId into a SearchResult.
@@ -633,5 +689,8 @@ public class HeroResult
     // true when this pick is new for today — the endpoint records the impression only after a
     // successful hydration, so a TMDb miss doesn't put a never-shown title into the cooldown.
     public bool ShouldRecordImpression { get; set; }
+    // propagated from the reservoir (#229): the pick came from a stale/aged reservoir, so the
+    // endpoint should dispatch a background regen for a fresh pick next time.
+    public bool ReservoirStale { get; set; }
     public bool HasPick => TmdbId is not null;
 }
