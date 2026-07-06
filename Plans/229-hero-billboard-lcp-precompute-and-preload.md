@@ -56,7 +56,11 @@ CREATE TABLE IF NOT EXISTS CurationDailyHero (
 
 ## Phase 3 — Server: serve `/hero` from the persisted daily hero + never block on regen *(Api)*
 
-Rewire the endpoint so warm reads skip both TMDb hydration and the paid AI path.
+**Phase 3a (keyed-read) ✅ DONE** (commit pending). `/hero` now: computes the current watchlist hash (`CurationService.ComputeWatchlistHash`, made public), and on a non-shuffle request does a keyed `GetDailyHeroAsync` — if `DailyHeroFreshness.IsFresh` (today + hash match) and the pick isn't now on the user's list (safety-net), returns the stored hydrated `CuratedHero` directly (`hero-daily-hit` Server-Timing), skipping selection *and* TMDb hydration. On miss/shuffle it selects + hydrates as before, then `SetDailyHeroAsync` persists the hydrated pick and records the impression once. New pure `HurrahTv.Shared/Curation/DailyHeroFreshness.cs` (4 tests) + 3 endpoint integration tests (fresh-served / stale-recomputes / shuffle-bypasses, all exercised with AI disabled since the fast path precedes the AI gate). Full solution green (143 Shared + 73 Api + 39 Client), format clean.
+
+**Phase 3b (background reservoir regen) — DEFERRED (decision pending).** Decoupling the paid AI regen from the response addresses the *cold-reservoir* case (new user / 7-day / hash change), which AC#2 explicitly scopes out ("warm load"). It's the highest-risk bit (fire-and-forget AI via `IServiceScopeFactory`, gate/CT ownership). Holding it as an explicit decision rather than bundling it — see original text below.
+
+Original Phase 3 spec (3b portion retained for when/if we build it):
 
 - **`CurationEndpoints.cs` `/hero` handler:** on request, `GetDailyHeroAsync(userId, mediaType, ct)`. Serve it directly (deserialize `HeroJson`) when **`ForDate == DateTime.UtcNow.Date` AND `WatchlistHash == current hash`** (a pure `DailyHeroFreshness` predicate — see below). Apply the safety-net post-filter (`ai-curation-architecture.md`: strip a pick the user just removed/dismissed) before returning.
 - **On miss** (new day, hash change, shuffle `refresh=true`, or no row): run the existing selection + hydration path (`CurationService.GetCuratedHeroAsync` → endpoint `ResolveHeroAsync` at `CurationEndpoints.cs:143-155`), then `SetDailyHeroAsync(...)` and `RecordHeroImpressionAsync(...)` **once** (record the impression at compute time, not per read — equivalent behavior, fewer writes). This preserves rotation + 14-day cooldown (`HeroSelector`, AC#3): within-day = keyed read of the same row; next day = row stale → recompute → new pick + impression.

@@ -579,7 +579,9 @@ public partial class CurationService
         _ => "unknown"
     };
 
-    private static string ComputeWatchlistHash(List<QueueItem> items)
+    // public so the /hero endpoint can compute the current hash to check a persisted daily hero's
+    // freshness (#229) against the same reservoir key this service caches by.
+    public static string ComputeWatchlistHash(List<QueueItem> items)
     {
         string input = string.Join("|", items
             .OrderBy(i => i.TmdbId)
