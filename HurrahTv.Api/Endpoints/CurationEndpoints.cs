@@ -44,28 +44,25 @@ public static class CurationEndpoints
                 // hydration on the LCP path (#229 AC#1). Timings are appended below per phase.
                 long tDb = Stopwatch.GetTimestamp();
 
-                // batch services + genres + settings in one parallel fetch (GetUserPreferencesAsync)
-                // alongside the queue, so the genre fetch isn't serialized in front of the TMDb fan-out.
+                // the queue is always needed (watchlist hash + safety-net); the persisted daily hero
+                // read depends only on (userId, filter), so run it in PARALLEL with the queue rather
+                // than behind it — on a warm load these two reads are the entire DB cost. Prefs
+                // (services/genres/settings) are only needed on a miss/shuffle, so they're deferred
+                // into that branch below and skipped entirely on the warm keyed-read path (#229).
                 Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
-                Task<DbService.UserPreferences> prefsTask = db.GetUserPreferencesAsync(userId, ct);
-                await Task.WhenAll(watchlistTask, prefsTask);
-                double dbMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
-
-                List<QueueItem> watchlist = watchlistTask.Result;
-                DbService.UserPreferences prefs = prefsTask.Result;
-                List<int> providerIds = prefs.ProviderIds;
+                Task<(string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)?>? dailyTask =
+                    doRefresh ? null : db.GetDailyHeroAsync(userId, filter, ct);
 
                 // the daily pick is deterministic and stable within a UTC day, keyed by the same
                 // watchlist hash the reservoir caches by — so a warm load is a single keyed read of
-                // the already-hydrated hero, skipping both selection and TMDb hydration (#229).
+                // the already-hydrated hero, skipping selection, TMDb hydration, and the prefs fetch.
+                List<QueueItem> watchlist = await watchlistTask;
                 string currentHash = CurationService.ComputeWatchlistHash(watchlist);
                 DateOnly today = DateOnly.FromDateTime(DateTime.UtcNow);
 
-                if (!doRefresh)
+                if (dailyTask is not null)
                 {
-                    long tHit = Stopwatch.GetTimestamp();
-                    (string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)? daily =
-                        await db.GetDailyHeroAsync(userId, filter, ct);
+                    (string heroJson, DateOnly forDate, string watchlistHash, int tmdbId)? daily = await dailyTask;
                     if (daily is { } d && DailyHeroFreshness.IsFresh(d.forDate, d.watchlistHash, currentHash, today))
                     {
                         CuratedHero? cachedHero = JsonSerializer.Deserialize<CuratedHero>(d.heroJson);
@@ -75,18 +72,22 @@ public static class CurationEndpoints
                             && watchlist.Any(i => i.TmdbId == cachedHero.Result.TmdbId && i.MediaType == cachedHero.Result.MediaType);
                         if (cachedHero is not null && !onList)
                         {
-                            double hitMs = Stopwatch.GetElapsedTime(tHit).TotalMilliseconds;
-                            http.Response.Headers.Append("Server-Timing", $"hero-db;dur={dbMs:F1}, hero-daily-hit;dur={hitMs:F1}");
+                            double hitMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
+                            http.Response.Headers.Append("Server-Timing", $"hero-daily-hit;dur={hitMs:F1}");
                             return Results.Ok(new CuratedHeroResponse { Hero = cachedHero, AiEnabled = curation.IsEnabled });
                         }
                     }
                 }
 
-                // miss (new day / watchlist change / no row) or shuffle: select + hydrate, then
-                // persist the hydrated pick as today's hero so subsequent loads are keyed reads.
-                // First paint (not a shuffle) never blocks on the paid Claude regen (allowRegen:
-                // false) — it serves a stale reservoir and we kick off a background regen below;
-                // a user-initiated shuffle may regenerate synchronously.
+                // miss (new day / watchlist change / no row) or shuffle: fetch prefs (deferred off
+                // the warm path), then select + hydrate and persist the hydrated pick as today's
+                // hero so subsequent loads are keyed reads. First paint (not a shuffle) never blocks
+                // on the paid Claude regen (allowRegen: false) — it serves a stale reservoir and we
+                // kick off a background regen below; a user-initiated shuffle may regen synchronously.
+                DbService.UserPreferences prefs = await db.GetUserPreferencesAsync(userId, ct);
+                List<int> providerIds = prefs.ProviderIds;
+                double dbMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
+
                 long tCuration = Stopwatch.GetTimestamp();
                 HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlist, providerIds, prefs.GenreIds,
                     prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter,
