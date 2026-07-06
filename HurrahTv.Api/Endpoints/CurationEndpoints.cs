@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using Microsoft.Extensions.Caching.Memory;
 using HurrahTv.Api.Services;
@@ -16,7 +17,7 @@ public static class CurationEndpoints
         // single rotating AI hero pick for the home page (replaces the curated-rows section).
         // ?refresh=true regenerates the reservoir and advances past today's pick (rate-limited).
         group.MapGet("/hero", async (ClaimsPrincipal user, DbService db, CurationService curation,
-            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, bool? refresh, string? mediaType, CancellationToken ct) =>
+            TmdbService tmdb, IMemoryCache cache, ILogger<CurationService> logger, HttpContext http, bool? refresh, string? mediaType, CancellationToken ct) =>
         {
             try
             {
@@ -36,18 +37,32 @@ public static class CurationEndpoints
                     regenerate = true;
                 }
 
+                // attribute the hero's server cost by phase into Server-Timing so the #201 RUM
+                // beacon / DevTools can split db vs curation (selection + paid regen) vs TMDb
+                // hydration on the LCP path (#229 AC#1). Timings are appended below per phase.
+                long tDb = Stopwatch.GetTimestamp();
+
                 // batch services + genres + settings in one parallel fetch (GetUserPreferencesAsync)
                 // alongside the queue, so the genre fetch isn't serialized in front of the TMDb fan-out.
                 Task<List<QueueItem>> watchlistTask = db.GetQueueAsync(userId, ct);
                 Task<DbService.UserPreferences> prefsTask = db.GetUserPreferencesAsync(userId, ct);
                 await Task.WhenAll(watchlistTask, prefsTask);
+                double dbMs = Stopwatch.GetElapsedTime(tDb).TotalMilliseconds;
 
                 DbService.UserPreferences prefs = prefsTask.Result;
                 List<int> providerIds = prefs.ProviderIds;
+                long tCuration = Stopwatch.GetTimestamp();
                 HeroResult result = await curation.GetCuratedHeroAsync(userId, watchlistTask.Result, providerIds, prefs.GenreIds,
                     prefs.EnglishOnly, regenerateReservoir: regenerate, advancePick: doRefresh, mediaType: filter, cancellationToken: ct);
+                double curationMs = Stopwatch.GetElapsedTime(tCuration).TotalMilliseconds;
 
+                long tTmdb = Stopwatch.GetTimestamp();
                 CuratedHero? hero = await ResolveHeroAsync(result, providerIds, tmdb, ct);
+                double tmdbMs = Stopwatch.GetElapsedTime(tTmdb).TotalMilliseconds;
+
+                string curationDesc = regenerate ? ";desc=\"regen\"" : "";
+                http.Response.Headers.Append("Server-Timing",
+                    $"hero-db;dur={dbMs:F1}, hero-curation;dur={curationMs:F1}{curationDesc}, hero-tmdb;dur={tmdbMs:F1}");
 
                 // record the impression only after the pick hydrated, so a TMDb miss can't burn a
                 // strong pick's 14-day cooldown without ever showing it. ShouldRecordImpression is

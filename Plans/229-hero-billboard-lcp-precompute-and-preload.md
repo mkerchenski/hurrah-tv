@@ -47,13 +47,12 @@ CREATE TABLE IF NOT EXISTS CurationDailyHero (
 - `DbService` methods (mirror `GetCurationCacheAsync`/`SetCurationCacheAsync` at `DbService.cs:792-836`): `GetDailyHeroAsync(userId, mediaType, ct)` → `(string heroJson, DateTime forDate, string watchlistHash, int tmdbId)?`; `SetDailyHeroAsync(userId, mediaType, forDate, watchlistHash, heroJson, tmdbId, ct)`. Add deletion to the account-teardown block (`DbService.cs:968`).
 - **Tests:** one `HurrahTv.Api.Tests` round-trip (write → read-back → overwrite) against the real-Postgres fixture.
 
-## Phase 2 — Attribute the hero load *(observability — satisfies AC#1)*
+## Phase 2 — Attribute the hero load *(observability — satisfies AC#1)* ✅ CODE DONE
 
-Capture *where* the hero time goes, and record the baseline before the fix lands.
+**Server-Timing shipped** (commit pending). The `/hero` handler (`CurationEndpoints.cs`) now times and appends per-phase metrics: `hero-db` (queue+prefs), `hero-curation` (selection + paid regen; `desc="regen"` when the reservoir regenerated), `hero-tmdb` (hydration). Rides on the existing `ResponseTimingMiddleware` `Server-Timing: app;dur` and is picked up by App Insights (#206) + the #201 RUM beacon — so hero load is now phase-attributed **in the wild**, not just in a one-off trace (AC#1). Phase 3 will add a `hero-daily-hit` entry for the keyed-read path.
 
-- **Server-Timing on `/hero`** (`CurationEndpoints.cs:18-78`): emit a `Server-Timing` response header attributing the phases — `daily-cache-hit`, `selection`, `tmdb-hydration`, `reservoir-regen`, `db`. Reuse the middleware/pattern established in `Plans/perf-analysis-and-observability.md` Phase 2 rather than inventing a new mechanism; App Insights dependency tracking (shipped, #206) already attributes the Npgsql + TMDb spans.
-- **Baseline re-trace** (no code): re-run the Chrome DevTools MCP LCP waterfall on the *current* build so we have a fresh before-number for the same build we're changing (the 4a number is from `d4a2185`). Record on #229.
-- **Tests:** none (observability wiring); if any Server-Timing assembly is pure it can carry a small unit test, otherwise browser/trace-verified.
+- **Baseline:** using the existing 4a prod trace (`d4a2185`: LCP 1056 ms, load-delay 901 ms dominant, image download 0.6 ms, warm `/hero` ≈38 ms) as the "before." A fresh before-trace would cost a second app-run for a number 4a already gives us — so the **after-trace is folded into Phase 5** (one app-run, driven with the owner, proving AC#2 ~<1 s).
+- **Tests:** none (observability wiring).
 
 ## Phase 3 — Server: serve `/hero` from the persisted daily hero + never block on regen *(Api)*
 
