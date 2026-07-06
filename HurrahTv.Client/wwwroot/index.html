@@ -12,6 +12,32 @@
          fetched anonymously from a different origin. -->
     <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
 
+    <!-- pre-boot hero preload (#229): the LCP element is the AI hero backdrop, whose URL isn't
+         known until WASM boots AND /api/curation/hero returns — the load-delay that dominates
+         Home's LCP. Read the last-shown hero cached by HeroCache (localStorage) and preload its
+         backdrop NOW, so the image downloads in parallel with WASM boot instead of after it. The
+         daily pick is stable, so this is almost always the same image Blazor will render. Public
+         TMDb CDN URL — no auth needed. Classic inline script (runs during head parse, before
+         boot); never throws into the page. Must stay in sync with HeroCache (key + camelCase) and
+         SearchResult.BackdropUrl (size w1280). -->
+    <script>
+        (function () {
+            try {
+                var raw = localStorage.getItem('hurrah_hero_v1');
+                if (!raw) return;
+                var hero = JSON.parse(raw);
+                var path = hero && hero.result && hero.result.backdropPath;
+                if (!path) return;
+                var link = document.createElement('link');
+                link.rel = 'preload';
+                link.as = 'image';
+                link.setAttribute('fetchpriority', 'high');
+                link.href = 'https://image.tmdb.org/t/p/w1280' + path;
+                document.head.appendChild(link);
+            } catch (e) { /* best-effort hint; never block boot */ }
+        })();
+    </script>
+
     <!-- site-wide meta + Open Graph + Twitter Card. Blazor WASM doesn't SSR, so iOS Safari
          / iMessage / Twitter link-preview bots only ever see what's in this static HTML.
          Per-show OG (using TMDb backdrop + title for /details/{type}/{id}) needs a

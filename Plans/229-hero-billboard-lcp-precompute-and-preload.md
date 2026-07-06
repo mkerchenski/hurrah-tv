@@ -68,7 +68,9 @@ Original Phase 3 spec (3b portion retained for when/if we build it):
 - **Shared pure helper + test:** `HurrahTv.Shared/Curation/DailyHeroFreshness.cs` — `IsFresh(DateOnly forDate, string storedHash, string currentHash, DateOnly today)` (`forDate == today && storedHash == currentHash`). `DateOnly` per the Phase 1 decision; inject `today` (`date-predicates-prefer-typed-comparisons.md`).
 - **Tests (required — pure Shared logic, named, referencing #229):** `DailyHero_IsStale_At_Utc_Day_Boundary`, `DailyHero_IsStale_On_Watchlist_Hash_Change`, `DailyHero_IsFresh_Same_Day_Same_Hash`. Plus an `Api.Tests` flow test: first call persists + records one impression; same-day second call is a keyed read (no new impression); `refresh=true` advances + overwrites.
 
-## Phase 4 — Client: last-known-hero preload before WASM boot *(Client — the perceived-LCP win)*
+## Phase 4 — Client: last-known-hero preload before WASM boot *(Client — the perceived-LCP win)* ✅ CODE DONE (browser-verify pending)
+
+**Shipped in code** (commit pending): new `HeroCache` service (localStorage `hurrah_hero_v1`, camelCase for the JS reader) registered in `Program.cs`; inline pre-boot script in `index.html` (after the TMDb `preconnect`) that reads the cached hero and injects `<link rel="preload" as="image" fetchpriority="high">` for the `w1280` backdrop; `Home.razor` seeds `_heroPick` from `HeroCache` before first paint (clears `_heroLoading` so the cached hero renders immediately, then `LoadHero` fade-swaps the fresh pick) and persists each fresh pick via `HeroCache.SetAsync`. Client builds clean, format clean, 39 Client tests green. **Browser verification is the Phase 5 with-owner step.**
 
 Get the LCP image downloading in parallel with boot.
 

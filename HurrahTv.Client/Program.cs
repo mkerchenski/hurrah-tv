@@ -28,6 +28,7 @@ builder.Services.AddScoped(sp =>
 });
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<UserServicesCache>();
+builder.Services.AddScoped<HeroCache>();
 builder.Services.AddSingleton<QuickActionService>();
 builder.Services.AddScoped<MediaFilterService>();
 builder.Services.AddScoped<ShareService>();
