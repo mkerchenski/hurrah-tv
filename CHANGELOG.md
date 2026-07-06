@@ -8,6 +8,11 @@ Types of changes: **Added**, **Changed**, **Fixed**, **Removed**, **Security**.
 
 ## [Unreleased]
 
+## [2026-07-06]
+
+### Changed
+- **Faster Home** — the recommended hero now appears almost instantly on repeat visits
+
 ## [2026-06-25]
 
 ### Added
