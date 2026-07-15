@@ -31,7 +31,7 @@ jobs:
       name: 'Staging'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up .NET Core
         uses: actions/setup-dotnet@v5
@@ -49,7 +49,7 @@ jobs:
       # workloads install under $DOTNET_ROOT; key on the resolved SDK version so a .NET
       # bump invalidates the cache. on a miss the install step below repopulates these dirs.
       - name: Cache wasm-tools workload
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ${{ env.DOTNET_ROOT }}/sdk-manifests
@@ -112,7 +112,7 @@ jobs:
           CLARITY_PROJECT_ID: ${{ vars.CLARITY_PROJECT_ID }}
 
       - name: Cache NuGet packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
