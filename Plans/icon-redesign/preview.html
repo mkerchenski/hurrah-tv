@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Hurrah icon — variant preview</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0;
+    font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro", system-ui, sans-serif;
+    background: #f3f3f3;
+    color: #111;
+    padding: 40px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lede { color: #666; margin-bottom: 32px; }
+  .variant { margin-bottom: 56px; }
+  .variant h2 { font-size: 16px; margin: 0 0 4px; }
+  .variant p { color: #666; margin: 0 0 16px; max-width: 640px; }
+  .row { display: flex; gap: 24px; align-items: flex-end; flex-wrap: wrap; }
+  .cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .cell small { color: #888; font-size: 11px; }
+  .swatch {
+    border-radius: 22.37%; /* iOS squircle approximation */
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+    display: block;
+  }
+  .swatch img { display: block; width: 100%; height: 100%; }
+  .dark-strip {
+    background: #111;
+    border-radius: 16px;
+    padding: 24px;
+    margin-top: 12px;
+  }
+  .dark-strip .row { gap: 24px; }
+  .dark-label { color: #999; font-size: 12px; margin-bottom: 8px; }
+  .invert { filter: invert(1); }
+</style>
+</head>
+<body>
+
+<h1>Hurrah icon — variants</h1>
+<p class="lede">
+  Same <code>&lt;/&gt;</code> glyph family — caps, joins, and proportions vary.
+  Square corners shown (iOS will round them); dark-mode strip simulates a black home screen.
+  <strong>Variant C v5</strong> at the bottom is the current direction: chevrons as filled polygons with axis-aligned square arm tips and sharp 90&deg; corners at the back, plus an extra 10% vertical squish.
+</p>
+
+<section class="variant">
+  <h2>Variant A — Bold &amp; Rounded</h2>
+  <p>Heavy stroke (88px), rounded caps and joins, compact arrangement. Closest descendant of the source photo. Confident, mobile-app-ready.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-a-bold.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-a-bold.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-a-bold.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-a-bold.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-a-bold.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-a-bold.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-a-bold.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-a-bold.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant">
+  <h2>Variant B — Sharp &amp; Crisp</h2>
+  <p>Medium stroke (60px), butt caps and miter joins. Engineering/Xcode feel — precise rather than friendly.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-b-crisp.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-b-crisp.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-b-crisp.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-b-crisp.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-b-crisp.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-b-crisp.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-b-crisp.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-b-crisp.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant">
+  <h2>Variant C — Wide Tag</h2>
+  <p>Heavy stroke (80px), rounded caps, but brackets stretched outward — feels like an HTML tag glyph more than a typographic ligature. Web-developer-tool vibe.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-c-tag.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-c-tag.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-c-tag.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-c-tag.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-c-tag.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-c-tag.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-c-tag.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-c-tag.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant" style="background:#fafafa;padding:24px;border-radius:16px;border:2px solid #ccc;">
+  <h2>Variant C v2 — Squared &amp; Protruding</h2>
+  <p>Iteration on C: <strong>squared caps + miter joins</strong> on the chevrons (sharper, more architectural — no rounded softness), and the <strong>slash extends past the top &amp; bottom</strong> of the chevron tips. More HTML-tag, less typographic.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-c-v2.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-c-v2.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-c-v2.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-c-v2.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-c-v2.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-c-v2.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-c-v2.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-c-v2.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant" style="background:#fafafa;padding:24px;border-radius:16px;border:2px solid #ccc;">
+  <h2>Variant C v3 — Squared Back + Modest Protrusion</h2>
+  <p>Chevron back is a flat vertical segment (not a point). Slash protrudes ~30px past chevron tips on each end. Heavier stroke (95) for presence at small sizes.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-c-v3.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-c-v3.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-c-v3.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-c-v3.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-c-v3.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-c-v3.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-c-v3.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-c-v3.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant" style="background:#fafafa;padding:24px;border-radius:16px;border:2px solid #ccc;">
+  <h2>Variant C v4 — Wider, Squatter, Heavier</h2>
+  <p>v3 transformed: horizontal +10%, vertical &minus;10%, stroke 95 &rarr; 105. More tag-like proportions, heavier presence.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-c-v4.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-c-v4.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-c-v4.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-c-v4.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-c-v4.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-c-v4.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-c-v4.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-c-v4.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+<section class="variant" style="background:#fafafa;padding:24px;border-radius:16px;border:2px solid #111;">
+  <h2>Variant C v5 — Squared Points + Extra Squish (current direction)</h2>
+  <p>Chevrons drawn as filled polygons: arm tips now have vertical (axis-aligned) right faces, back corners are sharp 90&deg; (no bevel). Another 10% vertical squish on top of v4.</p>
+  <div class="row">
+    <div class="cell"><div class="swatch" style="width:180px;height:180px"><img src="variant-c-v5.svg"></div><small>180 (apple-touch)</small></div>
+    <div class="cell"><div class="swatch" style="width:120px;height:120px"><img src="variant-c-v5.svg"></div><small>120</small></div>
+    <div class="cell"><div class="swatch" style="width:60px;height:60px"><img src="variant-c-v5.svg"></div><small>60</small></div>
+    <div class="cell"><div class="swatch" style="width:32px;height:32px"><img src="variant-c-v5.svg"></div><small>32 (favicon)</small></div>
+  </div>
+  <div class="dark-strip">
+    <div class="dark-label">Inverted for dark mode (white-on-black)</div>
+    <div class="row">
+      <div class="cell"><div class="swatch invert" style="width:180px;height:180px"><img src="variant-c-v5.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:120px;height:120px"><img src="variant-c-v5.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:60px;height:60px"><img src="variant-c-v5.svg"></div></div>
+      <div class="cell"><div class="swatch invert" style="width:32px;height:32px"><img src="variant-c-v5.svg"></div></div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
