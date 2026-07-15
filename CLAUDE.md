@@ -189,7 +189,7 @@ Design documents and implementation plans live in `Plans/` at repo root, **track
 ```markdown
 # Feature Name - Implementation Plan
 
-> **Status:** Draft | Active | Complete | On Hold
+> **Status:** Draft | Active | Complete | On Deck
 > **Tracking issue:** #NN   (open issue this implements; required for public plans)
 
 [Numbered phases with checkable items]
