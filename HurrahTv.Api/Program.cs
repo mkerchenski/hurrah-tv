@@ -30,6 +30,14 @@ string pgConnString = builder.Configuration.GetConnectionString("Default")
 // briefly live during a swap, so their two pools must sum (plus Azure's own connections) under 50.
 int minPoolSize = builder.Configuration.GetValue("Npgsql:MinPoolSize", 8);
 int maxPoolSize = builder.Configuration.GetValue("Npgsql:MaxPoolSize", 20);
+// fail fast with an actionable message if a slot setting is fat-fingered — otherwise a bad
+// value surfaces later as a cryptic Npgsql exception that takes the API down on startup.
+if (minPoolSize < 0 || maxPoolSize < 1 || minPoolSize > maxPoolSize)
+{
+    throw new InvalidOperationException(
+        $"Invalid Npgsql pool config (MinPoolSize={minPoolSize}, MaxPoolSize={maxPoolSize}): "
+        + "require 0 <= MinPoolSize <= MaxPoolSize and MaxPoolSize >= 1.");
+}
 builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
 {
     NpgsqlDataSourceBuilder dataSourceBuilder = new(pgConnString);
