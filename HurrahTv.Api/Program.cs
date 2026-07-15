@@ -23,9 +23,9 @@ builder.Services.AddHttpClient<TmdbService>();
 string pgConnString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
 // pool sizes are config-driven (#234): the warm floor must cover Home's first-paint fan-out
-// (~4–6 concurrent requests → same many connections at once), so a fixed small floor forced
-// cold cross-region connects onto the hot path. Defaults size prod for that burst; the staging
-// slot overrides them tiny (Npgsql__MinPoolSize/MaxPoolSize slot settings) because staging + prod
+// (~4–6 concurrent requests → that many connections at once), so a fixed small floor forced
+// cold cross-region connects onto the hot path. Defaults are sized for that burst in prod; the staging
+// slot overrides them to be tiny (Npgsql__MinPoolSize/Npgsql__MaxPoolSize slot settings) because staging + prod
 // SHARE one Postgres (max_connections=50) — staging auto-deploys on every main push and both are
 // briefly live during a swap, so their two pools must sum (plus Azure's own connections) under 50.
 int minPoolSize = builder.Configuration.GetValue("Npgsql:MinPoolSize", 8);
