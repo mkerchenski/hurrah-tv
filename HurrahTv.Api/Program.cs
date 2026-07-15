@@ -19,20 +19,23 @@ builder.Services.AddHttpClient<TmdbService>();
 // single pool-warmed NpgsqlDataSource shared by DbService (#200 — Sentry HURRAH-TV-3). Min Pool Size
 // keeps connections warm so the first post-idle request never pays a cold (cross-region) connect, and
 // KeepAlive stops Azure Postgres' gateway idle-timeout from silently dropping pooled connections.
-// Max Pool Size stays under the server's max_connections (50). Factory form so the DI container
-// disposes the data source on shutdown.
+// Factory form so the DI container disposes the data source on shutdown.
 string pgConnString = builder.Configuration.GetConnectionString("Default")
     ?? throw new InvalidOperationException("ConnectionStrings:Default is required");
+// pool sizes are config-driven (#234): the warm floor must cover Home's first-paint fan-out
+// (~4–6 concurrent requests → same many connections at once), so a fixed small floor forced
+// cold cross-region connects onto the hot path. Defaults size prod for that burst; the staging
+// slot overrides them tiny (Npgsql__MinPoolSize/MaxPoolSize slot settings) because staging + prod
+// SHARE one Postgres (max_connections=50) — staging auto-deploys on every main push and both are
+// briefly live during a swap, so their two pools must sum (plus Azure's own connections) under 50.
+int minPoolSize = builder.Configuration.GetValue("Npgsql:MinPoolSize", 8);
+int maxPoolSize = builder.Configuration.GetValue("Npgsql:MaxPoolSize", 20);
 builder.Services.AddSingleton<NpgsqlDataSource>(_ =>
 {
     NpgsqlDataSourceBuilder dataSourceBuilder = new(pgConnString);
     NpgsqlConnectionStringBuilder pool = dataSourceBuilder.ConnectionStringBuilder;
-    pool.MinPoolSize = 3;
-    // staging + prod slots SHARE one Postgres (max_connections=50), and staging runs
-    // continuously (auto-deploys on every main push) alongside prod — both are also briefly
-    // live during a swap. So the cap is shared across two pools: keep MaxPoolSize low enough
-    // that 2 slots plus Azure's own connections stay under 50 (20 + 20 + overhead < 50).
-    pool.MaxPoolSize = 20;
+    pool.MinPoolSize = minPoolSize;
+    pool.MaxPoolSize = maxPoolSize;
     pool.KeepAlive = 30;
     pool.ConnectionIdleLifetime = 300;
     // connection Timeout (15s) and Dapper CommandTimeout (30s) deliberately left at Npgsql's defaults.
