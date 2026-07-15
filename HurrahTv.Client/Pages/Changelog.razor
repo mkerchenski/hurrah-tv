@@ -23,7 +23,7 @@
                 <h2 class="text-lg font-semibold mb-3">@DisplayVersion(entry.Version)</h2>
                 @foreach (ChangelogSection section in entry.Sections)
                 {
-                    <h3 class="text-xs uppercase tracking-wide text-gray-400 mt-3 mb-1">@section.Category</h3>
+                    <h3 class="text-xs uppercase tracking-wide text-gray-400 mt-3 mb-1">@(section.Category)</h3>
                     <ul class="list-disc list-inside text-sm text-gray-200 space-y-1">
                         @foreach (string item in section.Items)
                         {
