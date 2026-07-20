@@ -12,7 +12,7 @@
     "@iconify-json/heroicons": "^1.2.3",
     "@iconify/types": "^2.0.0",
     "@iconify/utils": "^3.1.4",
-    "@tailwindcss/cli": "^4.3.2",
+    "@tailwindcss/cli": "^4.3.3",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.2.4"
   }
