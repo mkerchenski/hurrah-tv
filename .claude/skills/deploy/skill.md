@@ -64,6 +64,11 @@ Single App Service serves both the Blazor WASM client (static files) and the .NE
      triggers a fresh staging deploy: **wait for `main_hurrahtv.yml` to finish**
      (`gh run list --workflow main_hurrahtv.yml -R mkerchenski/hurrah-tv --limit 1`, poll to
      completion) so the swapped build carries the dated changelog and the banner fires for users.
+   - **The push only builds because `CHANGELOG.md` is in `main_hurrahtv.yml`'s `paths:` filter.** If
+     no run appears within ~30s of the push (someone pruned it from `paths`, or the stamp landed in a
+     root file not listed there), the push was path-filtered out — **manually dispatch** the staging
+     build instead: `gh workflow run main_hurrahtv.yml -R mkerchenski/hurrah-tv --ref main`, then poll
+     that run to completion. Don't just poll `--limit 1` forever expecting a run that will never start.
    - If `[Unreleased]` is empty (a deploy with no user-visible changes), note that and skip straight to
      the swap — don't stamp an empty release.
 3. Use AskUserQuestion to confirm: "This will swap staging to production at hurrah.tv. Proceed?"

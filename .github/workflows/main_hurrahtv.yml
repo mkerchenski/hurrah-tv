@@ -9,6 +9,11 @@ on:
       - 'HurrahTv.Client/**'
       - 'HurrahTv.Shared/**'
       - '!HurrahTv.Client/node_modules/**'
+      # CHANGELOG.md is an embedded resource in the API build (served at /api/changelog and
+      # driving the What's Changed banner), so a changelog stamp genuinely changes the deployed
+      # artifact and must trigger a staging build — do not remove. The /deploy skill relies on
+      # this: it stamps the changelog, pushes, and waits for this workflow before the prod swap.
+      - 'CHANGELOG.md'
   workflow_dispatch:
 
 permissions:
