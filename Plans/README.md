@@ -23,7 +23,7 @@ When the work ships, mark the plan `Complete` (keep it only if it's still useful
 ```markdown
 # Feature Name — Implementation Plan
 
-> **Status:** Draft | Active | Complete | On Hold
+> **Status:** Draft | Active | Complete | On Deck
 > **Tracking issue:** #NN   (open issue this plan implements; required for public plans)
 
 [numbered phases with checkable items — self-contained enough to paste into an issue]

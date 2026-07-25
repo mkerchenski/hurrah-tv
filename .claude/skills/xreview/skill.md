@@ -249,6 +249,8 @@ For each filed issue (`gh issue create`):
   - Type: `type:bug` (score 80+ or bug-category), `type:refactor` (style/architecture), `type:enhancement` (nice-to-have)
   - Area: `area:api`, `area:client`, `area:infra`, `area:auth` — pick by file paths
   - Difficulty: `difficulty:intermediate` / `difficulty:advanced` (never `difficulty:starter` — that's reserved per user memory)
+  - Phase: `phase:next` (default). Use `phase:now` only if the user is about to act on it.
+- Full label scheme and body template: invoke the `issue-conventions` skill.
 - Use `gh issue create --title --body-file <tempfile> --label <csv>`. Don't assign initially.
 
 After filing: report `Filed N follow-up issues: #X, #Y, #Z` with URLs so the user can link them in the PR description as `Related: #X #Y #Z`.
