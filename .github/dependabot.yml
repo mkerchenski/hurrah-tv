@@ -22,6 +22,15 @@ updates:
           - "area:api"
       commit-message:
           prefix: "deps(api)"
+      ignore:
+          # Microsoft.OpenApi 3.x made IOpenApiMediaType.Example read-only, but the
+          # Microsoft.AspNetCore.OpenApi source generator still emits `Example = ...`, so a 3.x bump
+          # fails the build with CS0200 in generated code (#250). 2.11.0 already clears
+          # GHSA-v5pm-xwqc-g5wc, so there's no security reason to jump. Drop this ignore once
+          # ASP.NET Core ships a release built against Microsoft.OpenApi 3.x.
+          - dependency-name: "Microsoft.OpenApi"
+            update-types:
+                - "version-update:semver-major"
       groups:
           patch-and-minor:
               update-types:
