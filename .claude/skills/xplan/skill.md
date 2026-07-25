@@ -166,6 +166,17 @@ The plan's front matter must end up with one of these three forms:
 > **Tracking issue:** mkerchenski/hurrah-tv#69 (created via /xplan on YYYY-MM-DD)
 ```
 
+#### Plan file format
+
+```markdown
+# Feature Name - Implementation Plan
+
+> **Status:** Draft | Active | Complete | On Deck
+> **Tracking issue:** #NN   (open issue this implements; required for public plans)
+
+[Numbered phases with checkable items]
+```
+
 #### 1.5 Save
 
 Save the augmented plan to `Plans/<feature-name>.md` with the tracking-issue front-matter line populated. The approval already happened inside plan mode — this step writes the durable artifact (referenceable across sessions, surfaced from the GitHub issue when one was created or linked).
@@ -185,4 +196,4 @@ Tell the user: "Plan saved to `Plans/{feature-name}.md`. Tracking: `{issue ref o
   - Medium (3-10 files) → 2-4 phases → `plan` mode, save to `Plans/`
   - Large (10+ files, cross-project) → 4-6 phases → `plan` mode
 - **Don't over-plan** — for trivial single-file tasks, `quick` is enough.
-- **Plans/ is gitignored** — for working documents, not permanent docs.
+- **Plans/ is tracked in git** — `Plans/private/` is the gitignored half (see CLAUDE.md "Plans Directory" for the public/private split; this is a public repo, so the split is load-bearing).
