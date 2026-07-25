@@ -6,13 +6,6 @@
     "sentry",
     "microsoft-clarity"
   ],
-  "skillOverrides": {
-    "dotnet-aspnet-core": "off",
-    "dotnet-blazor": "off",
-    "dotnet-microsoft-extensions": "off",
-    "dotnet-modern-csharp": "off",
-    "dotnet-project-setup": "off"
-  },
   "permissions": {
     "allow": [
       "Bash(dotnet --version)",
