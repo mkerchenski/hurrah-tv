@@ -6,9 +6,9 @@ argument-hint: [--staged|--unpushed]
 
 # xreview — Hurrah.tv Augmented Multi-Agent Review
 
-Wraps the system `review` skill with hurrah-tv-specific multi-agent infrastructure: 5 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan, ASP.NET Core pipeline), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
+Wraps the system `code-review` skill with hurrah-tv-specific multi-agent infrastructure: 5 specialized reviewers (CLAUDE.md compliance, Blazor WASM lifecycle, API/Data safety, Bug scan, ASP.NET Core pipeline), a dotnet format pass, and a README freshness check. After review, the default disposition is to fix every score-50+ finding inline, then always surface follow-up issue candidates for anything deferred, out-of-scope, or adjacent.
 
-The fan-out-and-score core (the 5 specialized reviewers + per-finding scoring) runs as a deterministic **workflow** — `.claude/workflows/xreview.js`, invoked with `Workflow({name: "xreview", args: {...}})`. The workflow pipelines each dimension straight into scoring, so a finding starts scoring the moment its reviewer finishes. The system `review` skill runs concurrently in the main loop as a separate parallel voice; its findings are merged in afterward. The interactive parts — mode selection, dotnet format, inline fixes, README check, issue filing — stay in the main loop where they belong.
+The fan-out-and-score core (the 5 specialized reviewers + per-finding scoring) runs as a deterministic **workflow** — `.claude/workflows/xreview.js`, invoked with `Workflow({name: "xreview", args: {...}})`. The workflow pipelines each dimension straight into scoring, so a finding starts scoring the moment its reviewer finishes. The system `code-review` skill runs concurrently in the main loop as a separate parallel voice; its findings are merged in afterward. The interactive parts — mode selection, dotnet format, inline fixes, README check, issue filing — stay in the main loop where they belong.
 
 ## Output rules (apply to every step below)
 
@@ -25,7 +25,7 @@ Ask:
 > **Which review mode?**
 >
 > - **quick** — fast subset: CLAUDE.md compliance + Bug scan only. No dotnet format auto-fix. Inline fixes still default-on. For tight-loop checks during work-in-progress.
-> - **review** — full local pipeline: system `review` + all 5 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + always-on follow-up issue surfacing.
+> - **review** — full local pipeline: system `code-review` + all 5 hurrah-tv reviewers + dotnet format auto-fix at info severity + README check + always-on follow-up issue surfacing.
 >
 > **When to pick `review`:** typical pre-commit / pre-push review.
 > **When to pick `quick`:** sanity check during active work.
@@ -48,7 +48,7 @@ Wait for mode response before proceeding.
 
 1. Gather the diff for the parsed scope (default: union as defined in Step 1-Review section 1) and externalize it (Step 1-Review section 3). Build the learnings index (section 1).
 2. Empty-diff handling: if empty, report "No changes to review" and stop.
-3. Run the xreview workflow with the **narrow** two-dimension subset — explicitly pass `dimensions: ["claudemd", "bugs"]`. Skip dotnet format, skip the system `review` call, skip the README check.
+3. Run the xreview workflow with the **narrow** two-dimension subset — explicitly pass `dimensions: ["claudemd", "bugs"]`. Skip dotnet format, skip the system `code-review` call, skip the README check.
    ```
    Workflow({ name: "xreview", args: {
      diffPath, filesPath, claudeMdPath, learningsIndex,
@@ -133,7 +133,7 @@ git diff --name-only [range] > "$TMPDIR/hurrahtv-review-files.txt"
 
 (`$TMPDIR` on macOS/Linux; `$env:TEMP` in PowerShell on Windows. Capture the absolute path of each file. Also capture the absolute path to `CLAUDE.md` and the learnings-index string from section 1 — these are the workflow's args.)
 
-#### 4. Run the review workflow + system review concurrently
+#### 4. Run the review workflow + system code-review concurrently
 
 The 5 specialized reviewers and their per-finding scoring run as the **`xreview` workflow** (`.claude/workflows/xreview.js`). The five dimension prompts and the 0–100 scoring rubric live there canonically — don't duplicate them here. In a **single message**, do both of these so they run concurrently:
 
@@ -150,13 +150,15 @@ The 5 specialized reviewers and their per-finding scoring run as the **`xreview`
    ```
    It pipelines each dimension straight into scoring (Sonnet reviewers → Haiku scorers) and returns `{ confirmed }` already filtered to score ≥ 50 and sorted descending. The workflow backgrounds; you're notified when it completes.
 
-2. **Invoke `Skill(skill="review")`** as the separate parallel voice — the system review's generic PR-review pass. It runs inline in the main loop while the workflow churns.
+2. **Invoke `Skill(skill="code-review")`** as the separate parallel voice — the system generalist's review pass. It runs inline in the main loop while the workflow churns. Called bare it reviews the current working diff; it also takes a PR number, branch, or path as its target plus an effort level (`code-review 12 high`) — name the target when reviewing anything other than the working diff.
 
-**Always pass `dimensions` explicitly** — the workflow throws if it's missing rather than defaulting to "review everything," so a dropped arg surfaces loudly instead of silently widening scope. Tell the system review (and remember for the merge) to **ignore changes from dotnet format** — those are mechanical.
+   > There is **no skill named `review`** — that name resolves to nothing and degrades silently into an ordinary inline review, so a run looks complete while the generalist voice never ran. `code-review` is the generalist here.
 
-#### 5. Merge & score the system-review findings
+**Always pass `dimensions` explicitly** — the workflow throws if it's missing rather than defaulting to "review everything," so a dropped arg surfaces loudly instead of silently widening scope. Tell the system `code-review` (and remember for the merge) to **ignore changes from dotnet format** — those are mechanical.
 
-The workflow's `confirmed` findings are already scored. The system `review` findings are not — score each against the **same rubric** (it lives in `xreview.js`; reproduced intent: 0 = false-positive/pre-existing, 50 = real but minor, 75 = important, 100 = confirmed-will-happen), keep only ≥ 50, and merge into one list. De-dupe where the system review and a specialized dimension flagged the same `file:line` — keep the higher score and note both reviewers. The merged, score-sorted list feeds section 6.
+#### 5. Merge & score the system code-review findings
+
+The workflow's `confirmed` findings are already scored. The system `code-review` findings are not — score each against the **same rubric** (it lives in `xreview.js`; reproduced intent: 0 = false-positive/pre-existing, 50 = real but minor, 75 = important, 100 = confirmed-will-happen), keep only ≥ 50, and merge into one list. De-dupe where the system code-review and a specialized dimension flagged the same `file:line` — keep the higher score and note both reviewers. The merged, score-sorted list feeds section 6.
 
 #### 6. Present results
 
@@ -164,7 +166,7 @@ If no issues score 50+:
 ```
 ### Code Review: No Issues Found
 
-Reviewed N files. All 5 hurrah-tv agents + system review passed.
+Reviewed N files. All 5 hurrah-tv agents + system code-review passed.
 dotnet format: [clean / fixed N files]
 README check: [up to date / flagged for update]
 Changelog: [entry present / added [Unreleased] line / n/a — internal-only change]
