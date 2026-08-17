@@ -9,7 +9,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Anthropic" Version="12.36.0" />
+    <PackageReference Include="Anthropic" Version="12.40.0" />
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.1.2" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
@@ -20,7 +20,7 @@
          3.x made read-only (CS0200) — see #250. revisit when ASP.NET Core ships against Microsoft.OpenApi 3.x. -->
     <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
-    <PackageReference Include="Sentry.AspNetCore" Version="6.7.0" />
+    <PackageReference Include="Sentry.AspNetCore" Version="6.9.0" />
     <PackageReference Include="Twilio" Version="7.14.9" />
   </ItemGroup>
 
