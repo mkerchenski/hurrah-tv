@@ -14,14 +14,14 @@ public class StreamingService
     // an extra API call. If TMDb rotates a path, the logo renders as empty — not a crash.
     public static readonly StreamingService[] All =
     [
-        new() { TmdbProviderId = 8,    Name = "Netflix",             LogoPath = "/pbpMk2JmcoNnQwx5JGpXngfoWtp.jpg", Color = "#E50914" },
-        new() { TmdbProviderId = 9,    Name = "Amazon Prime Video",  LogoPath = "/pvske1MyAoymrs5bguRfVqYiM9a.jpg", Color = "#00A8E1" },
-        new() { TmdbProviderId = 15,   Name = "Hulu",                LogoPath = "/bxBlRPEPpMVDc4jMhSrTf2339DW.jpg", Color = "#1CE783" },
-        new() { TmdbProviderId = 337,  Name = "Disney+",             LogoPath = "/97yvRBw1GzX7fXprcF80er19ot.jpg",  Color = "#113CCF" },
-        new() { TmdbProviderId = 2303, Name = "Paramount+",          LogoPath = "/fts6X10Jn4QT0X6ac3udKEn2tJA.jpg", Color = "#0064FF" },
-        new() { TmdbProviderId = 386,  Name = "Peacock",             LogoPath = "/2aGrp1xw3qhwCYvNGAJZPdjfeeX.jpg", Color = "#000000" },
-        new() { TmdbProviderId = 1899, Name = "Max",                 LogoPath = "/jbe4gVSfRlbPTdESXhEKpornsfu.jpg", Color = "#002BE7" },
-        new() { TmdbProviderId = 350,  Name = "Apple TV+",           LogoPath = "/mcbz1LgtErU9p4UdbZ0rG6RTWHX.jpg", Color = "#555555" },
+        new() { TmdbProviderId = 8,    Name = "Netflix",             LogoPath = "/rK1KljqmbvO9HQa1PBFLILWah72.png", Color = "#E50914" },
+        new() { TmdbProviderId = 9,    Name = "Amazon Prime Video",  LogoPath = "/gMZdpavHmxFNnLpMHwVxfqeux2g.png", Color = "#00A8E1" },
+        new() { TmdbProviderId = 15,   Name = "Hulu",                LogoPath = "/44uAnmSqvA4yBOdbPWN8YgQHjWm.png", Color = "#1CE783" },
+        new() { TmdbProviderId = 337,  Name = "Disney+",             LogoPath = "/5eZ872CghnHFLB1j8grszbrx0dx.png",  Color = "#113CCF" },
+        new() { TmdbProviderId = 2303, Name = "Paramount+",          LogoPath = "/4N4BMd0Mm0kHAmF7RZgL5lW3cwc.png", Color = "#0064FF" },
+        new() { TmdbProviderId = 386,  Name = "Peacock",             LogoPath = "/a1UIdq5BrkcAxnxcUhFsNbXnxeu.png", Color = "#000000" },
+        new() { TmdbProviderId = 1899, Name = "Max",                 LogoPath = "/skypuy7SXuugIQeYg0IglmzoKaS.png", Color = "#002BE7" },
+        new() { TmdbProviderId = 350,  Name = "Apple TV+",           LogoPath = "/9icYBfYFcwgCbky5VdGUIKJ4C5i.png", Color = "#555555" },
     ];
 
     public static readonly Dictionary<int, StreamingService> ById =
