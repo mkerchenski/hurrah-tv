@@ -13,7 +13,7 @@
     <PackageReference Include="Dapper" Version="2.1.79" />
     <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.1.2" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
-    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.13" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
     <!-- pinned above the transitive 2.0.0 pulled by AspNetCore.OpenApi to clear GHSA-v5pm-xwqc-g5wc (High).
          stays on 2.x: the AspNetCore.OpenApi source generator assigns IOpenApiMediaType.Example, which
